@@ -119,6 +119,9 @@ def build_record(region, region_alns, lib_size, config):
     r.pingpong_z, r.pingpong_pairs10 = pingpong_zscore(overlap_counts)
     total_pairs = sum(overlap_counts.values())
     r.overlap19_frac = round(overlap_counts.get(19, 0) / total_pairs, 4) if total_pairs else 0.0
+    # 10-nt 5'-5' overlap fraction: bounded [0,1] and comparable across loci (unlike
+    # the raw z). Guarded by a minimum number of pairs so noise can't yield a spurious 1.0.
+    r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)

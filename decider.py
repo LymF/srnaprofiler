@@ -36,9 +36,12 @@ class RuleScorer:
     def _size(self, record):
         return int(record.dicer_call) if record.dicer_call != "N" else None
 
-    def _pp_sigmoid(self, z):
-        return _sigmoid(z, x0=self.shape.get("pingpong_x0", 1.65),
-                        scale=self.shape.get("pingpong_scale", 1.0))
+    def _pp_signal(self, record):
+        # Ping-pong strength from the bounded 10-nt overlap fraction (comparable
+        # across loci, unlike the raw z). Linear ramp: 0 at frac 0, saturating to 1
+        # at `pingpong_frac_full` (default 0.1 = 10% of opposite-strand pairs overlap by 10).
+        full = self.shape.get("pingpong_frac_full", 0.1)
+        return min(record.pingpong_frac / full, 1.0) if full > 0 else 0.0
 
     def _score_class(self, name, spec, record):
         size = self._size(record)
@@ -50,7 +53,7 @@ class RuleScorer:
             t = spec["w_size"] * _window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
             s += t; terms["size"] = round(t, 3)
         if "w_pingpong" in spec:
-            t = spec["w_pingpong"] * self._pp_sigmoid(record.pingpong_z)
+            t = spec["w_pingpong"] * self._pp_signal(record)
             s += t; terms["pingpong"] = round(t, 3)
         if "w_1u" in spec:
             t = spec["w_1u"] * record.pct_1u
@@ -59,7 +62,7 @@ class RuleScorer:
             t = spec["w_fractop_mid"] * _mid(record.frac_top, sigma=sigma)
             s += t; terms["fractop_mid"] = round(t, 3)
         if "w_pingpong_penalty" in spec:
-            t = spec["w_pingpong_penalty"] * self._pp_sigmoid(record.pingpong_z)
+            t = spec["w_pingpong_penalty"] * self._pp_signal(record)
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
         if "w_phase" in spec:
             # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].

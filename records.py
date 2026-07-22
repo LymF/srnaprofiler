@@ -30,7 +30,8 @@ class ClusterRecord:
     gc: float = 0.0
     # biogenesis
     pingpong_z: float = 0.0
-    pingpong_pairs10: int = 0
+    pingpong_pairs10: float = 0.0
+    pingpong_frac: float = 0.0
     phase_score: float = 0.0
     phase_pvalue: float = 1.0
     phase_number: int = 0

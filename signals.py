@@ -5,20 +5,30 @@ from collections import defaultdict
 from math import comb
 
 
-def pingpong_zscore(counts, target=10, lo=1, hi=20):
+def pingpong_zscore(counts, target=10, lo=1, hi=20, min_bg=3, cap=100.0):
     """Z-score of the 5'-5' overlap at `target` (default 10 nt) against the background.
 
     counts: {overlap_length: n_pairs}. Background = offsets in [lo,hi] minus the target.
+
+    Guarded and capped: on a narrow, ultra-dense locus the background collapses to a
+    couple of non-zero offsets, its stdev goes to ~0 and the raw z explodes into the
+    thousands, which is not comparable across loci. We require at least `min_bg`
+    non-zero background offsets for the z to be meaningful, and cap its magnitude at
+    `cap`. (For classification use the bounded `pingpong_frac` instead — this z is a
+    diagnostic.)
     """
     background = [counts.get(o, 0) for o in range(lo, hi + 1) if o != target]
     peak = counts.get(target, 0)
-    if len(background) < 2:
+    nonzero_bg = sum(1 for v in background if v > 0)
+    if len(background) < 2 or nonzero_bg < min_bg:
         return 0.0, peak
     sd = statistics.pstdev(background)
     if sd == 0:
         return 0.0, peak
     mean = statistics.fmean(background)
-    return round((peak - mean) / sd, 3), peak
+    z = (peak - mean) / sd
+    z = max(-cap, min(cap, z))
+    return round(z, 3), peak
 
 
 def phase_metrics(positions, region_start, phase_length):
