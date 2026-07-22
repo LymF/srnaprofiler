@@ -40,7 +40,7 @@ def test_pirna_via_run_classify(tmp_path):
     header, rows = tsv[0].split("\t"), [l.split("\t") for l in tsv[1:]]
     ci = {c: i for i, c in enumerate(header)}
     # the most abundant locus is the piRNA one
-    row = max(rows, key=lambda r: int(r[ci["reads"]]))
+    row = max(rows, key=lambda r: float(r[ci["reads"]]))
     assert row[ci["dicer_call"]] == "27"
     assert row[ci["cls"]] == "piRNA"
     assert row[ci["review"]] == "False"

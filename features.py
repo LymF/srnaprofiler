@@ -25,40 +25,47 @@ def build_record(region, region_alns, lib_size, config):
     r = ClusterRecord(chrom=chrom, start=start, end=end, name=f"{chrom}:{start}-{end}")
 
     local = region_alns
-    r.reads = len(local)
-    if r.reads == 0:
+    raw_n = len(local)
+    if raw_n == 0:
         return r
 
+    # Multi-mapping reads are counted fractionally by 1/NH: a read mapping to N
+    # places contributes 1/N at each locus, so its total across the genome is 1.
+    # This keeps counts at repetitive loci (e.g. transposon piRNA clusters) honest
+    # instead of inflating them once per reported alignment.
     strand_count = Counter()
     seqs = Counter()
     seq_lens = Counter()
-    gc_bases = 0
-    total_bases = 0
-    n_1u = n_10a = 0
+    gc_bases = 0.0
+    total_bases = 0.0
+    n_1u = n_10a = 0.0
     multimap = 0
 
     for a in local:
+        w = 1.0 / a.nh
         oriented = a.seq if a.strand == "+" else revcomp(a.seq)
         L = len(oriented)
-        strand_count[a.strand] += 1
-        seqs[oriented] += 1
+        strand_count[a.strand] += w
+        seqs[oriented] += w
         if L < dmin:
-            seq_lens["short"] += 1
+            seq_lens["short"] += w
         elif L > dmax:
-            seq_lens["long"] += 1
+            seq_lens["long"] += w
         else:
-            seq_lens[str(L)] += 1
-        gc_bases += sum(1 for b in oriented if b in "GCgc")
-        total_bases += L
+            seq_lens[str(L)] += w
+        gc_bases += w * sum(1 for b in oriented if b in "GCgc")
+        total_bases += w * L
         if oriented[:1] in ("T", "U"):
-            n_1u += 1
+            n_1u += w
         if L >= 10 and oriented[9] == "A":
-            n_10a += 1
+            n_10a += w
         if a.nh > 1:
             multimap += 1
 
+    r.reads = round(strand_count["+"] + strand_count["-"], 4)
     r.distinct_seqs = len(seqs)
-    r.major_rna, r.major_rna_reads = seqs.most_common(1)[0]
+    major_rna, major_w = seqs.most_common(1)[0]
+    r.major_rna, r.major_rna_reads = major_rna, round(major_w, 4)
     r.frac_top = round(strand_count["+"] / r.reads, 4)
     if r.frac_top >= scut:
         r.strand_call = "+"
@@ -66,12 +73,12 @@ def build_record(region, region_alns, lib_size, config):
         r.strand_call = "-"
     else:
         r.strand_call = "."
-    r.short = seq_lens["short"]
-    r.long = seq_lens["long"]
-    predom_len, predom_reads = None, -1
+    r.short = round(seq_lens["short"], 4)
+    r.long = round(seq_lens["long"], 4)
+    predom_len, predom_reads = None, -1.0
     for L in range(dmin, dmax + 1):
         c = seq_lens.get(str(L), 0)
-        r.size_counts[L] = c
+        r.size_counts[L] = round(c, 4)
         if c > predom_reads:
             predom_len, predom_reads = L, c
     in_window = r.reads - r.short - r.long
@@ -80,14 +87,16 @@ def build_record(region, region_alns, lib_size, config):
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
-    r.multimap_frac = round(multimap / r.reads, 4)
+    # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
+    r.multimap_frac = round(multimap / raw_n, 4)
     r.reads_rpm = round(r.reads / lib_size * 1e6, 4) if lib_size else 0.0
 
-    # --- biogenesis signals ---
+    # --- biogenesis signals (5' positions weighted by 1/NH, as above) ---
     plus5 = Counter()
     minus5 = Counter()
     phase_positions = []
     for a in local:
+        w = 1.0 / a.nh
         L = len(a.seq)
         if a.strand == "+":
             five = a.pos
@@ -99,8 +108,8 @@ def build_record(region, region_alns, lib_size, config):
             # to the + strand's register at the same cut. Subtract 2 to pool both
             # strands into the SAME phase register. (-2 sign fixed by biology/test.)
             phase5 = five - 2
-        (plus5 if a.strand == "+" else minus5)[five] += 1
-        phase_positions.append((phase5, 1))
+        (plus5 if a.strand == "+" else minus5)[five] += w
+        phase_positions.append((phase5, w))
     overlap_counts = Counter()
     for a5, ac in plus5.items():
         for d in range(0, 20):            # overlap_length = d+1 in 1..20
