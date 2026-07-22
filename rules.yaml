@@ -1,0 +1,16 @@
+# rules.yaml — config de score por organismo (default genérico)
+decision:
+  review_confidence: 0.6
+  min_margin: 0.15
+  min_reads: 10
+classes:
+  siRNA:
+    size: {lo: 20, hi: 22}
+    w_size: 1.0
+    w_fractop_mid: 1.0        # premia FracTop ~0.5 (bifita)
+    w_pingpong_penalty: 1.0   # penaliza ping-pong
+  piRNA:
+    size: {lo: 24, hi: 31}
+    w_size: 1.0
+    w_pingpong: 1.5
+    w_1u: 1.0
