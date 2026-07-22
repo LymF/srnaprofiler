@@ -12,47 +12,61 @@ def _sigmoid(x, x0=1.65, scale=1.0):
     return 1.0 / (1.0 + math.exp(-(x - x0) / scale))
 
 
-def _window(size, lo, hi):
+def _window(size, lo, hi, edge=3.0):
     if size is None:
         return 0.0
     if lo <= size <= hi:
         return 1.0
     d = lo - size if size < lo else size - hi
-    return max(0.0, 1.0 - d / 3.0)
+    return max(0.0, 1.0 - d / edge)
 
 
-def _mid(frac_top):
+def _mid(frac_top, sigma=0.15):
     if frac_top is None:
         return 0.0
-    return math.exp(-((frac_top - 0.5) ** 2) / (2 * 0.15 ** 2))
+    return math.exp(-((frac_top - 0.5) ** 2) / (2 * sigma ** 2))
 
 
 class RuleScorer:
     def __init__(self, config):
         self.cfg = config
+        # Parâmetros de forma configuráveis (defaults = comportamento anterior).
+        self.shape = (config.get("decision", {}) or {}).get("shape", {}) or {}
 
     def _size(self, record):
         return int(record.dicer_call) if record.dicer_call != "N" else None
 
+    def _pp_sigmoid(self, z):
+        return _sigmoid(z, x0=self.shape.get("pingpong_x0", 1.65),
+                        scale=self.shape.get("pingpong_scale", 1.0))
+
     def _score_class(self, name, spec, record):
         size = self._size(record)
+        edge = self.shape.get("size_edge", 3.0)
+        sigma = self.shape.get("fractop_sigma", 0.15)
         s = 0.0
         terms = {}
         if "w_size" in spec:
-            t = spec["w_size"] * _window(size, spec["size"]["lo"], spec["size"]["hi"])
+            t = spec["w_size"] * _window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
             s += t; terms["size"] = round(t, 3)
         if "w_pingpong" in spec:
-            t = spec["w_pingpong"] * _sigmoid(record.pingpong_z)
+            t = spec["w_pingpong"] * self._pp_sigmoid(record.pingpong_z)
             s += t; terms["pingpong"] = round(t, 3)
         if "w_1u" in spec:
             t = spec["w_1u"] * record.pct_1u
             s += t; terms["1u"] = round(t, 3)
         if "w_fractop_mid" in spec:
-            t = spec["w_fractop_mid"] * _mid(record.frac_top)
+            t = spec["w_fractop_mid"] * _mid(record.frac_top, sigma=sigma)
             s += t; terms["fractop_mid"] = round(t, 3)
         if "w_pingpong_penalty" in spec:
-            t = spec["w_pingpong_penalty"] * _sigmoid(record.pingpong_z)
+            t = spec["w_pingpong_penalty"] * self._pp_sigmoid(record.pingpong_z)
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
+        if "w_phase" in spec:
+            # phase_score é ilimitado (ratio*number*log(abun)); satura em [0,1].
+            t = spec["w_phase"] * _sigmoid(
+                record.phase_score,
+                x0=spec.get("phase_x0", 5.0), scale=spec.get("phase_scale", 3.0))
+            s += t; terms["phase"] = round(t, 3)
         return s, terms
 
     def decide(self, record):

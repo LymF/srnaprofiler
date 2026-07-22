@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 from clustering import cluster_regions
 from features import extract
+from samio import read_alignments
 from decider import RuleScorer, load_config
 from reporter import write_tsv, write_gff3, write_run_json
 from utils import log
@@ -33,14 +34,19 @@ def run_classify(args):
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
     config = load_config(args.config)
-    ext_cfg = {"dicermin": 20, "dicermax": 24, "strand_cutoff": 0.8}
+    ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
 
     log("Definindo clusters por cobertura...", "INFO")
     regions = cluster_regions(args.sam, args.mincov, args.pad)
     log(f"{len(regions)} clusters", "INFO")
 
-    records = extract(args.sam, regions, args.norm, ext_cfg)
+    lib_size = args.norm
+    if lib_size is None:
+        lib_size = sum(1 for _ in read_alignments(args.sam))
+        log(f"--norm ausente: usando total de reads mapeados ({lib_size}) como lib_size para RPM", "WARN")
+
+    records = extract(args.sam, regions, lib_size, ext_cfg)
 
     mirna_intervals = parse_mirna_bed(args.mirna_loci) if args.mirna_loci else {}
     if mirna_intervals:
