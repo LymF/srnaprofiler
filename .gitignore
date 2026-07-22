@@ -13,3 +13,19 @@ venv/
 
 # windows / wsl cruft
 *:Zone.Identifier
+
+# large data / example inputs / run outputs (kept on disk, not versioned)
+files/*.fastq.gz
+files/*.fq.gz
+files/*.fa
+files/*.fasta
+files/*.sam
+files/*.bam
+plots/
+*.zip
+
+# research artifacts (reference only, not the pipeline)
+deep-research-report-*.md
+
+# legacy standalone version (superseded)
+srnaprofiler-func.py
