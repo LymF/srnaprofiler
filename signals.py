@@ -48,7 +48,9 @@ def phase_metrics(positions, region_start, phase_length):
 def hypergeometric_phase_pvalue(population, phased_positions, draws, observed):
     """P(X >= observed) sorteando `draws` de `population` com `phased_positions` sucessos.
 
-    comb() devolve 0 para argumentos inválidos, então termos impossíveis somem.
+    comb() levanta ValueError para argumentos negativos; o `min(phased_positions,
+    draws)` no limite superior do loop garante que só somamos termos válidos
+    (i nunca excede o nº de sucessos nem o nº de sorteios).
     """
     if observed <= 0:
         return 1.0

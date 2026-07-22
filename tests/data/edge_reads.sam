@@ -1,0 +1,4 @@
+@HD	VN:1.6	SO:coordinate
+@SQ	SN:chr1	LN:5000
+edge_read	0	chr1	91	255	20M	*	0	0	AAAAAAAAAAAAAAAAAAAA	*	NH:i:1
+inside_read	0	chr1	121	255	21M	*	0	0	CCCCCCCCCCCCCCCCCCCCC	*	NH:i:1

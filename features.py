@@ -1,5 +1,6 @@
 """Extração de features por cluster → ClusterRecord."""
-from collections import Counter
+import bisect
+from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments
 from signals import pingpong_zscore, phase_metrics, hypergeometric_phase_pvalue
@@ -11,22 +12,18 @@ def revcomp(seq: str) -> str:
     return seq.translate(_COMP)[::-1]
 
 
-def _region_alns(region, alns):
-    chrom, start, end = region
-    out = []
-    for a in alns:
-        if a.chrom == chrom and start <= a.pos < end:
-            out.append(a)
-    return out
+def build_record(region, region_alns, lib_size, config):
+    """Constrói um ClusterRecord a partir dos reads JÁ atribuídos à região.
 
-
-def build_record(region, alns, lib_size, config):
+    `region_alns` deve conter todos os reads que sobrepõem a região por span
+    (atribuição feita em `extract`); build_record não refiltra por posição.
+    """
     chrom, start, end = region
     dmin, dmax = config["dicermin"], config["dicermax"]
     scut = config["strand_cutoff"]
     r = ClusterRecord(chrom=chrom, start=start, end=end, name=f"{chrom}:{start}-{end}")
 
-    local = _region_alns(region, alns)
+    local = region_alns
     r.reads = len(local)
     if r.reads == 0:
         return r
@@ -93,10 +90,16 @@ def build_record(region, alns, lib_size, config):
         L = len(a.seq)
         if a.strand == "+":
             five = a.pos
+            phase5 = five
         else:
             five = a.pos + L - 1
+            # Correção do overhang 3' de 2 nt: os produtos fásicos de Dicer têm
+            # overhang 3' de 2 nt, então o 5' da fita - fica +2 em relação ao
+            # registro da fita + no mesmo corte. Subtrair 2 para juntar as duas
+            # fitas no MESMO registro de fase. (sinal -2 fixado pela biologia/teste.)
+            phase5 = five - 2
         (plus5 if a.strand == "+" else minus5)[five] += 1
-        phase_positions.append((five, 1))
+        phase_positions.append((phase5, 1))
     overlap_counts = Counter()
     for a5, ac in plus5.items():
         for d in range(0, 20):            # overlap_length = d+1 em 1..20
@@ -112,12 +115,54 @@ def build_record(region, alns, lib_size, config):
         r.phase_score, r.phase_number, r.phase_ratio = phase_metrics(
             phase_positions, region_start=start, phase_length=pl)
         n_pos = len({p for p, _ in phase_positions})
+        # População do hipergeométrico limitada a ~10 ciclos de fase (Chen 2007 /
+        # PhasiHunter), não à ilha inteira — evita população absurda em ilhas grandes.
+        wlen = min(end - start, 10 * pl)
+        population = max(2 * wlen - 1, 1)
         r.phase_pvalue = hypergeometric_phase_pvalue(
-            population=max((end - start) * 2 - 1, 1),
+            population=population,
             phased_positions=pl, draws=n_pos, observed=r.phase_number)
     return r
 
 
+def _assign_reads(regions, alns):
+    """Atribui cada read às regiões que ele sobrepõe POR SPAN, em um passe.
+
+    Overlap por span: `a.pos < region.end and a.pos + len(a.seq) > region.start`
+    — consistente com a cobertura construída em `clustering.cluster_regions`.
+    As regiões de `cluster_regions` são disjuntas e ordenadas por cromossomo, o
+    que permite localizar o bloco de regiões sobrepostas por busca binária em vez
+    de rescanear todos os reads por região (evita O(regiões × reads)).
+    """
+    buckets = [[] for _ in regions]
+    per_chrom = defaultdict(list)   # chrom -> [(start, end, orig_index)] ordenado por start
+    for i, (c, s, e) in enumerate(regions):
+        per_chrom[c].append((s, e, i))
+    for c in per_chrom:
+        per_chrom[c].sort()
+    starts = {c: [t[0] for t in rs] for c, rs in per_chrom.items()}
+
+    for a in alns:
+        rs = per_chrom.get(a.chrom)
+        if not rs:
+            continue
+        aend = a.pos + len(a.seq)
+        st = starts[a.chrom]
+        # regiões com start < aend são as índices [0, j); percorra de trás para
+        # frente enquanto end > a.pos (ends também são crescentes → bloco contíguo).
+        j = bisect.bisect_left(st, aend)
+        k = j - 1
+        while k >= 0:
+            s, e, oi = rs[k]
+            if e <= a.pos:
+                break
+            buckets[oi].append(a)
+            k -= 1
+    return buckets
+
+
 def extract(sam_path, regions, lib_size, config):
     alns = list(read_alignments(sam_path))
-    return [build_record(region, alns, lib_size, config) for region in regions]
+    buckets = _assign_reads(regions, alns)
+    return [build_record(region, buckets[i], lib_size, config)
+            for i, region in enumerate(regions)]
