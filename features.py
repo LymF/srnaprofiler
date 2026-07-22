@@ -1,8 +1,8 @@
 """Extração de features por cluster → ClusterRecord."""
 from collections import Counter
-from typing import Optional
 from records import ClusterRecord
 from samio import read_alignments
+from signals import pingpong_zscore, phase_metrics, hypergeometric_phase_pvalue
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -38,7 +38,6 @@ def build_record(region, alns, lib_size, config):
     total_bases = 0
     n_1u = n_10a = 0
     multimap = 0
-    phase_ready = []  # (pos5, oriented_len) usado na Task 6
 
     for a in local:
         oriented = a.seq if a.strand == "+" else revcomp(a.seq)
@@ -85,6 +84,37 @@ def build_record(region, alns, lib_size, config):
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     r.multimap_frac = round(multimap / r.reads, 4)
     r.reads_rpm = round(r.reads / lib_size * 1e6, 4) if lib_size else 0.0
+
+    # --- sinais de biogênese ---
+    plus5 = Counter()
+    minus5 = Counter()
+    phase_positions = []
+    for a in local:
+        L = len(a.seq)
+        if a.strand == "+":
+            five = a.pos
+        else:
+            five = a.pos + L - 1
+        (plus5 if a.strand == "+" else minus5)[five] += 1
+        phase_positions.append((five, 1))
+    overlap_counts = Counter()
+    for a5, ac in plus5.items():
+        for d in range(0, 20):            # overlap_length = d+1 em 1..20
+            bc = minus5.get(a5 + d, 0)
+            if bc:
+                overlap_counts[d + 1] += ac * bc
+    r.pingpong_z, r.pingpong_pairs10 = pingpong_zscore(overlap_counts)
+    total_pairs = sum(overlap_counts.values())
+    r.overlap19_frac = round(overlap_counts.get(19, 0) / total_pairs, 4) if total_pairs else 0.0
+
+    if r.dicer_call != "N":
+        pl = int(r.dicer_call)
+        r.phase_score, r.phase_number, r.phase_ratio = phase_metrics(
+            phase_positions, region_start=start, phase_length=pl)
+        n_pos = len({p for p, _ in phase_positions})
+        r.phase_pvalue = hypergeometric_phase_pvalue(
+            population=max((end - start) * 2 - 1, 1),
+            phased_positions=pl, draws=n_pos, observed=r.phase_number)
     return r
 
 
