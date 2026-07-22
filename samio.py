@@ -13,27 +13,54 @@ def _keep(rec):
     return bool(rec.query_sequence)
 
 
-def _to_aln(rec):
-    nh = rec.get_tag("NH") if rec.has_tag("NH") else 1
+def _nh(rec, xm_as_nh):
+    """Read multiplicity (number of reported alignments) for 1/NH weighting.
+
+    Prefers the standard NH tag. bowtie1 emits no NH but encodes the alignment
+    count in XM (capped at -k), so when the input is bowtie1 (`xm_as_nh`) we use
+    XM. We do NOT read XM otherwise: in bowtie2/others XM means mismatch count.
+    Defaults to 1 (unique).
+    """
+    if rec.has_tag("NH"):
+        return rec.get_tag("NH")
+    if xm_as_nh and rec.has_tag("XM"):
+        return max(rec.get_tag("XM"), 1)
+    return 1
+
+
+def _to_aln(rec, xm_as_nh=False):
     strand = "-" if rec.is_reverse else "+"
-    return Aln(rec.reference_name, rec.reference_start, strand, rec.query_sequence, nh)
+    return Aln(rec.reference_name, rec.reference_start, strand,
+               rec.query_sequence, _nh(rec, xm_as_nh))
 
 
-def read_alignments(sam_path):
+def prefers_xm_as_nh(bam_path):
+    """True if the @PG header shows bowtie1 (so XM should be read as NH)."""
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        for pg in fh.header.get("PG", []):
+            prog = " ".join(str(pg.get(k, "")) for k in ("PN", "ID", "CL")).lower()
+            if "bowtie2" in prog:
+                return False
+            if "bowtie" in prog:
+                return True
+    return False
+
+
+def read_alignments(sam_path, xm_as_nh=False):
     """Iterates over primary mapped alignments. Excludes secondary (flag 256)."""
     mode = "rb" if str(sam_path).endswith(".bam") else "r"
     with pysam.AlignmentFile(sam_path, mode) as fh:
         for rec in fh:
             if _keep(rec):
-                yield _to_aln(rec)
+                yield _to_aln(rec, xm_as_nh)
 
 
-def read_region(bam_path, chrom, start=None, end=None):
+def read_region(bam_path, chrom, start=None, end=None, xm_as_nh=False):
     """Iterates primary mapped alignments in a region of an INDEXED bam (fetch)."""
     with pysam.AlignmentFile(bam_path, "rb") as fh:
         for rec in fh.fetch(chrom, start, end):
             if _keep(rec):
-                yield _to_aln(rec)
+                yield _to_aln(rec, xm_as_nh)
 
 
 def ensure_sorted_indexed_bam(sam_path, out_base, threads=1):

@@ -181,14 +181,14 @@ def extract(sam_path, regions, lib_size, config):
             for i, region in enumerate(regions)]
 
 
-def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config):
+def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config, xm_as_nh=False):
     """Cluster and extract features for a single chromosome of an indexed BAM.
 
     Reads only this chromosome's alignments into memory (via fetch), builds its
     coverage islands, assigns reads by span, and returns one ClusterRecord per
     island. This is the unit of parallelism (chromosomes are independent).
     """
-    alns = list(read_region(bam_path, chrom))
+    alns = list(read_region(bam_path, chrom, xm_as_nh=xm_as_nh))
     if not alns:
         return []
     depth = defaultdict(int)
@@ -208,7 +208,7 @@ def _chrom_job(job):
     return process_chromosome(*job)
 
 
-def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1):
+def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1, xm_as_nh=False):
     """Cluster + extract features across chromosomes, optionally in parallel.
 
     Each chromosome is processed independently by `process_chromosome`. With
@@ -216,7 +216,7 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1)
     multiprocessing pool; otherwise it runs serially. Records are returned in
     chromosome order.
     """
-    jobs = [(bam_path, c, mincov, pad, lib_size, config) for c in chroms]
+    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh) for c in chroms]
     if threads > 1 and len(jobs) > 1:
         import multiprocessing as mp
         with mp.Pool(min(threads, len(jobs))) as pool:
