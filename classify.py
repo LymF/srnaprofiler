@@ -62,5 +62,6 @@ def run_classify(args):
 
     write_tsv(records, base + ".clusters.tsv")
     write_gff3(records, base + ".clusters.gff3")
-    write_run_json(vars(args), base + ".run.json")
+    params = {k: v for k, v in vars(args).items() if not callable(v)}
+    write_run_json(params, base + ".run.json")
     log(f"Written: {base}.clusters.tsv / .gff3 / .run.json", "INFO")

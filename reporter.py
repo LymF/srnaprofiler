@@ -35,5 +35,7 @@ def write_gff3(records, path):
 
 
 def write_run_json(params, path):
+    # default=str keeps this robust: any non-JSON-native value (e.g. a Path or
+    # a stray callable) is stringified instead of crashing the whole run.
     with open(path, "w") as fh:
-        json.dump(params, fh, indent=2)
+        json.dump(params, fh, indent=2, default=str)
