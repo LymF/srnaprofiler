@@ -1,6 +1,5 @@
 """Saídas do motor: TSV (matriz de features), GFF3 e proveniência JSON."""
 import json
-from dataclasses import fields
 
 _COLS = [
     "chrom", "start", "end", "name", "reads", "reads_rpm", "distinct_seqs",
@@ -11,11 +10,16 @@ _COLS = [
 ]
 
 
+def _cell(value):
+    """Serializa um campo para o TSV, neutralizando TAB/newline que quebrariam a linha."""
+    return str(value).replace("\t", " ").replace("\n", " ")
+
+
 def write_tsv(records, path):
     with open(path, "w") as fh:
         fh.write("\t".join(_COLS) + "\n")
         for r in records:
-            fh.write("\t".join(str(getattr(r, c)) for c in _COLS) + "\n")
+            fh.write("\t".join(_cell(getattr(r, c)) for c in _COLS) + "\n")
 
 
 def write_gff3(records, path):
