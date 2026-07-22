@@ -52,7 +52,10 @@ def hypergeometric_phase_pvalue(population, phased_positions, draws, observed):
     draws)` upper bound on the loop ensures we only sum valid terms
     (i never exceeds the number of successes nor the number of draws).
     """
-    if observed <= 0:
+    # Degenerate cases (tiny clusters) make the hypergeometric ill-defined; a
+    # cluster that cannot even fit the phased positions is never significant.
+    if (observed <= 0 or population <= 0 or phased_positions <= 0
+            or draws <= 0 or phased_positions > population or draws > population):
         return 1.0
     denom = comb(population, draws)
     if denom == 0:

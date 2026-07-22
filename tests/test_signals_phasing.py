@@ -17,3 +17,10 @@ def test_hypergeometric_pvalue_bounds():
     assert 0.0 <= p <= 1.0
     # observing 0 in phase is never significant
     assert hypergeometric_phase_pvalue(41, 21, 5, 0) == 1.0
+
+def test_hypergeometric_degenerate_does_not_crash():
+    # tiny cluster: population < phased_positions must return 1.0, not crash
+    # (regression for math.comb ValueError on a negative argument)
+    assert hypergeometric_phase_pvalue(population=9, phased_positions=27, draws=3, observed=2) == 1.0
+    # more draws than the population is also degenerate
+    assert hypergeometric_phase_pvalue(population=5, phased_positions=3, draws=10, observed=2) == 1.0
