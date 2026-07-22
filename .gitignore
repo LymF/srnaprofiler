@@ -1,0 +1,15 @@
+# reference tools cloned for study (not part of the tool)
+ref_tools/
+
+# scratch / workflow state
+.superpowers/
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# windows / wsl cruft
+*:Zone.Identifier
