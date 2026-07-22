@@ -1,4 +1,4 @@
-"""Decisor plugável. v1: RuleScorer (modelo de score transparente)."""
+"""Pluggable decider. v1: RuleScorer (transparent scoring model)."""
 import math
 import yaml
 
@@ -30,7 +30,7 @@ def _mid(frac_top, sigma=0.15):
 class RuleScorer:
     def __init__(self, config):
         self.cfg = config
-        # Parâmetros de forma configuráveis (defaults = comportamento anterior).
+        # Configurable shape parameters (defaults = previous behavior).
         self.shape = (config.get("decision", {}) or {}).get("shape", {}) or {}
 
     def _size(self, record):
@@ -62,7 +62,7 @@ class RuleScorer:
             t = spec["w_pingpong_penalty"] * self._pp_sigmoid(record.pingpong_z)
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
         if "w_phase" in spec:
-            # phase_score é ilimitado (ratio*number*log(abun)); satura em [0,1].
+            # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].
             t = spec["w_phase"] * _sigmoid(
                 record.phase_score,
                 x0=spec.get("phase_x0", 5.0), scale=spec.get("phase_scale", 3.0))
@@ -75,7 +75,7 @@ class RuleScorer:
         for name, spec in self.cfg["classes"].items():
             scores[name], evidence[name] = self._score_class(name, spec, record)
         record.class_scores = {k: round(v, 3) for k, v in scores.items()}
-        # softmax para confiança
+        # softmax for confidence
         ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
         top_name, top_score = ordered[0]
         exps = {k: math.exp(v) for k, v in scores.items()}

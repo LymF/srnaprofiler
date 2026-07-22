@@ -1,4 +1,4 @@
-"""Sinais de biogênese: ping-pong z-score e phasing."""
+"""Biogenesis signals: ping-pong z-score and phasing."""
 import math
 import statistics
 from collections import defaultdict
@@ -6,9 +6,9 @@ from math import comb
 
 
 def pingpong_zscore(counts, target=10, lo=1, hi=20):
-    """Z-score do overlap 5'-5' no `target` (default 10 nt) contra o fundo.
+    """Z-score of the 5'-5' overlap at `target` (default 10 nt) against the background.
 
-    counts: {overlap_length: n_pares}. Fundo = offsets em [lo,hi] menos o target.
+    counts: {overlap_length: n_pairs}. Background = offsets in [lo,hi] minus the target.
     """
     background = [counts.get(o, 0) for o in range(lo, hi + 1) if o != target]
     peak = counts.get(target, 0)
@@ -22,9 +22,9 @@ def pingpong_zscore(counts, target=10, lo=1, hi=20):
 
 
 def phase_metrics(positions, region_start, phase_length):
-    """Score de fase estilo PhasiHunter: ratio * number * log(abun) no registro dominante.
+    """PhasiHunter-style phase score: ratio * number * log(abun) at the dominant register.
 
-    positions: [(pos5, abundance)]. Registro = (pos5 - region_start) % phase_length.
+    positions: [(pos5, abundance)]. Register = (pos5 - region_start) % phase_length.
     """
     reg_abun = defaultdict(int)
     reg_cycles = defaultdict(set)
@@ -46,11 +46,11 @@ def phase_metrics(positions, region_start, phase_length):
 
 
 def hypergeometric_phase_pvalue(population, phased_positions, draws, observed):
-    """P(X >= observed) sorteando `draws` de `population` com `phased_positions` sucessos.
+    """P(X >= observed) drawing `draws` from `population` with `phased_positions` successes.
 
-    comb() levanta ValueError para argumentos negativos; o `min(phased_positions,
-    draws)` no limite superior do loop garante que só somamos termos válidos
-    (i nunca excede o nº de sucessos nem o nº de sorteios).
+    comb() raises ValueError for negative arguments; the `min(phased_positions,
+    draws)` upper bound on the loop ensures we only sum valid terms
+    (i never exceeds the number of successes nor the number of draws).
     """
     if observed <= 0:
         return 1.0

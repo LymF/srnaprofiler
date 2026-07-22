@@ -1,4 +1,4 @@
-"""Saídas do motor: TSV (matriz de features), GFF3 e proveniência JSON."""
+"""Engine outputs: TSV (feature matrix), GFF3, and JSON provenance."""
 import json
 
 _COLS = [
@@ -11,7 +11,7 @@ _COLS = [
 
 
 def _cell(value):
-    """Serializa um campo para o TSV, neutralizando TAB/newline que quebrariam a linha."""
+    """Serializes a field for the TSV, neutralizing TAB/newline that would break the row."""
     return str(value).replace("\t", " ").replace("\n", " ")
 
 

@@ -593,16 +593,16 @@ Examples:
 
     # ==================== Classify Module ====================
     from classify import run_classify
-    cl = subparsers.add_parser("classify", help="Classificar clusters de sRNA (motor medir->decidir)")
+    cl = subparsers.add_parser("classify", help="Classify sRNA clusters (measure->decide engine)")
     cl.add_argument("-p", "--prefix", required=True)
     cl.add_argument("-o", "--outdir", required=True)
-    cl.add_argument("--sam", required=True, help="SAM/BAM mapeado no genoma inteiro")
-    cl.add_argument("-g", "--genome", help="FASTA do genoma (opcional no v1)")
+    cl.add_argument("--sam", required=True, help="SAM/BAM mapped to the whole genome")
+    cl.add_argument("-g", "--genome", help="Genome FASTA (optional in v1)")
     cl.add_argument("--mincov", type=int, default=2)
     cl.add_argument("--pad", type=int, default=75)
-    cl.add_argument("--mirna-loci", dest="mirna_loci", help="BED de miRNA de alta confiança")
+    cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
     cl.add_argument("--config", default="rules.yaml")
-    cl.add_argument("--norm", type=int, help="Tamanho da biblioteca para RPM")
+    cl.add_argument("--norm", type=int, help="Library size for RPM")
     cl.set_defaults(func=run_classify)
 
     return parser

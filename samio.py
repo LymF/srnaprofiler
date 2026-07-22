@@ -1,4 +1,4 @@
-"""Leitura de alinhamentos (SAM/BAM) para o motor de classificação."""
+"""Reading of alignments (SAM/BAM) for the classification engine."""
 from collections import namedtuple
 import pysam
 
@@ -6,7 +6,7 @@ Aln = namedtuple("Aln", ["chrom", "pos", "strand", "seq", "nh"])
 
 
 def read_alignments(sam_path):
-    """Itera alinhamentos primários mapeados. Exclui secundários (flag 256)."""
+    """Iterates over primary mapped alignments. Excludes secondary (flag 256)."""
     mode = "rb" if str(sam_path).endswith(".bam") else "r"
     with pysam.AlignmentFile(sam_path, mode) as fh:
         for rec in fh:

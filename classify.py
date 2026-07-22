@@ -1,4 +1,4 @@
-"""Orquestrador do subcomando `classify`."""
+"""Orchestrator for the `classify` subcommand."""
 import os
 from collections import defaultdict
 from clustering import cluster_regions
@@ -37,14 +37,14 @@ def run_classify(args):
     ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
 
-    log("Definindo clusters por cobertura...", "INFO")
+    log("Defining clusters by coverage...", "INFO")
     regions = cluster_regions(args.sam, args.mincov, args.pad)
     log(f"{len(regions)} clusters", "INFO")
 
     lib_size = args.norm
     if lib_size is None:
         lib_size = sum(1 for _ in read_alignments(args.sam))
-        log(f"--norm ausente: usando total de reads mapeados ({lib_size}) como lib_size para RPM", "WARN")
+        log(f"--norm not given: using total mapped reads ({lib_size}) as lib_size for RPM", "WARN")
 
     records = extract(args.sam, regions, lib_size, ext_cfg)
 
@@ -61,4 +61,4 @@ def run_classify(args):
     write_tsv(records, base + ".clusters.tsv")
     write_gff3(records, base + ".clusters.gff3")
     write_run_json(vars(args), base + ".run.json")
-    log(f"Escrito: {base}.clusters.tsv / .gff3 / .run.json", "INFO")
+    log(f"Written: {base}.clusters.tsv / .gff3 / .run.json", "INFO")

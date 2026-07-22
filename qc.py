@@ -198,7 +198,7 @@ def standardize_fasta_headers(in_fa: Path, out_fa: Path) -> int:
 
 
 def prepare_genome(genome_path, outdir, prefix):
-    """Padroniza o FASTA (uppercase) sem tilear. Retorna o caminho de saída."""
+    """Standardizes the FASTA (uppercase) without tiling. Returns the output path."""
     import os
     os.makedirs(outdir, exist_ok=True)
     out = os.path.join(outdir, f"{prefix}.genome.fa")

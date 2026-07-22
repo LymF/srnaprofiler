@@ -1,12 +1,12 @@
-"""Definição de clusters por ilhas de cobertura (estilo ShortStack)."""
+"""Cluster definition via coverage islands (ShortStack-style)."""
 from collections import defaultdict
 from samio import read_alignments
 
 
 def call_islands(depth_by_pos, mincov, pad):
-    """Posições com depth>=mincov, fundindo ilhas cujo gap (vazios) <= pad.
+    """Positions with depth>=mincov, merging islands whose gap (empty span) <= pad.
 
-    Retorna [(start, end)] com end exclusivo.
+    Returns [(start, end)] with end exclusive.
     """
     positions = sorted(p for p, d in depth_by_pos.items() if d >= mincov)
     if not positions:
@@ -23,7 +23,7 @@ def call_islands(depth_by_pos, mincov, pad):
 
 
 def cluster_regions(sam_path, mincov, pad):
-    """Constrói cobertura por cromossomo e chama ilhas."""
+    """Builds per-chromosome coverage and calls islands."""
     depth = defaultdict(lambda: defaultdict(int))
     for a in read_alignments(sam_path):
         for p in range(a.pos, a.pos + len(a.seq)):

@@ -1,9 +1,10 @@
-"""FIX 1 (+FIX 4) integração: locus de piRNA ~27 nt classificado corretamente.
+"""FIX 1 (+FIX 4) integration: ~27 nt piRNA locus correctly classified.
 
-A janela de MEDIÇÃO do extractor tem que ser superset das janelas de classe
-(piRNA usa 24-31). Com dicermax=24 fixo, todo piRNA de 27 nt virava
-dicer_call="N" e era forçado a review=True. Aqui um locus de 27 nt, 1U alto,
-bifita com ping-pong (overlap 5'-5' = 10) deve sair como piRNA sem review.
+The extractor's MEASUREMENT window must be a superset of the class windows
+(piRNA uses 24-31). With dicermax=24 fixed, every 27 nt piRNA turned into
+dicer_call="N" and was forced to review=True. Here a 27 nt locus, high 1U,
+double-stranded with ping-pong (5'-5' overlap = 10) must come out as piRNA
+with no review.
 """
 import types
 from clustering import cluster_regions
@@ -38,7 +39,7 @@ def test_pirna_via_run_classify(tmp_path):
     tsv = (tmp_path / "pi.clusters.tsv").read_text().splitlines()
     header, rows = tsv[0].split("\t"), [l.split("\t") for l in tsv[1:]]
     ci = {c: i for i, c in enumerate(header)}
-    # o locus mais abundante é o de piRNA
+    # the most abundant locus is the piRNA one
     row = max(rows, key=lambda r: int(r[ci["reads"]]))
     assert row[ci["dicer_call"]] == "27"
     assert row[ci["cls"]] == "piRNA"

@@ -1,4 +1,4 @@
-# rules.yaml — config de score por organismo (default genérico)
+# rules.yaml — per-organism scoring config (generic default)
 extractor:
   dicermin: 18
   dicermax: 35
@@ -11,8 +11,8 @@ classes:
   siRNA:
     size: {lo: 20, hi: 22}
     w_size: 1.0
-    w_fractop_mid: 1.0        # premia FracTop ~0.5 (bifita)
-    w_pingpong_penalty: 1.0   # penaliza ping-pong
+    w_fractop_mid: 1.0        # rewards FracTop ~0.5 (double-stranded)
+    w_pingpong_penalty: 1.0   # penalizes ping-pong
     w_phase: 0.5
   piRNA:
     size: {lo: 24, hi: 31}

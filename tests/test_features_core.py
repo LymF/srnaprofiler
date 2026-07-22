@@ -15,9 +15,9 @@ def test_build_record_core():
     assert r.reads == 5
     assert r.frac_top == 1.0
     assert r.strand_call == "+"
-    assert r.dicer_call == "21"          # 4/5 = 0.8 na janela
-    assert r.short == 0 and r.long == 1  # o 30nt é "long"
+    assert r.dicer_call == "21"          # 4/5 = 0.8 in the window
+    assert r.short == 0 and r.long == 1  # the 30nt one is "long"
     assert round(r.frac_in_window, 2) == 0.8
-    assert r.pct_1u == round(4 / 5, 4)    # r1..r4 começam com T(=U); r5 com G
+    assert r.pct_1u == round(4 / 5, 4)    # r1..r4 start with T(=U); r5 with G
     assert r.reads_rpm == 5.0             # 5/1e6*1e6
-    assert r.multimap_frac == round(1 / 5, 4)  # r4 tem NH=2
+    assert r.multimap_frac == round(1 / 5, 4)  # r4 has NH=2

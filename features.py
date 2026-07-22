@@ -1,4 +1,4 @@
-"""Extração de features por cluster → ClusterRecord."""
+"""Per-cluster feature extraction → ClusterRecord."""
 import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
@@ -13,10 +13,10 @@ def revcomp(seq: str) -> str:
 
 
 def build_record(region, region_alns, lib_size, config):
-    """Constrói um ClusterRecord a partir dos reads JÁ atribuídos à região.
+    """Builds a ClusterRecord from the reads ALREADY assigned to the region.
 
-    `region_alns` deve conter todos os reads que sobrepõem a região por span
-    (atribuição feita em `extract`); build_record não refiltra por posição.
+    `region_alns` must contain all reads that overlap the region by span
+    (assignment done in `extract`); build_record does not re-filter by position.
     """
     chrom, start, end = region
     dmin, dmax = config["dicermin"], config["dicermax"]
@@ -82,7 +82,7 @@ def build_record(region, region_alns, lib_size, config):
     r.multimap_frac = round(multimap / r.reads, 4)
     r.reads_rpm = round(r.reads / lib_size * 1e6, 4) if lib_size else 0.0
 
-    # --- sinais de biogênese ---
+    # --- biogenesis signals ---
     plus5 = Counter()
     minus5 = Counter()
     phase_positions = []
@@ -93,16 +93,16 @@ def build_record(region, region_alns, lib_size, config):
             phase5 = five
         else:
             five = a.pos + L - 1
-            # Correção do overhang 3' de 2 nt: os produtos fásicos de Dicer têm
-            # overhang 3' de 2 nt, então o 5' da fita - fica +2 em relação ao
-            # registro da fita + no mesmo corte. Subtrair 2 para juntar as duas
-            # fitas no MESMO registro de fase. (sinal -2 fixado pela biologia/teste.)
+            # 2-nt 3' overhang correction: Dicer's phased products have a
+            # 2-nt 3' overhang, so the 5' end of the - strand sits +2 relative
+            # to the + strand's register at the same cut. Subtract 2 to pool both
+            # strands into the SAME phase register. (-2 sign fixed by biology/test.)
             phase5 = five - 2
         (plus5 if a.strand == "+" else minus5)[five] += 1
         phase_positions.append((phase5, 1))
     overlap_counts = Counter()
     for a5, ac in plus5.items():
-        for d in range(0, 20):            # overlap_length = d+1 em 1..20
+        for d in range(0, 20):            # overlap_length = d+1 in 1..20
             bc = minus5.get(a5 + d, 0)
             if bc:
                 overlap_counts[d + 1] += ac * bc
@@ -115,8 +115,8 @@ def build_record(region, region_alns, lib_size, config):
         r.phase_score, r.phase_number, r.phase_ratio = phase_metrics(
             phase_positions, region_start=start, phase_length=pl)
         n_pos = len({p for p, _ in phase_positions})
-        # População do hipergeométrico limitada a ~10 ciclos de fase (Chen 2007 /
-        # PhasiHunter), não à ilha inteira — evita população absurda em ilhas grandes.
+        # Hypergeometric population capped at ~10 phase cycles (Chen 2007 /
+        # PhasiHunter), not the whole island — avoids an absurd population in large islands.
         wlen = min(end - start, 10 * pl)
         population = max(2 * wlen - 1, 1)
         r.phase_pvalue = hypergeometric_phase_pvalue(
@@ -126,16 +126,16 @@ def build_record(region, region_alns, lib_size, config):
 
 
 def _assign_reads(regions, alns):
-    """Atribui cada read às regiões que ele sobrepõe POR SPAN, em um passe.
+    """Assigns each read to the regions it overlaps BY SPAN, in a single pass.
 
-    Overlap por span: `a.pos < region.end and a.pos + len(a.seq) > region.start`
-    — consistente com a cobertura construída em `clustering.cluster_regions`.
-    As regiões de `cluster_regions` são disjuntas e ordenadas por cromossomo, o
-    que permite localizar o bloco de regiões sobrepostas por busca binária em vez
-    de rescanear todos os reads por região (evita O(regiões × reads)).
+    Overlap by span: `a.pos < region.end and a.pos + len(a.seq) > region.start`
+    — consistent with the coverage built in `clustering.cluster_regions`.
+    Regions from `cluster_regions` are disjoint and sorted by chromosome, which
+    lets us locate the block of overlapping regions via binary search instead
+    of rescanning every read per region (avoids O(regions × reads)).
     """
     buckets = [[] for _ in regions]
-    per_chrom = defaultdict(list)   # chrom -> [(start, end, orig_index)] ordenado por start
+    per_chrom = defaultdict(list)   # chrom -> [(start, end, orig_index)] sorted by start
     for i, (c, s, e) in enumerate(regions):
         per_chrom[c].append((s, e, i))
     for c in per_chrom:
@@ -148,8 +148,8 @@ def _assign_reads(regions, alns):
             continue
         aend = a.pos + len(a.seq)
         st = starts[a.chrom]
-        # regiões com start < aend são as índices [0, j); percorra de trás para
-        # frente enquanto end > a.pos (ends também são crescentes → bloco contíguo).
+        # regions with start < aend are indices [0, j); walk backward
+        # while end > a.pos (ends are also increasing → contiguous block).
         j = bisect.bisect_left(st, aend)
         k = j - 1
         while k >= 0:

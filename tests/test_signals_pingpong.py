@@ -2,7 +2,7 @@ from signals import pingpong_zscore
 
 
 def test_pingpong_peak_at_10_gives_high_z():
-    counts = {o: (o % 4) + 1 for o in range(1, 21)}  # fundo com variância real (1..4)
+    counts = {o: (o % 4) + 1 for o in range(1, 21)}  # background with real variance (1..4)
     counts[10] = 100
     z, pairs = pingpong_zscore(counts)
     assert pairs == 100
