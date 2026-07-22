@@ -6,14 +6,13 @@ Handles read QC, trimming, and genome preparation
 import sys
 import subprocess
 from pathlib import Path
-from textwrap import wrap
 from typing import Optional
 
 from utils import (
     log, which, ensure_outdir, run_command, validate_arguments,
     convert_uracil_to_thymine_optimized, get_read_stats,
     detect_phred_encoding, validate_file_exists,
-    DEFAULT_MIN_LEN, DEFAULT_QTRIM, DEFAULT_KMER_SIZE,
+    DEFAULT_MIN_LEN, DEFAULT_QTRIM,
     DEFAULT_THREADS, FASTQ_ADAPTERS
 )
 
@@ -198,62 +197,18 @@ def standardize_fasta_headers(in_fa: Path, out_fa: Path) -> int:
     return seq_count
 
 
-def split_genome_tiles_python(in_fa: Path, out_fa: Path, kmer: int) -> tuple:
-    """
-    Split genome into tiles of specified size.
-    Returns (number of sequences, number of tiles).
-    """
-    log(f"Splitting genome into {kmer}bp tiles", "INFO")
-    
-    seq_count = 0
-    tile_count = 0
-    
-    with open(in_fa, "rt") as i, open(out_fa, "wt") as o:
-        header = None
-        seq_chunks: list[str] = []
-        
-        def flush_sequence(header_id: str, seq: str) -> int:
-            """Process and write tiles for a sequence."""
-            nonlocal tile_count
-            tiles_written = 0
-            
-            if not header_id or not seq:
-                return 0
-            
-            seq_len = len(seq)
-            for idx in range(0, seq_len, kmer):
-                tile = seq[idx: idx + kmer]
-                if tile:
-                    # Write header with position info
-                    o.write(f">{header_id}_{idx+1}-{idx+len(tile)}\n")
-                    # Write sequence in 60-char lines
-                    o.write("\n".join(wrap(tile, 60)) + "\n")
-                    tiles_written += 1
-                    tile_count += 1
-            
-            return tiles_written
-        
-        # Process sequences
-        for line in i:
+def prepare_genome(genome_path, outdir, prefix):
+    """Padroniza o FASTA (uppercase) sem tilear. Retorna o caminho de saída."""
+    import os
+    os.makedirs(outdir, exist_ok=True)
+    out = os.path.join(outdir, f"{prefix}.genome.fa")
+    with open(genome_path) as fin, open(out, "w") as fout:
+        for line in fin:
             if line.startswith(">"):
-                # Process previous sequence if exists
-                if header is not None and seq_chunks:
-                    flush_sequence(header, "".join(seq_chunks))
-                    seq_count += 1
-                
-                # Start new sequence
-                header = line.strip()[1:].split()[0]
-                seq_chunks = []
+                fout.write(line)
             else:
-                seq_chunks.append(line.strip())
-        
-        # Don't forget last sequence
-        if header is not None and seq_chunks:
-            flush_sequence(header, "".join(seq_chunks))
-            seq_count += 1
-    
-    log(f"Created {tile_count} tiles from {seq_count} sequences", "INFO")
-    return seq_count, tile_count
+                fout.write(line.strip().upper() + "\n")
+    return out
 
 
 def generate_qc_report(stats: dict, outdir: Path, prefix: str) -> None:
@@ -289,9 +244,7 @@ def generate_qc_report(stats: dict, outdir: Path, prefix: str) -> None:
             f.write("Genome Processing:\n")
             f.write("-"*30 + "\n")
             gs = stats['genome_stats']
-            f.write(f"  Sequences:    {gs.get('sequences', 0)}\n")
-            f.write(f"  Tiles:        {gs.get('tiles', 0)}\n")
-            f.write(f"  Tile size:    {gs.get('tile_size', 0)}bp\n\n")
+            f.write(f"  Sequences:    {gs.get('sequences', 0)}\n\n")
         
         f.write("="*60 + "\n")
     
@@ -405,24 +358,21 @@ def run_qc(args) -> None:
         log("Processing genome...", "INFO")
         
         validate_file_exists(Path(args.genome), "Genome FASTA")
-        
+
         # Standardize headers
         std_genome = outdir / f"{args.prefix}.genome.std.fa"
-        standardize_fasta_headers(Path(args.genome), std_genome)
-        
-        # Create tiles
-        tiles_genome = outdir / f"{args.prefix}.genome.tiles.{args.kmer}nt.fa"
-        seq_count, tile_count = split_genome_tiles_python(std_genome, tiles_genome, args.kmer)
-        
+        seq_count = standardize_fasta_headers(Path(args.genome), std_genome)
+
+        # Prepare genome (uppercase, no tiling — map to full genome)
+        prepared_genome = prepare_genome(str(std_genome), str(outdir), args.prefix)
+
         all_stats['genome_stats'] = {
             'sequences': seq_count,
-            'tiles': tile_count,
-            'tile_size': args.kmer
         }
-        
+
         log(f"Genome files created:", "INFO")
         log(f"  Standardized: {std_genome}", "INFO")
-        log(f"  Tiled ({args.kmer}bp): {tiles_genome}", "INFO")
+        log(f"  Prepared (no tiling): {prepared_genome}", "INFO")
     
     # Generate summary report
     generate_qc_report(all_stats, outdir, args.prefix)

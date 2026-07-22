@@ -14,7 +14,7 @@ from clusters import run_clusters
 from mirna import run_mirna_analysis
 from utils import (
     log, which, 
-    DEFAULT_KMER_SIZE, DEFAULT_MIN_LEN, DEFAULT_QTRIM,
+    DEFAULT_MIN_LEN, DEFAULT_QTRIM,
     DEFAULT_THREADS, DEFAULT_MISMATCHES, DEFAULT_MAX_ALIGNMENTS,
     DEFAULT_SI_THRESHOLD, DEFAULT_PI_THRESHOLD,
     DEFAULT_MAX_LEN, FASTQ_ADAPTERS
@@ -144,7 +144,7 @@ For more information on each module:
     )
     qc_input.add_argument(
         "-g", "--genome",
-        help="Genome FASTA file to standardize and tile"
+        help="Genome FASTA file to standardize (mapped as full genome, not tiled)"
     )
     
     # Trimming options
@@ -177,20 +177,6 @@ For more information on each module:
         type=int,
         default=DEFAULT_MIN_LEN,
         help="Minimum read length after trimming (default: %(default)s). For miRNA analyses --min-len 18 is optimal"
-    )
-    
-    # Genome processing
-    qc_genome = qc_parser.add_argument_group("genome processing")
-    qc_genome.add_argument(
-        "--kmer",
-        type=int,
-        default=DEFAULT_KMER_SIZE,
-        help="Tile size for genome splitting in bp (default: %(default)s)"
-    )
-    qc_genome.add_argument(
-        "--no-tiling",
-        action="store_true",
-        help="Disable genome tiling (use for miRNA analysis)"
     )
     
     # Performance options
