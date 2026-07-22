@@ -1,9 +1,8 @@
 """Orchestrator for the `classify` subcommand."""
 import os
 from collections import defaultdict
-from clustering import cluster_regions
-from features import extract
-from samio import read_alignments
+from features import extract_by_chrom
+from samio import ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped
 from decider import RuleScorer, load_config
 from reporter import write_tsv, write_gff3, write_run_json
 from utils import log
@@ -36,17 +35,21 @@ def run_classify(args):
     config = load_config(args.config)
     ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
+    threads = getattr(args, "threads", 1) or 1
 
-    log("Defining clusters by coverage...", "INFO")
-    regions = cluster_regions(args.sam, args.mincov, args.pad)
-    log(f"{len(regions)} clusters", "INFO")
+    base = os.path.join(outdir, args.prefix)
+    log(f"Ensuring sorted, indexed BAM (threads={threads})...", "INFO")
+    bam_path = ensure_sorted_indexed_bam(args.sam, base, threads)
 
     lib_size = args.norm
     if lib_size is None:
-        lib_size = sum(1 for _ in read_alignments(args.sam))
+        lib_size = total_mapped(bam_path)
         log(f"--norm not given: using total mapped reads ({lib_size}) as lib_size for RPM", "WARN")
 
-    records = extract(args.sam, regions, lib_size, ext_cfg)
+    chroms = mapped_chromosomes(bam_path)
+    log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
+    records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg, args.mincov, args.pad, threads)
+    log(f"{len(records)} clusters", "INFO")
 
     mirna_intervals = parse_mirna_bed(args.mirna_loci) if args.mirna_loci else {}
     if mirna_intervals:
@@ -57,7 +60,6 @@ def run_classify(args):
         if r.cls != "miRNA":
             scorer.decide(r)
 
-    base = os.path.join(outdir, args.prefix)
     write_tsv(records, base + ".clusters.tsv")
     write_gff3(records, base + ".clusters.gff3")
     write_run_json(vars(args), base + ".run.json")

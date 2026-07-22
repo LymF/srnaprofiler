@@ -2,7 +2,8 @@
 import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
-from samio import read_alignments
+from samio import read_alignments, read_region
+from clustering import call_islands
 from signals import pingpong_zscore, phase_metrics, hypergeometric_phase_pvalue
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
@@ -166,3 +167,51 @@ def extract(sam_path, regions, lib_size, config):
     buckets = _assign_reads(regions, alns)
     return [build_record(region, buckets[i], lib_size, config)
             for i, region in enumerate(regions)]
+
+
+def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config):
+    """Cluster and extract features for a single chromosome of an indexed BAM.
+
+    Reads only this chromosome's alignments into memory (via fetch), builds its
+    coverage islands, assigns reads by span, and returns one ClusterRecord per
+    island. This is the unit of parallelism (chromosomes are independent).
+    """
+    alns = list(read_region(bam_path, chrom))
+    if not alns:
+        return []
+    depth = defaultdict(int)
+    for a in alns:
+        for p in range(a.pos, a.pos + len(a.seq)):
+            depth[p] += 1
+    regions = [(chrom, s, e) for (s, e) in call_islands(depth, mincov, pad)]
+    if not regions:
+        return []
+    buckets = _assign_reads(regions, alns)
+    return [build_record(regions[i], buckets[i], lib_size, config)
+            for i in range(len(regions))]
+
+
+def _chrom_job(job):
+    """Top-level wrapper so multiprocessing can pickle the worker call."""
+    return process_chromosome(*job)
+
+
+def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1):
+    """Cluster + extract features across chromosomes, optionally in parallel.
+
+    Each chromosome is processed independently by `process_chromosome`. With
+    `threads > 1` and more than one chromosome, the work is spread over a
+    multiprocessing pool; otherwise it runs serially. Records are returned in
+    chromosome order.
+    """
+    jobs = [(bam_path, c, mincov, pad, lib_size, config) for c in chroms]
+    if threads > 1 and len(jobs) > 1:
+        import multiprocessing as mp
+        with mp.Pool(min(threads, len(jobs))) as pool:
+            results = pool.map(_chrom_job, jobs)
+    else:
+        results = [_chrom_job(j) for j in jobs]
+    records = []
+    for rs in results:
+        records.extend(rs)
+    return records

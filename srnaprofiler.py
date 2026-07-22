@@ -603,6 +603,8 @@ Examples:
     cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
     cl.add_argument("--config", default="rules.yaml")
     cl.add_argument("--norm", type=int, help="Library size for RPM")
+    cl.add_argument("--threads", type=int, default=4,
+                    help="Threads for BAM sorting and per-chromosome processing (default: %(default)s)")
     cl.set_defaults(func=run_classify)
 
     return parser
