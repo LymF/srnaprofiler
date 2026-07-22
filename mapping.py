@@ -192,7 +192,7 @@ def convert_sam_to_bam(sam_file: Path, bam_file: Path, threads: int, sort: bool 
     log(f"BAM file created: {bam_file}", "INFO")
 
 
-def get_alignment_stats(sam_file: Path) -> dict:
+def get_alignment_stats(sam_file: Path, threads: int = 1) -> dict:
     """Extract detailed alignment statistics from SAM file."""
     if not which("samtools"):
         log("samtools not found, skipping detailed statistics", "WARN")
@@ -201,12 +201,15 @@ def get_alignment_stats(sam_file: Path) -> dict:
     stats = {}
     
     try:
-        # Get flagstat
+        # flagstat with -@ threads. No short timeout: on a large (multi-GB) SAM
+        # a 120 s cap silently killed this and returned empty stats. flagstat is
+        # a single linear pass, so let it run to completion.
+        log(f"Running samtools flagstat with {threads} thread(s)...", "INFO")
         result = subprocess.run(
-            ["samtools", "flagstat", str(sam_file)],
+            ["samtools", "flagstat", "-@", str(threads), str(sam_file)],
             capture_output=True, text=True, check=True
         )
-        
+
         for line in result.stdout.split('\n'):
             if 'in total' in line:
                 stats['total_alignments'] = int(line.split()[0])
@@ -214,10 +217,10 @@ def get_alignment_stats(sam_file: Path) -> dict:
                 stats['mapped_alignments'] = int(line.split()[0])
             elif 'properly paired' in line:
                 stats['proper_pairs'] = int(line.split()[0])
-    
+
     except Exception as e:
-        log(f"Could not get detailed statistics: {e}", "DEBUG")
-    
+        log(f"Could not get detailed statistics: {e}", "WARN")
+
     return stats
 
 
@@ -382,7 +385,7 @@ def run_mapping(args) -> None:
     
     # Get additional statistics from SAM
     if sam_out.exists():
-        detailed_stats = get_alignment_stats(sam_out)
+        detailed_stats = get_alignment_stats(sam_out, args.threads)
         all_stats['alignment_stats'].update(detailed_stats)
         
         # Optionally convert to BAM
