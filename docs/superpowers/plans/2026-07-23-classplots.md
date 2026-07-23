@@ -1446,8 +1446,11 @@ Immediately after `cl.set_defaults(func=run_classify)` (line 608), add:
     cp.add_argument("--classes", help="Comma-separated subset of classes to plot")
     cp.add_argument("--region", action="append", metavar="CHROM:START-END",
                     help="Plot one explicit coordinate span (repeatable), regardless of class")
-    cp.add_argument("--min-length", dest="min_length", type=int, default=15)
-    cp.add_argument("--max-length", dest="max_length", type=int, default=35)
+    cp.add_argument("--min-length", dest="min_length", type=int, default=15,
+                    help="Lower bound of the logo size window (size-dist/pattern plots use "
+                         "the fixed 15-35 publication window of their R scripts)")
+    cp.add_argument("--max-length", dest="max_length", type=int, default=35,
+                    help="Upper bound of the logo size window (see --min-length)")
     cp.add_argument("--logo-trim", dest="logo_trim", type=int, default=None,
                     help="Trim reads to N nt for the logo (default: class dominant DicerCall)")
     cp.add_argument("--no-signals", dest="no_signals", action="store_true",
