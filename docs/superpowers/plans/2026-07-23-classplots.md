@@ -441,7 +441,12 @@ Expected: FAIL with `ImportError: cannot import name 'coverage_profile'`
 
 ```python
 def coverage_profile(alns, region_start, region_end, bins=100):
-    """Per-strand weighted coverage over the locus span, rescaled to `bins` bins."""
+    """Per-strand weighted coverage over the locus span, rescaled to `bins` bins.
+
+    Each bin holds the MEAN per-position 1/NH weight within its slice (sum of
+    weights / positions-per-bin), so the result is comparable across loci of
+    different lengths regardless of `bins` and pools cleanly when averaged.
+    """
     length = region_end - region_start
     prof = {"+": [0.0] * bins, "-": [0.0] * bins}
     if length <= 0:
@@ -456,6 +461,10 @@ def coverage_profile(alns, region_start, region_end, bins=100):
             if b >= bins:
                 b = bins - 1
             lane[b] += w
+    positions_per_bin = length / bins
+    for lane in prof.values():
+        for b in range(bins):
+            lane[b] /= positions_per_bin
     return prof
 ```
 
