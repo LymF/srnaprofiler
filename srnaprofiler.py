@@ -607,6 +607,31 @@ Examples:
                     help="Threads for BAM sorting and per-chromosome processing (default: %(default)s)")
     cl.set_defaults(func=run_classify)
 
+    from classplots import run_classplots
+    cp = subparsers.add_parser("classplots",
+        help="Per-class plots from a classify .clusters.tsv + BAM")
+    cp.add_argument("--clusters", required=True, help="classify .clusters.tsv")
+    cp.add_argument("--bam", required=True, help="Sorted+indexed BAM used by classify")
+    cp.add_argument("-o", "--outdir", required=True)
+    cp.add_argument("-p", "--prefix", default="classplots")
+    cp.add_argument("--top-n", dest="top_n", type=int, default=5,
+                    help="Per-locus plots for the N most abundant loci per class (0 disables)")
+    cp.add_argument("--classes", help="Comma-separated subset of classes to plot")
+    cp.add_argument("--region", action="append", metavar="CHROM:START-END",
+                    help="Plot one explicit coordinate span (repeatable), regardless of class")
+    cp.add_argument("--min-length", dest="min_length", type=int, default=15,
+                    help="Lower bound of the logo size window (size-dist/pattern plots use "
+                         "the fixed 15-35 publication window of their R scripts)")
+    cp.add_argument("--max-length", dest="max_length", type=int, default=35,
+                    help="Upper bound of the logo size window (see --min-length)")
+    cp.add_argument("--logo-trim", dest="logo_trim", type=int, default=None,
+                    help="Trim reads to N nt for the logo (default: class dominant DicerCall)")
+    cp.add_argument("--no-signals", dest="no_signals", action="store_true",
+                    help="Skip R/WebLogo signal plots (QC summary only)")
+    cp.add_argument("--no-summary", dest="no_summary", action="store_true",
+                    help="Skip the matplotlib QC summary")
+    cp.set_defaults(func=run_classplots)
+
     return parser
 
 
