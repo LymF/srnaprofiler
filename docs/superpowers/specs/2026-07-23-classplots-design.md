@@ -33,7 +33,8 @@ New standalone subcommand (decoupled from `classify`, re-runnable without re-cla
 ```
 srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam -o OUTDIR
     [--prefix NAME] [--top-n 5] [--classes siRNA,piRNA,miRNA]
-    [--min-length 15 --max-length 35] [--no-signals] [--no-summary] [--threads N]
+    [--min-length 15 --max-length 35] [--logo-trim N]
+    [--no-signals] [--no-summary] [--threads N]
 ```
 
 - `--clusters` / `--bam` required. BAM must be sorted+indexed (same input `classify` uses).
@@ -41,6 +42,8 @@ srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam -o O
 - Classes plotted = the distinct values of the `cls` column (siRNA / piRNA / miRNA).
   `--classes` only **restricts** that set; it never invents classes.
 - `--top-n 0` disables the per-locus plots (pooled-only).
+- `--logo-trim N` truncates reads to `N` nt for the logo (column alignment); default = the
+  class size window low bound.
 - `--no-signals` / `--no-summary` toggle the two layers independently.
 
 ---
@@ -82,7 +85,10 @@ matplotlib logo core of `weblogo_new.py`.
     from `clusters.py::_generate_zscore_matrix` (originally one row per chromosome; the
     per-class pooling makes the row = locus, so `plotPattern`'s error bars become
     locus-to-locus variability within the class).
-  - `positional_composition(alns, length)` → position→{A,C,G,U} frequencies for the logo.
+  - `strand_fasta(alns, strand, size_lo, size_hi, trim)` → writes a FASTA of **distinct**
+    sequences on `strand`, size-filtered to `[size_lo, size_hi]`, trimmed to `trim` nt,
+    `T→U`, for the WebLogo CLI. Reimplements the FASTA prep of
+    `extras/weblogofromsam-teste.pl` in Python (no `awk` / `fastx_trimmer` dependency).
   - `coverage_profile(loci_alns)` → per-strand normalized coverage across loci (each locus
     rescaled to [0,1] and averaged).
 
@@ -104,12 +110,18 @@ so `classify` and `classplots` share **one** source of truth for the ping-pong s
 | Size×strand z-score profile (error bars across loci) | R | `plotPattern_publication.R` | reuse (generator ported from `clusters.py`) |
 | Ping-pong signature (overlap 1–30, highlight 10, annotate `pingpong_frac`/z) | R | `plotPingPong.R` | **new** |
 | Phasing periodicity (per strand, period = `DicerCall`, overhang −2) | R | `plotPhasing.R` | **new** |
-| Sequence logo (positional A/C/G/U) | Python/matplotlib | reuse `weblogo_new.py` core (self-contained TextPath; **not** `weblogo.py`, which shells out to the external `weblogo` CLI that is unavailable) | **new wiring** |
+| Sequence logo — **sense + antisense**, bits, classic | external `weblogo` CLI (WebLogo 3) | driven from Python | **new wiring** |
 | Coverage / strand profile (normalized metaplot per class) | R | `plotCoverageProfile.R` | **new** |
 
 The legacy `plotOffsetPhasingSeries.R` is **retired** and replaced by the two correct,
 separated scripts (`plotPingPong.R`, `plotPhasing.R`). It bundled three panels and used an
 ad-hoc `scale(Count + 1e-9)` z-score that does not match the engine's conventions.
+
+**Logo backend.** The good-looking logo is the external `weblogo` CLI (WebLogo 3, bits /
+rna / classic), matching `extras/weblogofromsam-teste.pl` — **not** the matplotlib
+`weblogo_new.py` (visually poor) nor `weblogo.py`. Two logos per class (sense, antisense).
+Per WebLogo convention the logo counts **distinct** sequences (collapsed), so it is the one
+intentional exception to the 1/NH weighting of Section 3.
 
 ### QC summary — from `.clusters.tsv` scalars (Python/matplotlib)
 One multi-panel figure set, works even when `Rscript` is absent:
@@ -149,7 +161,7 @@ OUTDIR/plots/    {prefix}.{class}.sizedist.pdf (+ _sumstrand, + _zoom for piRNA)
                  {prefix}.{class}.pattern.pdf
                  {prefix}.{class}.pingpong.pdf
                  {prefix}.{class}.phasing.pdf
-                 {prefix}.{class}.logo.pdf
+                 {prefix}.{class}.logo.{sense,antisense}.pdf
                  {prefix}.{class}.coverage.pdf
                  {prefix}.{class}.locus.{name}.*.pdf   (top-N)
                  {prefix}.summary.{counts,dicer,signals,review}.pdf
@@ -161,8 +173,9 @@ Intermediate `tables/` are kept for reproducibility and re-plotting outside the 
 
 ## 8. Error handling
 - Class with no loci → warn and skip.
-- `Rscript` absent (`check_r_dependencies` false) → warn, skip **signal** plots, still emit
-  the matplotlib QC summary and the sequence logo (both pure Python).
+- `Rscript` absent (`check_r_dependencies` false) → warn, skip the **R signal** plots, still
+  emit the matplotlib QC summary (pure Python).
+- `weblogo` CLI absent from PATH → warn, skip the logo only (no ugly matplotlib fallback).
 - Empty region / locus with zero kept reads → guard, skip that accumulation.
 - Malformed `.clusters.tsv` row → skip row with a warning; missing required columns → error.
 
@@ -174,17 +187,22 @@ Intermediate `tables/` are kept for reproducibility and re-plotting outside the 
   coverage normalization to [0,1].
 - `load_clusters` parses a fixture TSV (and rejects a missing-column one).
 - `group_by_class` / `top_n_loci` ordering.
+- `strand_fasta`: distinct-sequence collapse, size filter, trim, and `T→U` on a synthetic
+  set (including a `-` strand read to confirm the sequence used matches the logo convention).
 - R invocation: smoke test that **skips** when `Rscript` is unavailable (mirrors
   `check_r_dependencies`), otherwise checks a PDF is produced from a tiny fixture.
-- QC summary and logo render headless (matplotlib `Agg`) without R.
+- `weblogo` invocation: smoke test that **skips** when the `weblogo` CLI is absent from PATH.
+- QC summary renders headless (matplotlib `Agg`) without R or weblogo.
 
 ---
 
 ## 10. Risks / open items
 - **Resolved:** the `pattern` matrix generator is `clusters.py::_generate_zscore_matrix`
   (Python, from Perl `calcPatternInSamFile.pl`) — port it, swapping the dedup'd SAM read
-  for weighted per-locus `Aln`. The logo is `weblogo_new.py` (matplotlib); the old
-  `weblogo.py` (external `weblogo` CLI) is the one that errored and is avoided.
+  for weighted per-locus `Aln`. The logo uses the external `weblogo` CLI (WebLogo 3), the
+  aesthetic the user wants; it is an **optional** dependency (skip if absent, like Rscript).
+  `weblogo_new.py` is rejected (ugly). `weblogo.py` errored only because the CLI was not
+  installed.
 - Coverage profile could partially echo `frac_top` in the QC summary; kept because the
   **positional shape** (edge vs center, strand asymmetry) is not captured by the scalar.
 - Weighted (float) counts flow into R scripts written for integer counts; verify ggplot
