@@ -104,3 +104,25 @@ def coverage_profile(alns, region_start, region_end, bins=100):
         for b in range(bins):
             lane[b] /= positions_per_bin
     return prof
+
+
+def strand_sequences(alns, strand, size_lo, size_hi, trim):
+    """Distinct RNA-oriented, size-filtered, trimmed, T->U sequences on `strand`."""
+    seen = set()
+    for a in alns:
+        if a.strand != strand:
+            continue
+        seq = _oriented(a)
+        L = len(seq)
+        if L < size_lo or L > size_hi:
+            continue
+        trimmed = seq[:trim].replace("T", "U").replace("t", "u")
+        if len(trimmed) == trim:
+            seen.add(trimmed)
+    return sorted(seen)
+
+
+def write_fasta(sequences, path):
+    with open(path, "w") as fh:
+        for i, seq in enumerate(sequences, 1):
+            fh.write(f">seq_{i}\n{seq}\n")
