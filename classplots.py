@@ -104,6 +104,11 @@ def _fetch(bam, locus, xm):
     return list(read_region(bam, locus.chrom, locus.start, locus.end, xm_as_nh=xm))
 
 
+def _safe_name(name):
+    """Filesystem-safe unit name (drvfs/Windows forbids ':')."""
+    return name.replace(":", "_").replace("-", "_")
+
+
 def _write_pingpong_tsv(counts, path, hi=30):
     with open(path, "w") as fh:
         fh.write("overlap\tpairs\n")
@@ -220,7 +225,7 @@ def run_classplots(args):
                           trim, tables, plotsdir, args.prefix, rpath)
         for l in top_n_loci(cls_loci, args.top_n):
             m = [(_fetch(args.bam, l, xm), l.start, l.end)]
-            _signal_plots_for(f"{cls}.locus.{l.name}", m, period, args.min_length,
+            _signal_plots_for(f"{cls}.locus.{_safe_name(l.name)}", m, period, args.min_length,
                               args.max_length, trim, tables, plotsdir, args.prefix, rpath)
 
     # explicit user-requested coordinates (regardless of class)
@@ -229,6 +234,6 @@ def run_classplots(args):
         reg = parse_region(spec)
         trim = args.logo_trim or default_period
         m = [(_fetch(args.bam, reg, xm), reg.start, reg.end)]
-        safe = reg.name.replace(":", "_").replace("-", "_")
+        safe = _safe_name(reg.name)
         _signal_plots_for(f"region.{safe}", m, default_period, args.min_length,
                           args.max_length, trim, tables, plotsdir, args.prefix, rpath)

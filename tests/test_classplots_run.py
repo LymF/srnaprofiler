@@ -47,3 +47,13 @@ def test_run_classplots_signals_smoke(tmp_path):
     # the piRNA locus (chr1:100-400) has reads -> its signal plots should be produced
     assert list((out / "plots").glob("*piRNA*.pingpong.pdf")), "expected piRNA ping-pong plot"
     assert list((out / "tables").glob("*piRNA*.sizedist.tsv")), "expected piRNA sizedist table"
+
+
+@pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript absent")
+def test_run_classplots_topn_filenames_sanitized(tmp_path):
+    bam = tmp_path / "reads.bam"; _make_bam(bam)
+    out = tmp_path / "out"
+    run_classplots(_args(bam=str(bam), outdir=str(out), no_signals=False, no_summary=True, top_n=1))
+    produced = list((out / "plots").glob("*locus*")) + list((out / "tables").glob("*locus*"))
+    assert produced, "expected per-locus outputs"
+    assert all(":" not in p.name for p in produced), "locus filenames must not contain ':'"
