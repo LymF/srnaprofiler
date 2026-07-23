@@ -216,7 +216,10 @@ git commit -m "feat(class_signals): weighted first-base composition by size/stra
   - `class_signals.pingpong_offsets(alns, hi=30) -> Counter` — cross-strand overlap spectrum
     `1..hi` (via `signals.offset_spectrum`), peak at 10.
   - `class_signals.phasing_series(alns, strand, maxdist=100) -> Counter` — same-strand 5'-5'
-    distance spectrum for one strand (phase-invariant; peaks at multiples of the phase length).
+    **distance** spectrum for one strand (phase-invariant; peaks at multiples of the phase
+    length). NOTE: `offset_spectrum` keys are 1-indexed overlap length = distance + 1, so
+    `phasing_series` remaps the key by −1 to report true distance (a period-21 ladder peaks
+    at 21, aligning with the R reference lines).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -280,10 +283,16 @@ def pingpong_offsets(alns, hi=30):
 
 
 def phasing_series(alns, strand, maxdist=100):
-    """Same-strand 5'-5' distance spectrum for `strand` (phase-invariant)."""
+    """Same-strand 5'-5' distance spectrum for `strand` (phase-invariant).
+
+    offset_spectrum keys are 1-indexed overlap length (= distance + 1); we remap
+    by -1 so the result is keyed by true 5'-5' distance, peaking at multiples of
+    the phase length (aligning with the R reference lines).
+    """
     plus5, minus5 = five_prime_ends(alns)
     ends = plus5 if strand == "+" else minus5
-    return offset_spectrum(ends, ends, lo=1, hi=maxdist)
+    raw = offset_spectrum(ends, ends, lo=2, hi=maxdist + 1)
+    return Counter({k - 1: v for k, v in raw.items()})
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
