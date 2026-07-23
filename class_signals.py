@@ -1,4 +1,5 @@
 """Per-class signal accumulators over samio.Aln (1/NH-weighted, RNA 5'->3')."""
+import statistics
 from collections import Counter, defaultdict
 from features import revcomp
 from signals import offset_spectrum
@@ -55,3 +56,23 @@ def phasing_series(alns, strand, maxdist=100):
     ends = plus5 if strand == "+" else minus5
     raw = offset_spectrum(ends, ends, lo=2, hi=maxdist + 1)
     return Counter({k - 1: v for k, v in raw.items()})
+
+
+def pattern_row(alns, minlen=15, maxlen=35):
+    """42 z-scored size x strand counts (0-20 = +, 21-41 = -), weighted by 1/NH."""
+    span = maxlen - minlen + 1
+    values = [0.0] * (span * 2)
+    for a in alns:
+        L = len(_oriented(a))
+        if L < minlen or L > maxlen:
+            continue
+        idx = L - minlen if a.strand == "+" else (L - minlen) + span
+        values[idx] += 1.0 / a.nh
+    nonzero = [v for v in values if v != 0.0]
+    if len(nonzero) < 2:
+        return [0.0] * len(values)
+    mean = statistics.fmean(values)
+    sd = statistics.pstdev(values)
+    if sd == 0:
+        return [0.0] * len(values)
+    return [(v - mean) / sd for v in values]
