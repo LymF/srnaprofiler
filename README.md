@@ -67,3 +67,20 @@ python3 srnaprofiler.py --help
 | `plots`    | Distribution and pattern plots                                 |
 
 Run `python3 srnaprofiler.py <command> --help` for per-module options.
+
+### classplots — per-class plots
+
+Re-aggregates a classify run's alignments grouped by the assigned class and produces
+publication signal plots (size distribution, pattern, ping-pong, phasing, coverage,
+sequence logos) plus a matplotlib QC summary.
+
+    srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
+        -o classplots_out --prefix run --top-n 5
+
+Plot a specific coordinate span (regardless of class) with one or more `--region`:
+
+    srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
+        -o classplots_out --region chr1:100-400 --region X:9000-9500
+
+Signal plots need `Rscript` (skipped with a warning if absent) and the `weblogo` CLI for
+logos (`pip install weblogo`); the QC summary is pure Python.
