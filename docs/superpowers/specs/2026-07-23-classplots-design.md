@@ -33,7 +33,7 @@ New standalone subcommand (decoupled from `classify`, re-runnable without re-cla
 ```
 srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam -o OUTDIR
     [--prefix NAME] [--top-n 5] [--classes siRNA,piRNA,miRNA]
-    [--min-length 15 --max-length 35] [--logo-trim N]
+    [--region chr1:100-400 ...] [--min-length 15 --max-length 35] [--logo-trim N]
     [--no-signals] [--no-summary] [--threads N]
 ```
 
@@ -44,6 +44,11 @@ srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam -o O
 - `--top-n 0` disables the per-locus plots (pooled-only).
 - `--logo-trim N` truncates reads to `N` nt for the logo (column alignment); default = the
   class size window low bound.
+- `--region chrom:start-end` (repeatable) plots one **explicit** coordinate span, regardless
+  of class, through the same signal pipeline as a single locus. Each locus/region is always
+  fetched by its own coordinates (`read_region`) and plotted alone; pooled per-class plots
+  are the sum over that class's loci. `--region` needs no `.clusters.tsv` class for the span
+  itself (period defaults to the dominant DicerCall of the loaded loci, or 21 if none).
 - `--no-signals` / `--no-summary` toggle the two layers independently.
 
 ---
