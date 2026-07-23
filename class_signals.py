@@ -1,6 +1,6 @@
 """Per-class signal accumulators over samio.Aln (1/NH-weighted, RNA 5'->3')."""
 import statistics
-from collections import Counter, defaultdict
+from collections import Counter
 from features import revcomp
 from signals import offset_spectrum
 

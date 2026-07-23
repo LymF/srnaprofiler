@@ -146,6 +146,10 @@ def _signal_plots_for(name, members, period, size_lo, size_hi, trim,
     alns_list = [m[0] for m in members]
     all_alns = [a for alns in alns_list for a in alns]
 
+    if not all_alns:
+        log(f"no reads for unit {name}; skipping signal plots", "WARN")
+        return
+
     comp = cs.base_composition(all_alns)
     sd_tsv = tables / f"{prefix}.{name}.sizedist.tsv"
     plots.write_base_composition_tsv(comp, sd_tsv)

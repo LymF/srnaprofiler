@@ -57,3 +57,14 @@ def test_run_classplots_topn_filenames_sanitized(tmp_path):
     produced = list((out / "plots").glob("*locus*")) + list((out / "tables").glob("*locus*"))
     assert produced, "expected per-locus outputs"
     assert all(":" not in p.name for p in produced), "locus filenames must not contain ':'"
+
+
+def test_signal_plots_for_empty_unit_writes_nothing(tmp_path):
+    from classplots import _signal_plots_for
+    tables = tmp_path / "tables"; plots_dir = tmp_path / "plots"
+    tables.mkdir(); plots_dir.mkdir()
+    # one member with zero alignments
+    _signal_plots_for("empty", [([], 0, 100)], 21, 15, 35, 21,
+                      tables, plots_dir, "p", None)
+    assert not list(tables.iterdir()), "no tables should be written for an empty unit"
+    assert not list(plots_dir.iterdir()), "no plots should be written for an empty unit"
