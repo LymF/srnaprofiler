@@ -1,6 +1,11 @@
 """Per-class plotting: read the classifier TSV + BAM, plot signals grouped by class."""
+import os
+import shutil
+import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+
+from utils import log
 
 _REQUIRED = ("chrom", "start", "end", "name", "reads", "dicer_call", "cls")
 
@@ -70,3 +75,21 @@ def parse_region(spec, name=None):
         raise ValueError(f"malformed region (expected chrom:start-end): {spec!r}")
     return Locus(chrom=chrom, start=start, end=end, name=name or spec,
                  cls="", reads=0.0, dicer_call="N")
+
+
+def run_weblogo(fasta_path, out_pdf, title):
+    """Run the external WebLogo 3 CLI; skip (return False) if unavailable/empty."""
+    if shutil.which("weblogo") is None:
+        log("weblogo CLI not found in PATH; skipping logo", "WARN")
+        return False
+    if not os.path.exists(fasta_path) or os.path.getsize(fasta_path) == 0:
+        log(f"empty FASTA, skipping logo: {fasta_path}", "WARN")
+        return False
+    cmd = ["weblogo", "-F", "pdf", "-A", "rna", "-U", "bits", "-s", "large",
+           "--resolution", "300", "--errorbars", "NO", "-c", "classic",
+           "-P", title, "-f", fasta_path, "-o", out_pdf]
+    r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        log(f"weblogo failed: {r.stderr}", "ERROR")
+        return False
+    return True
