@@ -9,8 +9,10 @@ import pandas as pd
 def write_summary(tsv_path, out_dir, prefix):
     os.makedirs(out_dir, exist_ok=True)
     df = pd.read_csv(tsv_path, sep="\t")
-    df = df[df["cls"].notna() & (df["cls"].astype(str) != "")]
     written = []
+    df = df[df["cls"].notna() & (df["cls"].astype(str) != "")]
+    if df.empty:
+        return written
 
     def save(fig, tag):
         path = os.path.join(out_dir, f"{prefix}.summary.{tag}.pdf")
@@ -41,7 +43,10 @@ def write_summary(tsv_path, out_dir, prefix):
             axes = [axes]
         for ax, col in zip(axes, signals):
             groups = [g[col].dropna().values for _, g in df.groupby("cls")]
-            ax.boxplot(groups, labels=list(df.groupby("cls").groups))
+            labels = list(df.groupby("cls").groups)
+            ax.boxplot(groups)
+            ax.set_xticks(range(1, len(groups) + 1))
+            ax.set_xticklabels(labels)
             ax.set_title(col)
         save(fig, "signals")
 
