@@ -77,7 +77,11 @@ matplotlib logo core of `weblogo_new.py`.
   - `base_composition(alns, minlen, maxlen)` → `{size: {+/-: {A,C,G,U}}}` (float counts).
   - `pingpong_offsets(alns)` → `{overlap: weighted_pairs}` for 1..30.
   - `phasing_series(alns, phase_length)` → per-strand periodicity series.
-  - `pattern_matrix(alns)` → the `#`-separated 43-column z-score matrix for `plotPattern`.
+  - `pattern_matrix(loci_alns)` → `#`-separated matrix, **one row per locus**, cols 0–20 =
+    `+` strand size counts (15–35nt) z-scored within the row, 21–41 = `-` strand. Ported
+    from `clusters.py::_generate_zscore_matrix` (originally one row per chromosome; the
+    per-class pooling makes the row = locus, so `plotPattern`'s error bars become
+    locus-to-locus variability within the class).
   - `positional_composition(alns, length)` → position→{A,C,G,U} frequencies for the logo.
   - `coverage_profile(loci_alns)` → per-strand normalized coverage across loci (each locus
     rescaled to [0,1] and averaged).
@@ -97,10 +101,10 @@ so `classify` and `classplots` share **one** source of truth for the ping-pong s
 | Plot | Backend | Script | Status |
 |------|---------|--------|--------|
 | Size distribution + first base (+ sum-strand, + piRNA zoom) | R | `calcDistributionPerBase*.R` | reuse |
-| Nucleotide pattern (per-position z-score) | R | `plotPattern_publication.R` | reuse |
+| Size×strand z-score profile (error bars across loci) | R | `plotPattern_publication.R` | reuse (generator ported from `clusters.py`) |
 | Ping-pong signature (overlap 1–30, highlight 10, annotate `pingpong_frac`/z) | R | `plotPingPong.R` | **new** |
 | Phasing periodicity (per strand, period = `DicerCall`, overhang −2) | R | `plotPhasing.R` | **new** |
-| Sequence logo (positional A/C/G/U) | Python/matplotlib | reuse `weblogo_new.py` core | **new wiring** |
+| Sequence logo (positional A/C/G/U) | Python/matplotlib | reuse `weblogo_new.py` core (self-contained TextPath; **not** `weblogo.py`, which shells out to the external `weblogo` CLI that is unavailable) | **new wiring** |
 | Coverage / strand profile (normalized metaplot per class) | R | `plotCoverageProfile.R` | **new** |
 
 The legacy `plotOffsetPhasingSeries.R` is **retired** and replaced by the two correct,
@@ -177,9 +181,13 @@ Intermediate `tables/` are kept for reproducibility and re-plotting outside the 
 ---
 
 ## 10. Risks / open items
-- `pattern_matrix` (`#` 43-col z-score) generator lived in the old `clusters.py`; the plan
-  must locate and port it (or regenerate the format from the weighted composition).
+- **Resolved:** the `pattern` matrix generator is `clusters.py::_generate_zscore_matrix`
+  (Python, from Perl `calcPatternInSamFile.pl`) — port it, swapping the dedup'd SAM read
+  for weighted per-locus `Aln`. The logo is `weblogo_new.py` (matplotlib); the old
+  `weblogo.py` (external `weblogo` CLI) is the one that errored and is avoided.
 - Coverage profile could partially echo `frac_top` in the QC summary; kept because the
   **positional shape** (edge vs center, strand asymmetry) is not captured by the scalar.
 - Weighted (float) counts flow into R scripts written for integer counts; verify ggplot
   handles floats (expected yes) during the port.
+- Both legacy generators dedup by read and are unweighted; the port must instead use
+  1/NH-weighted `Aln` (Section 3) so the plots stay consistent with the classifier.
