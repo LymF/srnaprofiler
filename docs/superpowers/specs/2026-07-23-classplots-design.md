@@ -86,9 +86,13 @@ matplotlib logo core of `weblogo_new.py`.
     per-class pooling makes the row = locus, so `plotPattern`'s error bars become
     locus-to-locus variability within the class).
   - `strand_fasta(alns, strand, size_lo, size_hi, trim)` → writes a FASTA of **distinct**
-    sequences on `strand`, size-filtered to `[size_lo, size_hi]`, trimmed to `trim` nt,
-    `T→U`, for the WebLogo CLI. Reimplements the FASTA prep of
-    `extras/weblogofromsam-teste.pl` in Python (no `awk` / `fastx_trimmer` dependency).
+    sequences on `strand`, size-filtered to `[size_lo, size_hi]`, trimmed to `trim` nt from
+    the **RNA 5′ end**, `T→U`, for the WebLogo CLI. Reimplements the FASTA prep of
+    `extras/weblogofromsam-teste.pl` in Python (no `awk` / `fastx_trimmer` dependency), with
+    one **correction for the current pipe**: `-` strand reads are reverse-complemented (SAM
+    stores SEQ in genome-forward orientation) so both logos read 5′→3′ in RNA orientation and
+    the 1U/10A signal lands at the right position — consistent with `samio`/the classifier.
+    The Perl showed the antisense logo in genome orientation, which misplaces that signal.
   - `coverage_profile(loci_alns)` → per-strand normalized coverage across loci (each locus
     rescaled to [0,1] and averaged).
 
