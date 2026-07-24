@@ -644,6 +644,10 @@ Examples:
                     help="Upper bound of the logo size window (see --min-length)")
     cp.add_argument("--logo-trim", dest="logo_trim", type=int, default=None,
                     help="Trim reads to N nt for the logo (default: class dominant DicerCall)")
+    cp.add_argument("--logo-format", dest="logo_format", default="svg",
+                    choices=["svg", "eps", "pdf", "png"],
+                    help="WebLogo output format (default: svg). svg/eps need no Ghostscript; "
+                         "pdf/png require a working 'gs' with fonts")
     cp.add_argument("--no-signals", dest="no_signals", action="store_true",
                     help="Skip R/WebLogo signal plots (QC summary only)")
     cp.add_argument("--no-summary", dest="no_summary", action="store_true",

@@ -90,17 +90,24 @@ def parse_region(spec, name=None):
                  cls="", reads=0.0, dicer_call="N")
 
 
-def run_weblogo(fasta_path, out_pdf, title):
-    """Run the external WebLogo 3 CLI; skip (return False) if unavailable/empty."""
+def run_weblogo(fasta_path, out_path, title, fmt="svg"):
+    """Run the external WebLogo 3 CLI; skip (return False) if unavailable/empty.
+
+    `fmt` is the output format passed to `weblogo -F`. The default `svg` (and
+    `eps`) are rendered natively by WebLogo and need no Ghostscript; `pdf`/`png`
+    are converted from EPS via Ghostscript (`gs`), which must be installed AND
+    able to load fonts — on some conda builds that font step fails, so SVG is the
+    safe default.
+    """
     if shutil.which("weblogo") is None:
         log("weblogo CLI not found in PATH; skipping logo", "WARN")
         return False
     if not os.path.exists(fasta_path) or os.path.getsize(fasta_path) == 0:
         log(f"empty FASTA, skipping logo: {fasta_path}", "WARN")
         return False
-    cmd = ["weblogo", "-F", "pdf", "-A", "rna", "-U", "bits", "-s", "large",
+    cmd = ["weblogo", "-F", fmt, "-A", "rna", "-U", "bits", "-s", "large",
            "--resolution", "300", "--errorbars", "NO", "-c", "classic",
-           "-P", title, "-f", fasta_path, "-o", out_pdf]
+           "-P", title, "-f", fasta_path, "-o", out_path]
     r = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if r.returncode != 0:
         log(f"weblogo failed: {r.stderr}", "ERROR")
@@ -147,7 +154,7 @@ def _write_pattern_matrix(rows, path):
 
 
 def _signal_plots_for(name, members, period, size_lo, size_hi, trim,
-                      tables, plotsdir, prefix, rpath):
+                      tables, plotsdir, prefix, rpath, logo_fmt="svg"):
     """Write tables + render all signal plots for one pooled unit (class or locus).
 
     members: list of (alns, region_start, region_end).
@@ -208,7 +215,8 @@ def _signal_plots_for(name, members, period, size_lo, size_hi, trim,
         seqs = cs.strand_sequences(all_alns, strand, size_lo, size_hi, trim)
         fa = tables / f"{prefix}.{name}.logo.{title}.fasta"
         cs.write_fasta(seqs, fa)
-        run_weblogo(str(fa), str(plotsdir / f"{prefix}.{name}.logo.{title}.pdf"), title)
+        out = plotsdir / f"{prefix}.{name}.logo.{title}.{logo_fmt}"
+        run_weblogo(str(fa), str(out), title, fmt=logo_fmt)
 
 
 def run_classplots(args):
@@ -237,17 +245,18 @@ def run_classplots(args):
     # Open the BAM once and reuse the handle for every locus. Opening the file
     # re-reads the header and index, so re-opening it per locus would dominate
     # runtime when a class has tens of thousands of loci.
+    logo_fmt = getattr(args, "logo_format", "svg")
     with pysam.AlignmentFile(args.bam, "rb") as fh:
         for cls, cls_loci in grouped.items():
             period = dominant_dicer(cls_loci)
             trim = args.logo_trim or period
             members = [(_fetch(fh, l, xm), l.start, l.end) for l in cls_loci]
             _signal_plots_for(cls, members, period, args.min_length, args.max_length,
-                              trim, tables, plotsdir, args.prefix, rpath)
+                              trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
             for l in top_n_loci(cls_loci, args.top_n):
                 m = [(_fetch(fh, l, xm), l.start, l.end)]
                 _signal_plots_for(f"{cls}.locus.{_safe_name(l.name)}", m, period, args.min_length,
-                                  args.max_length, trim, tables, plotsdir, args.prefix, rpath)
+                                  args.max_length, trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
 
         # explicit user-requested coordinates (regardless of class)
         default_period = dominant_dicer(loci)
@@ -257,4 +266,4 @@ def run_classplots(args):
             m = [(_fetch(fh, reg, xm), reg.start, reg.end)]
             safe = _safe_name(reg.name)
             _signal_plots_for(f"region.{safe}", m, default_period, args.min_length,
-                              args.max_length, trim, tables, plotsdir, args.prefix, rpath)
+                              args.max_length, trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
