@@ -85,7 +85,8 @@ Plot a specific coordinate span (regardless of class) with one or more `--region
     srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
         -o classplots_out --region chr1:100-400 --region X:9000-9500
 
-`--classes` is case-insensitive (`piRNA,siRNA` or `pirna`). Signal plots need `Rscript`
-(skipped with a warning if absent). Sequence logos use the `weblogo` CLI
-(`pip install weblogo`) and default to SVG (`--logo-format`; `pdf`/`png` need Ghostscript).
-The coverage track and QC summary are pure Python.
+`--classes` is case-insensitive (`piRNA,siRNA` or `pirna`). The R signal plots (size
+distribution, pattern, ping-pong, phasing) need `Rscript` (skipped with a warning if
+absent). Sequence logos are drawn by **logomaker** (`pip install logomaker`), and the
+coverage track and QC summary use matplotlib — all pure Python, no Ghostscript or external
+CLI. `--logo-format` picks the logo format (pdf/svg/png/eps; default pdf).

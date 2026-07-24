@@ -1,7 +1,4 @@
 """Per-class plotting: read the classifier TSV + BAM, plot signals grouped by class."""
-import os
-import shutil
-import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
@@ -13,6 +10,7 @@ import plots
 import class_signals as cs
 import class_summary
 import class_coverage
+import class_logo
 from samio import read_region_handle, prefers_xm_as_nh
 
 _REQUIRED = ("chrom", "start", "end", "name", "reads", "dicer_call", "cls")
@@ -89,31 +87,6 @@ def parse_region(spec, name=None):
         raise ValueError(f"malformed region (expected chrom:start-end): {spec!r}")
     return Locus(chrom=chrom, start=start, end=end, name=name or spec,
                  cls="", reads=0.0, dicer_call="N")
-
-
-def run_weblogo(fasta_path, out_path, title, fmt="svg"):
-    """Run the external WebLogo 3 CLI; skip (return False) if unavailable/empty.
-
-    `fmt` is the output format passed to `weblogo -F`. The default `svg` (and
-    `eps`) are rendered natively by WebLogo and need no Ghostscript; `pdf`/`png`
-    are converted from EPS via Ghostscript (`gs`), which must be installed AND
-    able to load fonts — on some conda builds that font step fails, so SVG is the
-    safe default.
-    """
-    if shutil.which("weblogo") is None:
-        log("weblogo CLI not found in PATH; skipping logo", "WARN")
-        return False
-    if not os.path.exists(fasta_path) or os.path.getsize(fasta_path) == 0:
-        log(f"empty FASTA, skipping logo: {fasta_path}", "WARN")
-        return False
-    cmd = ["weblogo", "-F", fmt, "-A", "rna", "-U", "bits", "-s", "large",
-           "--resolution", "300", "--errorbars", "NO", "-c", "classic",
-           "-P", title, "-f", fasta_path, "-o", out_path]
-    r = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if r.returncode != 0:
-        log(f"weblogo failed: {r.stderr}", "ERROR")
-        return False
-    return True
 
 
 def _fetch(fh, locus, xm):
@@ -207,13 +180,11 @@ def _signal_plots_for(name, members, period, size_lo, size_hi, trim,
         class_coverage.plot_coverage_track(
             sense, antisense, chrom, rs, str(plotsdir / f"{prefix}.{name}.coverage.pdf"))
 
-    # logos (sense + antisense) via WebLogo
+    # logos (sense + antisense) via logomaker (matplotlib, no Ghostscript)
     for strand, title in (("+", "sense"), ("-", "antisense")):
         seqs = cs.strand_sequences(all_alns, strand, size_lo, size_hi, trim)
-        fa = tables / f"{prefix}.{name}.logo.{title}.fasta"
-        cs.write_fasta(seqs, fa)
         out = plotsdir / f"{prefix}.{name}.logo.{title}.{logo_fmt}"
-        run_weblogo(str(fa), str(out), title, fmt=logo_fmt)
+        class_logo.plot_logo(seqs, title, str(out))
 
 
 def run_classplots(args):
@@ -242,7 +213,7 @@ def run_classplots(args):
     # Open the BAM once and reuse the handle for every locus. Opening the file
     # re-reads the header and index, so re-opening it per locus would dominate
     # runtime when a class has tens of thousands of loci.
-    logo_fmt = getattr(args, "logo_format", "svg")
+    logo_fmt = getattr(args, "logo_format", "pdf")
     with pysam.AlignmentFile(args.bam, "rb") as fh:
         for cls, cls_loci in grouped.items():
             period = dominant_dicer(cls_loci)

@@ -26,7 +26,8 @@ def _make_bam(path):
 def _args(**kw):
     base = dict(clusters="tests/data/mini.clusters.tsv", bam=None, outdir=None,
                prefix="mini", top_n=1, classes=None, region=None, min_length=15,
-               max_length=35, logo_trim=None, no_signals=True, no_summary=False)
+               max_length=35, logo_trim=None, logo_format="pdf",
+               no_signals=True, no_summary=False)
     base.update(kw)
     return types.SimpleNamespace(**base)
 
@@ -50,6 +51,9 @@ def test_run_classplots_signals_smoke(tmp_path):
     # coverage track is per-locus only (single-member units), not for the pooled class
     assert list((out / "plots").glob("*piRNA.locus.*.coverage.pdf")), "per-locus coverage expected"
     assert not (out / "plots" / "mini.piRNA.coverage.pdf").exists(), "pooled class has no coverage"
+    # sequence logos via logomaker (matplotlib, no Ghostscript)
+    if __import__("importlib").util.find_spec("logomaker") is not None:
+        assert list((out / "plots").glob("*piRNA*.logo.sense.pdf")), "sense logo expected"
 
 
 @pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript absent")

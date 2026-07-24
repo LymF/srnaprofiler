@@ -129,11 +129,18 @@ The old script file is **kept in the repo** (not deleted), because the separate 
 `phasing.py` tool still invokes it at runtime via `--r-script`; classplots simply does not
 use it.
 
-**Logo backend.** The good-looking logo is the external `weblogo` CLI (WebLogo 3, bits /
-rna / classic), matching `extras/weblogofromsam-teste.pl` — **not** the matplotlib
-`weblogo_new.py` (visually poor) nor `weblogo.py`. Two logos per class (sense, antisense).
-Per WebLogo convention the logo counts **distinct** sequences (collapsed), so it is the one
-intentional exception to the 1/NH weighting of Section 3.
+**Logo backend.** *(SUPERSEDED 2026-07-24 — see below.)* The original plan used the external
+`weblogo` CLI (WebLogo 3, bits / rna / classic). Two logos per class (sense, antisense),
+counting **distinct** sequences (collapsed) — the one intentional exception to the 1/NH
+weighting of Section 3.
+
+> **Update (2026-07-24): logos now use `logomaker`, not the `weblogo` CLI.** The WebLogo
+> route needs Ghostscript for PDF/PNG, which fails with font errors on the conda build in
+> use. Logos are now rendered by **logomaker** (`class_logo.plot_logo`) — pure
+> matplotlib, native PDF/SVG/PNG, no Ghostscript, no external CLI. Same inputs
+> (`class_signals.strand_sequences`: distinct, size-filtered, trimmed, T→U, `-` revcomp'd)
+> and information/bits logo. `--logo-format` (pdf default) selects the matplotlib output
+> format. `run_weblogo` and the FASTA hand-off are removed.
 
 ### QC summary — from `.clusters.tsv` scalars (Python/matplotlib)
 One multi-panel figure set, works even when `Rscript` is absent:
