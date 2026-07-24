@@ -12,6 +12,7 @@ from utils import log
 import plots
 import class_signals as cs
 import class_summary
+import class_coverage
 from samio import read_region_handle, prefers_xm_as_nh
 
 _REQUIRED = ("chrom", "start", "end", "name", "reads", "dicer_call", "cls")
@@ -139,11 +140,11 @@ def _write_distance_tsv(counts, path, maxdist=100):
             fh.write(f"{d}\t{counts.get(d, 0.0)}\n")
 
 
-def _write_coverage_tsv(profile, path):
+def _write_coverage_tsv(sense, antisense, start, path):
     with open(path, "w") as fh:
-        fh.write("bin\tplus\tminus\n")
-        for i, (p, m) in enumerate(zip(profile["+"], profile["-"])):
-            fh.write(f"{i}\t{p}\t{m}\n")
+        fh.write("pos\tsense\tantisense\n")
+        for i, (s, a) in enumerate(zip(sense, antisense)):
+            fh.write(f"{start + i}\t{s}\t{a}\n")
 
 
 def _write_pattern_matrix(rows, path):
@@ -154,10 +155,10 @@ def _write_pattern_matrix(rows, path):
 
 
 def _signal_plots_for(name, members, period, size_lo, size_hi, trim,
-                      tables, plotsdir, prefix, rpath, logo_fmt="svg"):
+                      tables, plotsdir, prefix, rpath, logo_fmt="svg", coverage=False):
     """Write tables + render all signal plots for one pooled unit (class or locus).
 
-    members: list of (alns, region_start, region_end).
+    members: list of (alns, chrom, region_start, region_end).
     """
     alns_list = [m[0] for m in members]
     all_alns = [a for alns in alns_list for a in alns]
@@ -196,19 +197,15 @@ def _signal_plots_for(name, members, period, size_lo, size_hi, trim,
         str(tables / f"{prefix}.{name}.phasing.minus.tsv"),
         str(period), str(plotsdir / f"{prefix}.{name}")], rpath)
 
-    acc = {"+": [0.0] * 100, "-": [0.0] * 100}
-    for alns, rs, re in members:
-        prof = cs.coverage_profile(alns, rs, re, bins=100)
-        for s in ("+", "-"):
-            for i in range(100):
-                acc[s][i] += prof[s][i]
-    if members:
-        for s in ("+", "-"):
-            acc[s] = [v / len(members) for v in acc[s]]
-    _write_coverage_tsv(acc, tables / f"{prefix}.{name}.coverage.tsv")
-    plots.run_r_script("plotCoverageProfile.R",
-        [str(tables / f"{prefix}.{name}.coverage.tsv"), str(plotsdir / f"{prefix}.{name}")],
-        rpath)
+    # coverage track: only for a chosen single-locus unit (top-N locus or --region),
+    # where an absolute genomic-position view is meaningful. Raw depth (IGV-style).
+    # The pooled-per-class unit passes coverage=False (it may aggregate many loci).
+    if coverage and len(members) == 1:
+        _, chrom, rs, re = members[0]
+        sense, antisense = cs.coverage_track(alns_list[0], rs, re)
+        _write_coverage_tsv(sense, antisense, rs, tables / f"{prefix}.{name}.coverage.tsv")
+        class_coverage.plot_coverage_track(
+            sense, antisense, chrom, rs, str(plotsdir / f"{prefix}.{name}.coverage.pdf"))
 
     # logos (sense + antisense) via WebLogo
     for strand, title in (("+", "sense"), ("-", "antisense")):
@@ -250,20 +247,22 @@ def run_classplots(args):
         for cls, cls_loci in grouped.items():
             period = dominant_dicer(cls_loci)
             trim = args.logo_trim or period
-            members = [(_fetch(fh, l, xm), l.start, l.end) for l in cls_loci]
+            members = [(_fetch(fh, l, xm), l.chrom, l.start, l.end) for l in cls_loci]
             _signal_plots_for(cls, members, period, args.min_length, args.max_length,
                               trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
             for l in top_n_loci(cls_loci, args.top_n):
-                m = [(_fetch(fh, l, xm), l.start, l.end)]
+                m = [(_fetch(fh, l, xm), l.chrom, l.start, l.end)]
                 _signal_plots_for(f"{cls}.locus.{_safe_name(l.name)}", m, period, args.min_length,
-                                  args.max_length, trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
+                                  args.max_length, trim, tables, plotsdir, args.prefix, rpath,
+                                  logo_fmt, coverage=True)
 
         # explicit user-requested coordinates (regardless of class)
         default_period = dominant_dicer(loci)
         for spec in (getattr(args, "region", None) or []):
             reg = parse_region(spec)
             trim = args.logo_trim or default_period
-            m = [(_fetch(fh, reg, xm), reg.start, reg.end)]
+            m = [(_fetch(fh, reg, xm), reg.chrom, reg.start, reg.end)]
             safe = _safe_name(reg.name)
             _signal_plots_for(f"region.{safe}", m, default_period, args.min_length,
-                              args.max_length, trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
+                              args.max_length, trim, tables, plotsdir, args.prefix, rpath,
+                              logo_fmt, coverage=True)

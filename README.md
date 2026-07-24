@@ -71,16 +71,21 @@ Run `python3 srnaprofiler.py <command> --help` for per-module options.
 ### classplots — per-class plots
 
 Re-aggregates a classify run's alignments grouped by the assigned class and produces
-publication signal plots (size distribution, pattern, ping-pong, phasing, coverage,
-sequence logos) plus a matplotlib QC summary.
+per-class publication signal plots (size distribution, pattern, ping-pong, phasing,
+sequence logos) plus a matplotlib QC summary. Each **chosen locus** — the `--top-n` most
+abundant per class, and every `--region` — also gets an IGV-style coverage track (sense up,
+antisense down; raw depth).
 
     srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
         -o classplots_out --prefix run --top-n 5
 
-Plot a specific coordinate span (regardless of class) with one or more `--region`:
+Plot a specific coordinate span (regardless of class) with one or more `--region`
+(the `name` column of the `.clusters.tsv` is exactly `chrom:start-end`):
 
     srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
         -o classplots_out --region chr1:100-400 --region X:9000-9500
 
-Signal plots need `Rscript` (skipped with a warning if absent) and the `weblogo` CLI for
-logos (`pip install weblogo`); the QC summary is pure Python.
+`--classes` is case-insensitive (`piRNA,siRNA` or `pirna`). Signal plots need `Rscript`
+(skipped with a warning if absent). Sequence logos use the `weblogo` CLI
+(`pip install weblogo`) and default to SVG (`--logo-format`; `pdf`/`png` need Ghostscript).
+The coverage track and QC summary are pure Python.

@@ -48,10 +48,13 @@ This **replaces** the previous per-class normalized coverage metaplot (`coverage
   - `axhline(0, color="black")`, dashed grid, legend,
   - x-axis = genomic position (`start + i`), title `Coverage — {chrom}:{start}-{end}`,
   - `matplotlib.use("Agg")`, save to PDF, `plt.close(fig)`.
-- Orchestrator wiring in `_signal_plots_for`: **replace** the current coverage block. When
-  the unit has a single member `(alns, rs, re)` and `chrom` is known, compute
-  `coverage_track` and call `plot_coverage_track`, writing `{prefix}.{name}.coverage.pdf`.
-  When the unit has multiple members (pooled class), emit no coverage.
+- Orchestrator wiring in `_signal_plots_for`: **replace** the current coverage block. The
+  function takes an explicit `coverage=False` flag; the per-locus (top-N) and `--region`
+  calls pass `coverage=True`, the pooled-per-class call leaves it `False`. Coverage is
+  emitted only when `coverage and len(members) == 1` — the explicit flag (not just the
+  member count) is needed because a class with a single locus would otherwise get a coverage
+  plot on its pooled call too. It computes `coverage_track` and calls `plot_coverage_track`,
+  writing `{prefix}.{name}.coverage.pdf`.
   - `_signal_plots_for` needs the locus `chrom` for the title/track; pass the chrom for
     single-member units (thread it through, or derive it — the members already carry
     `(alns, start, end)`; add `chrom` so members become `(alns, chrom, start, end)` or pass

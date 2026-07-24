@@ -47,6 +47,9 @@ def test_run_classplots_signals_smoke(tmp_path):
     # the piRNA locus (chr1:100-400) has reads -> its signal plots should be produced
     assert list((out / "plots").glob("*piRNA*.pingpong.pdf")), "expected piRNA ping-pong plot"
     assert list((out / "tables").glob("*piRNA*.sizedist.tsv")), "expected piRNA sizedist table"
+    # coverage track is per-locus only (single-member units), not for the pooled class
+    assert list((out / "plots").glob("*piRNA.locus.*.coverage.pdf")), "per-locus coverage expected"
+    assert not (out / "plots" / "mini.piRNA.coverage.pdf").exists(), "pooled class has no coverage"
 
 
 @pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript absent")
@@ -63,8 +66,8 @@ def test_signal_plots_for_empty_unit_writes_nothing(tmp_path):
     from classplots import _signal_plots_for
     tables = tmp_path / "tables"; plots_dir = tmp_path / "plots"
     tables.mkdir(); plots_dir.mkdir()
-    # one member with zero alignments
-    _signal_plots_for("empty", [([], 0, 100)], 21, 15, 35, 21,
+    # one member with zero alignments: (alns, chrom, start, end)
+    _signal_plots_for("empty", [([], "chr", 0, 100)], 21, 15, 35, 21,
                       tables, plots_dir, "p", None)
     assert not list(tables.iterdir()), "no tables should be written for an empty unit"
     assert not list(plots_dir.iterdir()), "no plots should be written for an empty unit"

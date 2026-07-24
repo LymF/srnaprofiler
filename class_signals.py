@@ -78,32 +78,23 @@ def pattern_row(alns, minlen=15, maxlen=35):
     return [(v - mean) / sd for v in values]
 
 
-def coverage_profile(alns, region_start, region_end, bins=100):
-    """Per-strand weighted coverage over the locus span, rescaled to `bins` bins.
+def coverage_track(alns, region_start, region_end):
+    """Per-base RAW depth over [region_start, region_end): (sense, antisense).
 
-    Each bin holds the mean per-position 1/NH weight within its slice of the
-    region (sum of weights divided by positions-per-bin), so the result is
-    comparable across loci of different lengths regardless of `bins`.
+    IGV-style: each alignment adds +1 to every position it covers on its strand
+    lane, NOT weighted by 1/NH. This is the one intentional exception to
+    classplots' 1/NH weighting (a genome-browser coverage view).
     """
-    length = region_end - region_start
-    prof = {"+": [0.0] * bins, "-": [0.0] * bins}
-    if length <= 0:
-        return prof
+    length = max(region_end - region_start, 0)
+    sense = [0] * length
+    antisense = [0] * length
     for a in alns:
-        w = 1.0 / a.nh
-        lane = prof[a.strand]
-        read_start = max(a.pos, region_start)
-        read_end = min(a.pos + len(a.seq), region_end)
-        for p in range(read_start, read_end):
-            b = int((p - region_start) / length * bins)
-            if b >= bins:
-                b = bins - 1
-            lane[b] += w
-    positions_per_bin = length / bins
-    for lane in prof.values():
-        for b in range(bins):
-            lane[b] /= positions_per_bin
-    return prof
+        lane = sense if a.strand == "+" else antisense
+        s = max(a.pos, region_start)
+        e = min(a.pos + len(a.seq), region_end)
+        for p in range(s, e):
+            lane[p - region_start] += 1
+    return sense, antisense
 
 
 def strand_sequences(alns, strand, size_lo, size_hi, trim):
