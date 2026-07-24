@@ -609,16 +609,34 @@ Examples:
 
     from classplots import run_classplots
     cp = subparsers.add_parser("classplots",
-        help="Per-class plots from a classify .clusters.tsv + BAM")
-    cp.add_argument("--clusters", required=True, help="classify .clusters.tsv")
-    cp.add_argument("--bam", required=True, help="Sorted+indexed BAM used by classify")
+        help="Per-class plots from a classify .clusters.tsv + BAM",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  # all classes, 10 top loci each\n"
+            "  srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \\\n"
+            "      -o out --top-n 10\n\n"
+            "  # only piRNA and siRNA (class names are case-insensitive)\n"
+            "  srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \\\n"
+            "      -o out --classes piRNA,siRNA\n\n"
+            "  # one explicit locus, regardless of class\n"
+            "  srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \\\n"
+            "      -o out --region chr2:100-4000\n"
+        ))
+    cp.add_argument("--clusters", required=True,
+                    help="classify .clusters.tsv (e.g. run.clusters.tsv)")
+    cp.add_argument("--bam", required=True,
+                    help="Sorted+indexed BAM used by classify (e.g. sample.sorted.bam)")
     cp.add_argument("-o", "--outdir", required=True)
     cp.add_argument("-p", "--prefix", default="classplots")
     cp.add_argument("--top-n", dest="top_n", type=int, default=5,
                     help="Per-locus plots for the N most abundant loci per class (0 disables)")
-    cp.add_argument("--classes", help="Comma-separated subset of classes to plot")
+    cp.add_argument("--classes",
+                    help="Comma-separated subset of classes to plot, case-insensitive "
+                         "(e.g. 'piRNA,siRNA' or 'pirna'); default: all classes in the TSV")
     cp.add_argument("--region", action="append", metavar="CHROM:START-END",
-                    help="Plot one explicit coordinate span (repeatable), regardless of class")
+                    help="Plot one explicit coordinate span, e.g. chr2:100-4000 "
+                         "(repeatable), regardless of class")
     cp.add_argument("--min-length", dest="min_length", type=int, default=15,
                     help="Lower bound of the logo size window (size-dist/pattern plots use "
                          "the fixed 15-35 publication window of their R scripts)")

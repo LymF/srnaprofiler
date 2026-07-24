@@ -14,6 +14,14 @@ def test_group_by_class_and_restrict():
     assert set(only) == {"piRNA"}
 
 
+def test_group_by_class_is_case_insensitive():
+    # users type "sirna,pirna" but the classifier writes "siRNA"/"piRNA"
+    loci = [_l("a", "piRNA", 10), _l("b", "siRNA", 5)]
+    grouped = group_by_class(loci, classes={"sirna", "pirna"})
+    assert set(grouped) == {"piRNA", "siRNA"}      # canonical casing kept as key
+    assert set(group_by_class(loci, classes={"PIRNA"})) == {"piRNA"}
+
+
 def test_top_n_loci_orders_by_reads():
     loci = [_l("a", "piRNA", 10), _l("c", "piRNA", 20), _l("b", "piRNA", 5)]
     top = top_n_loci(loci, 2)

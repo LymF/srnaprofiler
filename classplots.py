@@ -49,10 +49,16 @@ def load_clusters(tsv_path):
 
 
 def group_by_class(loci, classes=None):
-    """Group Locus rows by `cls`; restrict to `classes` if given."""
+    """Group Locus rows by `cls`; restrict to `classes` if given.
+
+    Class matching is case-insensitive (the classifier writes "siRNA"/"piRNA",
+    but users naturally type "sirna,pirna"); the original `cls` is kept as the
+    group key so plot names use the canonical casing.
+    """
+    wanted = {c.lower() for c in classes} if classes else None
     grouped = defaultdict(list)
     for l in loci:
-        if classes is None or l.cls in classes:
+        if wanted is None or l.cls.lower() in wanted:
             grouped[l.cls].append(l)
     return dict(grouped)
 
@@ -218,6 +224,10 @@ def run_classplots(args):
     loci = load_clusters(args.clusters)
     classes = set(args.classes.split(",")) if args.classes else None
     grouped = group_by_class(loci, classes)
+    if not grouped:
+        available = sorted({l.cls for l in loci})
+        log(f"no loci to plot (classes={args.classes!r} matched nothing); "
+            f"available classes: {available}", "WARN")
     xm = prefers_xm_as_nh(args.bam)
     rpath = plots.get_r_scripts_path()
 
