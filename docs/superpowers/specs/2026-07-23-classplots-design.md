@@ -122,9 +122,12 @@ so `classify` and `classplots` share **one** source of truth for the ping-pong s
 | Sequence logo — **sense + antisense**, bits, classic | external `weblogo` CLI (WebLogo 3) | driven from Python | **new wiring** |
 | Coverage / strand profile (normalized metaplot per class) | R | `plotCoverageProfile.R` | **new** |
 
-The legacy `plotOffsetPhasingSeries.R` is **retired** and replaced by the two correct,
-separated scripts (`plotPingPong.R`, `plotPhasing.R`). It bundled three panels and used an
-ad-hoc `scale(Count + 1e-9)` z-score that does not match the engine's conventions.
+Within classplots, the legacy `plotOffsetPhasingSeries.R` is **superseded** by the two
+correct, separated scripts (`plotPingPong.R`, `plotPhasing.R`) — it bundled three panels and
+used an ad-hoc `scale(Count + 1e-9)` z-score that does not match the engine's conventions.
+The old script file is **kept in the repo** (not deleted), because the separate standalone
+`phasing.py` tool still invokes it at runtime via `--r-script`; classplots simply does not
+use it.
 
 **Logo backend.** The good-looking logo is the external `weblogo` CLI (WebLogo 3, bits /
 rna / classic), matching `extras/weblogofromsam-teste.pl` — **not** the matplotlib

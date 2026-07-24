@@ -797,7 +797,8 @@ git commit -m "feat(classplots): grouping, top-N, and dominant-DicerCall helpers
 
 **Files:**
 - Create: `plotPingPong.R`, `plotPhasing.R`, `plotCoverageProfile.R`
-- Delete: `plotOffsetPhasingSeries.R`
+- Keep `plotOffsetPhasingSeries.R` in the repo (classplots supersedes it but the standalone
+  `phasing.py` still uses it at runtime via `--r-script`; do NOT delete it).
 - Test: `tests/test_r_scripts_smoke.py` (create)
 
 **Interfaces:**
@@ -867,11 +868,11 @@ legend("topright", legend = c("+", "-"), col = c("#377eb8", "#e41a1c"), lwd = 2,
 dev.off()
 ```
 
-- [ ] **Step 4: Delete the retired script**
+- [ ] **Step 4: (superseded — do not delete `plotOffsetPhasingSeries.R`)**
 
-```bash
-git rm plotOffsetPhasingSeries.R
-```
+The old script is kept in the repo: the standalone `phasing.py` tool still calls it at
+runtime via `--r-script`. classplots simply does not reference it (it uses the three new
+scripts above). No deletion.
 
 - [ ] **Step 5: Write a smoke test that skips without Rscript**
 
