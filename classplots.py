@@ -5,12 +5,14 @@ import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
+import pysam
+
 from utils import log
 
 import plots
 import class_signals as cs
 import class_summary
-from samio import read_region, prefers_xm_as_nh
+from samio import read_region_handle, prefers_xm_as_nh
 
 _REQUIRED = ("chrom", "start", "end", "name", "reads", "dicer_call", "cls")
 
@@ -106,8 +108,9 @@ def run_weblogo(fasta_path, out_pdf, title):
     return True
 
 
-def _fetch(bam, locus, xm):
-    return list(read_region(bam, locus.chrom, locus.start, locus.end, xm_as_nh=xm))
+def _fetch(fh, locus, xm):
+    """Fetch a locus's alignments from an already-open BAM handle (reused across loci)."""
+    return list(read_region_handle(fh, locus.chrom, locus.start, locus.end, xm_as_nh=xm))
 
 
 def _safe_name(name):
@@ -231,23 +234,27 @@ def run_classplots(args):
     xm = prefers_xm_as_nh(args.bam)
     rpath = plots.get_r_scripts_path()
 
-    for cls, cls_loci in grouped.items():
-        period = dominant_dicer(cls_loci)
-        trim = args.logo_trim or period
-        members = [(_fetch(args.bam, l, xm), l.start, l.end) for l in cls_loci]
-        _signal_plots_for(cls, members, period, args.min_length, args.max_length,
-                          trim, tables, plotsdir, args.prefix, rpath)
-        for l in top_n_loci(cls_loci, args.top_n):
-            m = [(_fetch(args.bam, l, xm), l.start, l.end)]
-            _signal_plots_for(f"{cls}.locus.{_safe_name(l.name)}", m, period, args.min_length,
-                              args.max_length, trim, tables, plotsdir, args.prefix, rpath)
+    # Open the BAM once and reuse the handle for every locus. Opening the file
+    # re-reads the header and index, so re-opening it per locus would dominate
+    # runtime when a class has tens of thousands of loci.
+    with pysam.AlignmentFile(args.bam, "rb") as fh:
+        for cls, cls_loci in grouped.items():
+            period = dominant_dicer(cls_loci)
+            trim = args.logo_trim or period
+            members = [(_fetch(fh, l, xm), l.start, l.end) for l in cls_loci]
+            _signal_plots_for(cls, members, period, args.min_length, args.max_length,
+                              trim, tables, plotsdir, args.prefix, rpath)
+            for l in top_n_loci(cls_loci, args.top_n):
+                m = [(_fetch(fh, l, xm), l.start, l.end)]
+                _signal_plots_for(f"{cls}.locus.{_safe_name(l.name)}", m, period, args.min_length,
+                                  args.max_length, trim, tables, plotsdir, args.prefix, rpath)
 
-    # explicit user-requested coordinates (regardless of class)
-    default_period = dominant_dicer(loci)
-    for spec in (getattr(args, "region", None) or []):
-        reg = parse_region(spec)
-        trim = args.logo_trim or default_period
-        m = [(_fetch(args.bam, reg, xm), reg.start, reg.end)]
-        safe = _safe_name(reg.name)
-        _signal_plots_for(f"region.{safe}", m, default_period, args.min_length,
-                          args.max_length, trim, tables, plotsdir, args.prefix, rpath)
+        # explicit user-requested coordinates (regardless of class)
+        default_period = dominant_dicer(loci)
+        for spec in (getattr(args, "region", None) or []):
+            reg = parse_region(spec)
+            trim = args.logo_trim or default_period
+            m = [(_fetch(fh, reg, xm), reg.start, reg.end)]
+            safe = _safe_name(reg.name)
+            _signal_plots_for(f"region.{safe}", m, default_period, args.min_length,
+                              args.max_length, trim, tables, plotsdir, args.prefix, rpath)
