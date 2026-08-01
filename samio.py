@@ -101,3 +101,13 @@ def total_mapped(bam_path):
     """Total number of mapped alignments (fast, from the BAM index)."""
     with pysam.AlignmentFile(bam_path, "rb") as fh:
         return fh.mapped
+
+
+def weighted_library_size(sam_path, xm_as_nh=False):
+    """Library size on the 1/NH scale: sum of the per-alignment weights.
+
+    This is the number of distinct reads, not of alignment lines, so RPM lands on
+    the same scale as the per-locus counts. Costs a full pass over the file (the
+    index only knows alignment lines), unlike `total_mapped`.
+    """
+    return sum(1.0 / a.nh for a in read_alignments(sam_path, xm_as_nh))

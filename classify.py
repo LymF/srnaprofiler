@@ -2,7 +2,8 @@
 import os
 from collections import defaultdict
 from features import extract_by_chrom
-from samio import ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped, prefers_xm_as_nh
+from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
+                   prefers_xm_as_nh, weighted_library_size)
 from decider import RuleScorer, load_config
 from reporter import write_tsv, write_gff3, write_run_json
 from utils import log
@@ -41,14 +42,18 @@ def run_classify(args):
     log(f"Ensuring sorted, indexed BAM (threads={threads})...", "INFO")
     bam_path = ensure_sorted_indexed_bam(args.sam, base, threads)
 
-    lib_size = args.norm
-    if lib_size is None:
-        lib_size = total_mapped(bam_path)
-        log(f"--norm not given: using total mapped reads ({lib_size}) as lib_size for RPM", "WARN")
-
     xm_as_nh = prefers_xm_as_nh(bam_path)
     if xm_as_nh:
         log("bowtie1 input detected: using XM tag as NH for 1/NH multi-mapper weighting", "INFO")
+
+    lib_size = args.norm
+    if lib_size is None:
+        # Same 1/NH scale as the per-locus counts, so RPM is not deflated by the
+        # alignment lines a multi-mapping read contributes (~4x with bowtie1 -k5).
+        log("--norm not given: computing the weighted library size (sum of 1/NH)...", "INFO")
+        lib_size = weighted_library_size(bam_path, xm_as_nh)
+        log(f"Weighted library size: {lib_size:.1f} reads "
+            f"({total_mapped(bam_path)} alignment lines)", "INFO")
 
     chroms = mapped_chromosomes(bam_path)
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")

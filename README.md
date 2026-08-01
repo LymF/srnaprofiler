@@ -96,6 +96,11 @@ Raising `decision.min_reads` instead is the wrong lever: it only relabels loci a
 without retaining more signal (read mass kept drops to 0.671 / 0.644 / 0.615 at
 `min_reads` 20 / 50 / 100 for `--mincov 10`).
 
+Without `--norm`, the library size for RPM is the **weighted** one (sum of `1/NH`), on the
+same scale as the per-locus counts. It costs one extra pass over the BAM (~70s for 30M
+alignments); pass `--norm` to skip it. Counting alignment lines instead would deflate RPM
+by the average multiplicity — 3.19x on DRR351382 (30.8M lines for 9.66M reads).
+
 ### classplots — per-class plots
 
 Re-aggregates a classify run's alignments grouped by the assigned class and produces

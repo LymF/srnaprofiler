@@ -72,9 +72,11 @@ Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master`
    - Ferramenta nova: simulador do `RuleScorer` sobre o `.clusters.tsv` (reproduz classes e `review` com
      fidelidade 100%) permite avaliar variantes de regra em segundos, sem re-rodar o BAM.
 
-5. **RPM consistente com a ponderação.**
-   - Porquê: `lib_size` = `total_mapped` (linhas de alinhamento ≈ 4× reads únicos com `-k5`); RPM fica sub-escalado (consistente entre loci, mas escala absoluta off).
-   - Onde: `classify.run_classify` — `lib_size` = nº de reads ÚNICOS (Σ 1/NH). Baixa prioridade (RPM é só reportado, não usado na decisão).
+5. ~~**RPM consistente com a ponderação.**~~ **FEITO (2026-08-01).**
+   - `samio.weighted_library_size()` (Σ 1/NH num passe pelo BAM) vira o `lib_size` default do
+     `classify` quando não se passa `--norm`. Custo: ~70s para 30M alinhamentos.
+   - Em DRR351382: **9.658.002 reads ponderadas** contra 30.782.645 linhas de alinhamento — o RPM
+     estava sub-escalado por **3,19×** (fator confirmado na rodada real, mediana 3,187).
 
 6. **Refinar/validar o phasing hipergeométrico.** Parametrização atual é aproximação v1 (janela 10 ciclos). Validar com locus fásico conhecido (tasiRNA) ou marcar coluna como experimental.
 
