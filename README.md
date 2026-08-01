@@ -127,6 +127,12 @@ clusters (`extras/piC_ref_dm6.bed`, Release 6 coordinates — no liftover needed
 
     python3 extras/validate_piclusters.py run.clusters.tsv
 
+For a plant run, `extras/validate_plant_tas.py` does the equivalent against the
+canonical Arabidopsis TAS loci (21-nt phased tasiRNA sources), reading their
+coordinates straight out of a TAIR10 GFF3 by gene name:
+
+    python3 extras/validate_plant_tas.py run.clusters.tsv TAIR10_GFF3_genes.gff
+
 It reports recall over the reference clusters, the piRNA/siRNA read-mass enrichment
 inside them, and the flamenco-vs-42AB signature contrast. On DRR351382: 94.4% recall,
 3.0x piRNA enrichment, and flamenco comes out uni-strand and ping-pong-poor
