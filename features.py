@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments, read_region
 from clustering import call_islands
-from signals import pingpong_zscore, phase_metrics, hypergeometric_phase_pvalue
+from signals import offset_spectrum, pingpong_zscore, phase_metrics, hypergeometric_phase_pvalue
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -110,12 +110,7 @@ def build_record(region, region_alns, lib_size, config):
             phase5 = five - 2
         (plus5 if a.strand == "+" else minus5)[five] += w
         phase_positions.append((phase5, w))
-    overlap_counts = Counter()
-    for a5, ac in plus5.items():
-        for d in range(0, 20):            # overlap_length = d+1 in 1..20
-            bc = minus5.get(a5 + d, 0)
-            if bc:
-                overlap_counts[d + 1] += ac * bc
+    overlap_counts = offset_spectrum(plus5, minus5, lo=1, hi=20)
     r.pingpong_z, r.pingpong_pairs10 = pingpong_zscore(overlap_counts)
     total_pairs = sum(overlap_counts.values())
     r.overlap19_frac = round(overlap_counts.get(19, 0) / total_pairs, 4) if total_pairs else 0.0

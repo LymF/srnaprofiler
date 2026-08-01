@@ -55,12 +55,22 @@ def read_alignments(sam_path, xm_as_nh=False):
                 yield _to_aln(rec, xm_as_nh)
 
 
+def read_region_handle(fh, chrom, start=None, end=None, xm_as_nh=False):
+    """Iterate primary mapped alignments in a region of an ALREADY-OPEN AlignmentFile.
+
+    Use this when fetching many regions from the same BAM: opening the file (which
+    re-reads the header and index) once and reusing the handle avoids the per-region
+    open/close overhead that dominates when there are tens of thousands of loci.
+    """
+    for rec in fh.fetch(chrom, start, end):
+        if _keep(rec):
+            yield _to_aln(rec, xm_as_nh)
+
+
 def read_region(bam_path, chrom, start=None, end=None, xm_as_nh=False):
     """Iterates primary mapped alignments in a region of an INDEXED bam (fetch)."""
     with pysam.AlignmentFile(bam_path, "rb") as fh:
-        for rec in fh.fetch(chrom, start, end):
-            if _keep(rec):
-                yield _to_aln(rec, xm_as_nh)
+        yield from read_region_handle(fh, chrom, start, end, xm_as_nh)
 
 
 def ensure_sorted_indexed_bam(sam_path, out_base, threads=1):

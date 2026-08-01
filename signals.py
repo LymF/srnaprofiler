@@ -1,8 +1,25 @@
 """Biogenesis signals: ping-pong z-score and phasing."""
 import math
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from math import comb
+
+
+def offset_spectrum(a5, b5, lo=1, hi=20):
+    """5'-5' offset spectrum: Counter[d] = sum over p of a5[p] * b5[p + d - 1].
+
+    `d` is the overlap length in `lo..hi` (ping-pong peak at d=10). Cross-strand
+    ping-pong passes plus5/minus5; same-strand phasing passes the same dict twice,
+    which yields the 5'-5' distance distribution (peaks at multiples of the phase
+    length) and is phase-invariant, so it pools correctly across loci.
+    """
+    counts = Counter()
+    for p, ac in a5.items():
+        for d in range(lo, hi + 1):
+            bc = b5.get(p + d - 1, 0)
+            if bc:
+                counts[d] += ac * bc
+    return counts
 
 
 def pingpong_zscore(counts, target=10, lo=1, hi=20, min_bg=3, cap=100.0):

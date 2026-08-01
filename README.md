@@ -67,3 +67,26 @@ python3 srnaprofiler.py --help
 | `plots`    | Distribution and pattern plots                                 |
 
 Run `python3 srnaprofiler.py <command> --help` for per-module options.
+
+### classplots — per-class plots
+
+Re-aggregates a classify run's alignments grouped by the assigned class and produces
+per-class publication signal plots (size distribution, pattern, ping-pong, phasing,
+sequence logos) plus a matplotlib QC summary. Each **chosen locus** — the `--top-n` most
+abundant per class, and every `--region` — also gets an IGV-style coverage track (sense up,
+antisense down; raw depth).
+
+    srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
+        -o classplots_out --prefix run --top-n 5
+
+Plot a specific coordinate span (regardless of class) with one or more `--region`
+(the `name` column of the `.clusters.tsv` is exactly `chrom:start-end`):
+
+    srnaprofiler classplots --clusters run.clusters.tsv --bam sample.sorted.bam \
+        -o classplots_out --region chr1:100-400 --region X:9000-9500
+
+`--classes` is case-insensitive (`piRNA,siRNA` or `pirna`). The R signal plots (size
+distribution, pattern, ping-pong, phasing) need `Rscript` (skipped with a warning if
+absent). Sequence logos are drawn by **logomaker** (`pip install logomaker`), and the
+coverage track and QC summary use matplotlib — all pure Python, no Ghostscript or external
+CLI. `--logo-format` picks the logo format (pdf/svg/png/eps; default pdf).
