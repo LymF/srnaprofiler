@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments, read_region
 from clustering import call_islands
-from signals import offset_spectrum, pingpong_zscore, phase_metrics, hypergeometric_phase_pvalue
+from signals import offset_spectrum, pingpong_zscore, phase_test
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -109,7 +109,7 @@ def build_record(region, region_alns, lib_size, config):
             # strands into the SAME phase register. (-2 sign fixed by biology/test.)
             phase5 = five - 2
         (plus5 if a.strand == "+" else minus5)[five] += w
-        phase_positions.append((phase5, w))
+        phase_positions.append((phase5, w, L))
     overlap_counts = offset_spectrum(plus5, minus5, lo=1, hi=20)
     r.pingpong_z, r.pingpong_pairs10 = pingpong_zscore(overlap_counts)
     total_pairs = sum(overlap_counts.values())
@@ -120,16 +120,13 @@ def build_record(region, region_alns, lib_size, config):
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)
-        r.phase_score, r.phase_number, r.phase_ratio = phase_metrics(
-            phase_positions, region_start=start, phase_length=pl)
-        n_pos = len({p for p, _ in phase_positions})
-        # Hypergeometric population capped at ~10 phase cycles (Chen 2007 /
-        # PhasiHunter), not the whole island — avoids an absurd population in large islands.
-        wlen = min(end - start, 10 * pl)
-        population = max(2 * wlen - 1, 1)
-        r.phase_pvalue = hypergeometric_phase_pvalue(
-            population=population,
-            phased_positions=pl, draws=n_pos, observed=r.phase_number)
+        # Only reads OF the phase length carry the register (PhasiHunter does the
+        # same): a 26-nt read in a 21-nt phased locus is not a phasing product, it
+        # is noise in the register.
+        in_phase_len = [(p, w) for p, w, L in phase_positions if L == pl]
+        res = phase_test(in_phase_len, region_start=start, phase_length=pl)
+        r.phase_score, r.phase_number = res.score, res.number
+        r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
     return r
 
 

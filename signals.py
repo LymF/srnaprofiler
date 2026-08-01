@@ -1,7 +1,8 @@
 """Biogenesis signals: ping-pong z-score and phasing."""
+import bisect
 import math
 import statistics
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 from math import comb
 
 
@@ -70,6 +71,65 @@ def phase_metrics(positions, region_start, phase_length):
     phase_ratio = phase_abun / total
     score = phase_ratio * phase_number * math.log(phase_abun) if phase_abun > 0 else 0.0
     return round(score, 3), phase_number, round(phase_ratio, 3)
+
+
+PhaseResult = namedtuple("PhaseResult", ["score", "number", "ratio", "pvalue"])
+
+
+def phase_test(positions, region_start, phase_length, cycles=11):
+    """Phasing over the best window of `cycles` phase cycles.
+
+    positions: [(pos5, abundance)], 5' ends already pooled across strands.
+
+    Scans windows of `cycles * phase_length` nt in steps of one cycle and keeps
+    the most significant one, so local phasing is not diluted by a long island.
+    Everything the hypergeometric consumes comes from that one window:
+
+      population = 2 * window_len - 1   positions a read could start at
+      successes  = 2 * cycles - 1       positions that are in register
+      draws      = distinct positions occupied in the window
+      observed   = of those, how many are in the dominant register
+
+    The 2n-1 convention is PhasiHunter's (both strands can open a read at a
+    position); what matters is that successes/population ~ 1/phase_length, the
+    chance a random position lands in register.
+    """
+    if not positions:
+        return PhaseResult(0.0, 0, 0.0, 1.0)
+
+    span = max(p for p, _ in positions) - min(p for p, _ in positions) + 1
+    window_len = cycles * phase_length
+    if span <= window_len:
+        return _phase_window(positions, region_start, phase_length,
+                             min(cycles, max(1, -(-span // phase_length))))
+    # Sort once and slice each window by binary search: refiltering the whole list
+    # per window is O(windows x positions), which is untenable on a large island.
+    ordered = sorted(positions)
+    coords = [p for p, _ in ordered]
+    lo, hi = coords[0], coords[-1]
+    best = None
+    for start in range(lo, hi + 1, phase_length):
+        i = bisect.bisect_left(coords, start)
+        j = bisect.bisect_left(coords, start + window_len)
+        if i == j:
+            continue
+        res = _phase_window(ordered[i:j], region_start, phase_length, cycles)
+        if best is None or res.pvalue < best.pvalue or (
+                res.pvalue == best.pvalue and res.score > best.score):
+            best = res
+    return best or PhaseResult(0.0, 0, 0.0, 1.0)
+
+
+def _phase_window(positions, region_start, phase_length, cycles):
+    """Phasing metrics and p-value for a single window."""
+    score, number, ratio = phase_metrics(positions, region_start, phase_length)
+    window_len = cycles * phase_length
+    pvalue = hypergeometric_phase_pvalue(
+        population=max(2 * window_len - 1, 1),
+        phased_positions=max(2 * cycles - 1, 1),
+        draws=len({p for p, _ in positions}),
+        observed=min(number, max(2 * cycles - 1, 1)))
+    return PhaseResult(score, number, ratio, pvalue)
 
 
 def hypergeometric_phase_pvalue(population, phased_positions, draws, observed):

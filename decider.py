@@ -73,9 +73,15 @@ class RuleScorer:
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
         if "w_phase" in spec:
             # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].
+            # Size-gated like ping-pong, and for the same reason: phasing points at
+            # whichever class the size already fits. That is what lets one config
+            # serve both kingdoms — in plants a phased 21/24-nt locus is a
+            # phasiRNA/tasiRNA (siRNA), in arthropods a phased 24-31-nt locus is a
+            # Zucchini-processed piRNA. Ungated, w_phase was identical in both
+            # classes and cancelled out, so phasing decided nothing at all.
             t = spec["w_phase"] * _sigmoid(
                 record.phase_score,
-                x0=spec.get("phase_x0", 5.0), scale=spec.get("phase_scale", 3.0))
+                x0=spec.get("phase_x0", 5.0), scale=spec.get("phase_scale", 3.0)) * gate
             s += t; terms["phase"] = round(t, 3)
         return s, terms
 

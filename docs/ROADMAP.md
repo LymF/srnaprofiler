@@ -97,7 +97,48 @@ Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master`
    - Em DRR351382: **9.658.002 reads ponderadas** contra 30.782.645 linhas de alinhamento — o RPM
      estava sub-escalado por **3,19×** (fator confirmado na rodada real, mediana 3,187).
 
-6. **Refinar/validar o phasing hipergeométrico.** Parametrização atual é aproximação v1 (janela 10 ciclos). Validar com locus fásico conhecido (tasiRNA) ou marcar coluna como experimental.
+6. ~~**Refinar/validar o phasing hipergeométrico.**~~ **FEITO (2026-08-01).** Eram 3 bugs + 1 decisão.
+   - *(Nota: a versão antiga deste item sugeria validar com tasiRNA — **tasiRNA é de planta**, não existe
+     em Drosophila. Em artrópode o phasing relevante é o de piRNA processado pela Zucchini.)*
+   - **Bug 1:** `observed` (`phase_number`) era contado no locus inteiro, mas a população era uma janela
+     de 10 ciclos. Quando o locus tinha mais ciclos que a janela, a soma do hipergeométrico ficava vazia
+     e devolvia **p = 0,0 exato** — matematicamente impossível. Eram 22 loci; agora são **0**.
+   - **Bug 2:** `phased_positions` recebia `pl` (18–35). O PhasiHunter passa `phase_length` porque, com
+     janela de **11 ciclos**, as posições fásicas nas duas fitas são `2×11−1 = 21` — igual ao `phase_length`
+     de 21nt *por coincidência numérica*. Copiamos o número sem a coincidência (nossa janela era de 10
+     ciclos, e aplicávamos a qualquer tamanho). Agora é `2×ciclos−1`.
+   - **Bug 3:** o registro era montado com TODAS as reads do locus. O PhasiHunter (`phaseFunction.py:460`)
+     só usa reads **do tamanho da fase** — uma read de 26nt num locus de fase 21 é ruído no registro.
+   - **Novo `signals.phase_test()`:** varre janelas de 11 ciclos em passos de 1 ciclo (slice por `bisect`)
+     e fica com a mais significativa, então phasing local não se dilui em ilha grande. População, sucessos,
+     draws e observed saem todos da MESMA janela.
+   - **Decisão (gate de tamanho no `w_phase`):** antes o peso era idêntico nas duas classes, então somava a
+     mesma constante aos dois scores e **se cancelava** — confirmado removendo `w_phase`: 0 mudanças em
+     58.909 loci. O phasing era decorativo. Com o gate, ele aponta para a classe cujo tamanho bate, o que
+     serve **os dois reinos com um único config**: em planta um locus fásico de 21/24nt é phasiRNA/tasiRNA
+     (siRNA), em artrópode um de 24–31nt é piRNA.
+   - **Impacto medido:** 546 loci mudam de classe (543 piRNA→siRNA, majoritariamente 18–22nt — a direção
+     certa). Phasing significativo (p<0,001) em 427 loci (0,7%), concentrados em 24–27nt (piRNA por
+     Zucchini) e 21nt. Recall dos piCs e landmarks flamenco/42AB inalterados.
+   - **Limitação conhecida:** `phase_score` = `ratio × number × log(abun)` (fórmula PhasiHunter) ainda
+     correlaciona 0,53 com `log(reads)` — mede abundância junto com fase, então não é comparável entre
+     loci. Use `phase_pvalue` para comparar. Normalizar o score fica para o `MLDecider`.
+
+### Tier 2b — suporte a plantas (o segundo reino da tool)
+
+O motor já é agnóstico: `decider`/`features`/`reporter` não têm nome de classe embutido (só
+`classify.py:27,70` trata "miRNA", que vem de `--mirna-loci`). Toda a biologia está no `rules.yaml`
+— que hoje é **de artrópode**. O que falta:
+
+12. **`rules.plant.yaml` com a taxonomia certa.** Planta **não tem piRNA**, e a janela `24–31nt` está
+    ocupada por **hc-siRNA** (heterocromático, DCL3/AGO4, via RdDM) — abundantíssimo. Com o config atual
+    esses loci sairiam rotulados "piRNA". Também não há ping-pong em planta (sem PIWI), então
+    `w_pingpong`/`w_pingpong_penalty` não deveriam pontuar.
+13. **Feature `pct_5a` (primeira base A).** Em planta o carregamento em Argonauta é guiado pela base 5':
+    5'U → AGO1 (miRNA/tasiRNA 21nt), 5'A → AGO4 (hc-siRNA 24nt). Medimos `pct_1u` (1ª base U) e `pct_10a`
+    (**10ª** base A, assinatura de ping-pong), mas não a 1ª base A — a discriminante em planta. Barata de
+    somar ao `FeatureExtractor`.
+14. **Validar em dados de planta.** Sem um dataset vegetal, os itens 12–13 são especulação informada.
 
 ### Tier 3 — features maiores (specs próprios)
 
