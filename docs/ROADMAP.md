@@ -49,10 +49,29 @@ Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master`
 
 ### Tier 2 — validação biológica + refinamento
 
-3. **Validar as chamadas contra verdade conhecida.**
-   - Porquê: confirmar que nossos loci de piRNA/siRNA batem com a biologia.
-   - Como: cruzar os loci `piRNA` (GFF) com clusters de piRNA conhecidos de Drosophila (piRNAclusterDB; flamenco em `NT_037436`/X), e os `siRNA` 21nt bifita com loci de endo-siRNA/TE. Usar `bedtools intersect`.
-   - Pronto quando: sobreposição alta dos clusters conhecidos e sanidade das assinaturas (1U em piRNA, ping-pong em loci germinativos).
+3. ~~**Validar as chamadas contra verdade conhecida.**~~ **FEITO (2026-08-01).**
+   - Referência: `extras/piC_ref_dm6.bed` — 90 clusters de piRNA de ovário conservados (detectados em
+     ≥6 das 8 cepas) já remapeados para ISO1/dm6, que é o mesmo Release 6 do nosso genoma, então **não
+     precisa de liftover** (Srivastav et al. 2024, ver Referências). Script: `extras/validate_piclusters.py`
+     (interseção em numpy — sem dependência de `bedtools`).
+   - **Recall: 85/90 (94,4%)** dos piCs de referência contêm ≥1 locus nosso de piRNA não-review.
+     Os 5 não recuperados são pequenos ou teloméricos.
+   - **Enriquecimento:** os piCs ocupam 5,66% dos braços principais e concentram **16,9% da massa de
+     reads de piRNA (3,0×)**, contra 1,4× para siRNA.
+   - **Teste discriminativo (o mais forte):** flamenco (uni-fita, somático) vs 42AB (bifita, germinativo)
+     — assinaturas opostas conhecidas, e nada no código sabe onde essas regiões ficam:
+
+     | locus | frac_top | \|0,5−frac_top\| | pingpong_frac | 1U |
+     |---|---|---|---|---|
+     | flamenco (X) | 0,900 | 0,411 | 0,059 | 0,754 |
+     | 42AB (2R) | 0,519 | 0,152 | **0,132** | 0,719 |
+
+     O pipeline reproduz a assimetria de fita do flamenco e o ping-pong 2,2× maior do 42AB.
+   - **Ressalva sobre o gate do item 4:** dos 478 loci reclassificados piRNA→siRNA nos braços principais,
+     33,3% caem dentro de piCs de referência contra 26,7% de fundo (enriquecimento fraco, 1,25×), e
+     custaram 1 piC de recall (`2L:2017-22057`, telomérico). Eles têm `frac_top` ~0,55 e ping-pong ~0,07 —
+     compatível com endo-siRNA produzido por cluster bifita (Dcr-2 processa dsRNA dessas regiões), mas
+     esse é o ponto a reexaminar se o gate for estendido ao `w_1u`.
 
 4. ~~**Endurecer a guarda de `pingpong_frac` em loci minúsculos.**~~ **FEITO (2026-08-01)** — mas o problema
    real era outro.
@@ -103,3 +122,11 @@ Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master`
 - **Auditoria da heurística Perl antiga:** memória `srnaprofiler-fidelity-audit`.
 - **Dados de teste:** DRR351382 (ENA), BAM local ordenado em `~/dros.sorted.bam`; resultados em `/mnt/d/srnaprofiler-teste/results` e `~/classify_out`.
 - **Convenções:** código/comentários em inglês; autor sempre "Lucas" (nunca IA, nem em commits).
+
+---
+
+## Referências
+
+Srivastav, S. P., Feschotte, C., & Clark, A. G. (2024). Rapid evolution of piRNA clusters in the
+*Drosophila melanogaster* ovary. *Genome Research*, 34(5), 711–724.
+https://doi.org/10.1101/gr.278062.123

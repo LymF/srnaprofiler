@@ -101,6 +101,20 @@ same scale as the per-locus counts. It costs one extra pass over the BAM (~70s f
 alignments); pass `--norm` to skip it. Counting alignment lines instead would deflate RPM
 by the average multiplicity — 3.19x on DRR351382 (30.8M lines for 9.66M reads).
 
+### Validating the calls (Drosophila)
+
+`extras/validate_piclusters.py` cross-checks a run against 90 conserved ovary piRNA
+clusters (`extras/piC_ref_dm6.bed`, Release 6 coordinates — no liftover needed):
+
+    python3 extras/validate_piclusters.py run.clusters.tsv
+
+It reports recall over the reference clusters, the piRNA/siRNA read-mass enrichment
+inside them, and the flamenco-vs-42AB signature contrast. On DRR351382: 94.4% recall,
+3.0x piRNA enrichment, and flamenco comes out uni-strand and ping-pong-poor
+(frac_top 0.900, pingpong_frac 0.059) against a dual-strand, ping-pong-rich 42AB
+(0.519 / 0.132) — the published contrast, with nothing in the pipeline aware of either
+locus.
+
 ### classplots — per-class plots
 
 Re-aggregates a classify run's alignments grouped by the assigned class and produces
