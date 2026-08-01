@@ -68,6 +68,34 @@ python3 srnaprofiler.py --help
 
 Run `python3 srnaprofiler.py <command> --help` for per-module options.
 
+### classify — calibrating `--mincov`
+
+Read counts are weighted by `1/NH`, so honest per-locus abundances are much lower than
+raw alignment pileups. With a permissive `--mincov`, shallow mapping tails seed tens of
+thousands of 1–3 read islands that can never pass `decision.min_reads`, and most loci end
+up flagged `review`. Raising `--mincov` removes that noise at the source — it does not
+cost signal.
+
+Sweep on DRR351382 (Drosophila ovary, 30.8M alignments; `min_reads: 10`):
+
+| `--mincov` | clusters | review rate | kept loci | read mass kept | loci >=50 reads |
+|-----------:|---------:|------------:|----------:|---------------:|----------------:|
+| 2          | 83,464   | 79.3%       | 17,271    | 0.704          | 7,324           |
+| 5          | 64,828   | 66.2%       | 21,926    | 0.697          | 8,511           |
+| 10         | 58,909   | 56.4%       | 25,673    | 0.685          | 9,395           |
+| 20         | 48,278   | 44.2%       | 26,932    | 0.680          | 10,120          |
+| 30         | 41,015   | 35.2%       | 26,587    | 0.669          | 10,298          |
+| 50         | 30,176   | 15.1%       | 25,619    | 0.664          | 9,787           |
+
+The 1,000 most abundant loci called at `--mincov 2` are recovered in full (loci and read
+mass) at every threshold, including 50. Kept loci and substantial loci peak at 20–30 while
+the retained read mass stays flat, so the default is **10** (safe for shallow libraries);
+deep libraries (>=30M alignments) do better with **20–30**.
+
+Raising `decision.min_reads` instead is the wrong lever: it only relabels loci as `review`
+without retaining more signal (read mass kept drops to 0.671 / 0.644 / 0.615 at
+`min_reads` 20 / 50 / 100 for `--mincov 10`).
+
 ### classplots — per-class plots
 
 Re-aggregates a classify run's alignments grouped by the assigned class and produces

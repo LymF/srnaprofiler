@@ -1,7 +1,7 @@
 # srnaprofiler — Roadmap / Próximos passos
 
 **Autor:** Lucas
-**Atualizado:** 2026-07-22
+**Atualizado:** 2026-08-01
 
 Documento vivo para alinhar sessões. Estado atual + backlog priorizado. Detalhes de COMO a
 pipeline funciona (todas as fórmulas) estão na memória `srnaprofiler-pipeline-reference`.
@@ -12,7 +12,7 @@ Design/planos: `docs/superpowers/specs/2026-07-22-classification-engine-design.m
 
 ## Estado atual (PRONTO)
 
-Motor **classify** v1 completo, na branch `master` (local — falta `git push`). **37 testes** passando.
+Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master` (local — falta `git push`). **73 testes** passando.
 - Clustering por **ilhas de cobertura** (removeu o tiling do `qc`).
 - `FeatureExtractor` por locus → `ClusterRecord`: DicerCall, FracTop, 1U/10A/GC, ping-pong (z guardado+capado e `pingpong_frac`), phasing (phaseScore + hipergeométrico), multimap.
 - **Ponderação 1/NH** (via tag `XM` do bowtie1, detectado pelo `@PG`) — funciona: nos dados reais 96% são multimapeadores.
@@ -32,12 +32,20 @@ Motor **classify** v1 completo, na branch `master` (local — falta `git push`).
 
 ### Tier 1 — imediato (pequeno, alto valor)
 
-1. **Calibrar `mincov`/`min_reads` para a escala PONDERADA.**
-   - Porquê: com 1/NH, contagens honestas caem → **79% dos clusters viram `review`**. Muitos são ilhas de baixa abundância real.
-   - Onde: defaults em `srnaprofiler.py` (subparser classify) e `rules.yaml` (`decision.min_reads`); talvez subir `mincov` default (2→5). Decisão empírica: varrer valores e ver a taxa de review.
-   - Pronto quando: taxa de review razoável (<~40%) sem perder loci reais de piRNA/siRNA.
+1. ~~**Calibrar `mincov`/`min_reads` para a escala PONDERADA.**~~ **FEITO (2026-08-01).**
+   - Diagnóstico: dos 79% em `review`, **75,9% caíam por `reads < 10`** e só 3,4% por confiança sozinha —
+     o gargalo era o clustering, não o scorer (mediana de 3 reads ponderadas por cluster com `mincov=2`).
+   - Varredura em DRR351382 (`mincov` 2→50, tabela no README): loci mantidos e loci ≥50 reads têm pico em
+     20–30 com massa de reads retida praticamente plana; os 1000 loci mais abundantes de `mincov=2` são
+     recuperados 100% em todos os cortes. Subir `min_reads` é a alavanca errada (só rerrotula).
+   - Mudado: `--mincov` default 2→**10** (review 79%→56%; para libs ≥30M alinhamentos usar 20–30, que
+     bate a meta <40%). `min_margin` documentado como no-op enquanto houver só duas classes
+     (com softmax de 2 vias, `conf<0,6` ⟺ `margin<ln(1,5)≈0,405`).
 
 2. **`git push` da master.** Local está à frente do `origin` (remoto foi limpo com filter-repo). Publicar.
+   - A chave `~/.ssh/id_ed25519` ("git wsl", já cadastrada no GitHub) tem **passphrase** e o ambiente do
+     agente não tem `ssh-agent`. Push tem que sair de um terminal do usuário:
+     `eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519 && git push origin master`.
 
 ### Tier 2 — validação biológica + refinamento
 

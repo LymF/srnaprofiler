@@ -5,7 +5,15 @@ extractor:
   strand_cutoff: 0.8
 decision:
   review_confidence: 0.6
+  # No-op while there are only two classes: with a two-way softmax,
+  # confidence < 0.6 already implies margin < ln(1.5) ~= 0.405, so any
+  # min_margin below that never fires on its own. Kept because it becomes
+  # meaningful again as soon as a third class is added.
   min_margin: 0.15
+  # Weighted (1/NH) read count below which a locus is flagged for review.
+  # Raising it does not help: it only relabels loci without retaining more
+  # signal (see the calibration table in the README) — filter noise with
+  # --mincov instead.
   min_reads: 10
 classes:
   siRNA:
