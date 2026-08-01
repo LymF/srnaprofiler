@@ -27,6 +27,7 @@ class ClusterRecord:
     # composition
     pct_1u: float = 0.0
     pct_10a: float = 0.0
+    pct_5a: float = 0.0
     gc: float = 0.0
     # biogenesis
     pingpong_z: float = 0.0

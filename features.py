@@ -38,7 +38,7 @@ def build_record(region, region_alns, lib_size, config):
     seq_lens = Counter()
     gc_bases = 0.0
     total_bases = 0.0
-    n_1u = n_10a = 0.0
+    n_1u = n_10a = n_5a = 0.0
     multimap = 0
 
     for a in local:
@@ -57,6 +57,11 @@ def build_record(region, region_alns, lib_size, config):
         total_bases += w * L
         if oriented[:1] in ("T", "U"):
             n_1u += w
+        elif oriented[:1] == "A":
+            # 5'A sorts into AGO4 in plants (24-nt heterochromatic siRNA, RdDM),
+            # the counterpart of the 5'U/AGO1 route measured by pct_1u. Distinct
+            # from pct_10a, which is the TENTH base (a ping-pong signature).
+            n_5a += w
         if L >= 10 and oriented[9] == "A":
             n_10a += w
         if a.nh > 1:
@@ -86,6 +91,7 @@ def build_record(region, region_alns, lib_size, config):
     r.dicer_call = str(predom_len) if r.frac_in_window >= 0.8 else "N"
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
+    r.pct_5a = round(n_5a / r.reads, 4)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
     r.multimap_frac = round(multimap / raw_n, 4)

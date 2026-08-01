@@ -101,6 +101,25 @@ same scale as the per-locus counts. It costs one extra pass over the BAM (~70s f
 alignments); pass `--norm` to skip it. Counting alignment lines instead would deflate RPM
 by the average multiplicity — 3.19x on DRR351382 (30.8M lines for 9.66M reads).
 
+### Plants vs arthropods (`--config`)
+
+The engine carries no class names: `decider`/`features`/`reporter` only iterate over
+whatever `classes` the config declares, so the biology lives entirely in the YAML.
+
+| config | classes | notes |
+|---|---|---|
+| `rules.yaml` (default) | siRNA, piRNA | calibrated and validated on Drosophila ovary data |
+| `rules.plant.yaml` | phasiRNA, hcsiRNA, siRNA | **not yet validated on plant data** |
+
+Plants have no PIWI proteins, hence no piRNA class and no ping-pong terms, and their
+24-nt window belongs to heterochromatic siRNA (DCL3 -> AGO4, RdDM) rather than piRNA.
+The 5' base sorts a plant small RNA into an Argonaute — 5'U to AGO1, 5'A to AGO4 —
+which the `pct_5a` column and the `w_5a` weight cover.
+
+Ping-pong and phasing are both **size-gated**: each only scores the class whose size
+window already fits. That is what lets one phasing implementation serve both kingdoms —
+a phased 21-nt locus reinforces a plant phasiRNA, a phased 27-nt one an arthropod piRNA.
+
 ### Validating the calls (Drosophila)
 
 `extras/validate_piclusters.py` cross-checks a run against 90 conserved ovary piRNA

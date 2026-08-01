@@ -65,6 +65,11 @@ class RuleScorer:
         if "w_1u" in spec:
             t = spec["w_1u"] * record.pct_1u
             s += t; terms["1u"] = round(t, 3)
+        if "w_5a" in spec:
+            # 5'A -> AGO4 in plants (24-nt heterochromatic siRNA); the counterpart
+            # of the 5'U/AGO1 route scored by w_1u. Unused by the arthropod config.
+            t = spec["w_5a"] * getattr(record, "pct_5a", 0.0)
+            s += t; terms["5a"] = round(t, 3)
         if "w_fractop_mid" in spec:
             t = spec["w_fractop_mid"] * _mid(record.frac_top, sigma=sigma)
             s += t; terms["fractop_mid"] = round(t, 3)

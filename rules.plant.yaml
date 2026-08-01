@@ -1,0 +1,48 @@
+# rules.plant.yaml — scoring config for PLANTS.
+#
+# STATUS: NOT VALIDATED. The weights below encode textbook plant small-RNA
+# biology, but unlike rules.yaml (calibrated and validated on DRR351382, see
+# docs/ROADMAP.md) no plant dataset has been run through them yet. Treat the
+# numbers as a starting point to calibrate, not as settled defaults.
+#
+# Why a separate file at all — plants are not arthropods:
+#   * There is no piRNA class: plants have no PIWI proteins.
+#   * There is no ping-pong cycle either, for the same reason, so no w_pingpong.
+#   * The 24-nt window, which in arthropods is piRNA territory, belongs to
+#     heterochromatic siRNA (DCL3 -> AGO4, the RdDM pathway) and is one of the
+#     most abundant classes in vegetative tissue.
+#   * The 5' base sorts the small RNA into an Argonaute: 5'U -> AGO1 (miRNA,
+#     tasiRNA/phasiRNA), 5'A -> AGO4 (hc-siRNA). Hence w_1u and w_5a.
+#
+# miRNA is not scored here: as in the arthropod config it comes from
+# --mirna-loci (overlap with a curated BED) and bypasses the scorer.
+extractor:
+  dicermin: 18
+  dicermax: 35
+  strand_cutoff: 0.8
+decision:
+  review_confidence: 0.6
+  min_margin: 0.15
+  min_reads: 10
+classes:
+  # DCL4 products from RDR6 dsRNA: 21 nt, strongly phased (that is the defining
+  # evidence), 5'U, loaded into AGO1. w_phase is the heaviest weight because
+  # phasing is what separates a phasiRNA from an ordinary 21-nt siRNA.
+  phasiRNA:
+    size: {lo: 21, hi: 22}
+    w_size: 1.0
+    w_phase: 1.5
+    w_1u: 1.0
+  # DCL3 products from RDR2 dsRNA: 24 nt, 5'A, AGO4/RdDM. Repeat- and
+  # TE-derived, dual-strand, and NOT phased.
+  hcsiRNA:
+    size: {lo: 23, hi: 24}
+    w_size: 1.0
+    w_5a: 1.0
+    w_fractop_mid: 0.5
+  # Everything else double-stranded in the DCL4/DCL2 range: nat-siRNA, viral
+  # siRNA, secondary siRNA without a clean register.
+  siRNA:
+    size: {lo: 21, hi: 22}
+    w_size: 1.0
+    w_fractop_mid: 1.0

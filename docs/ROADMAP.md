@@ -130,15 +130,18 @@ O motor já é agnóstico: `decider`/`features`/`reporter` não têm nome de cla
 `classify.py:27,70` trata "miRNA", que vem de `--mirna-loci`). Toda a biologia está no `rules.yaml`
 — que hoje é **de artrópode**. O que falta:
 
-12. **`rules.plant.yaml` com a taxonomia certa.** Planta **não tem piRNA**, e a janela `24–31nt` está
-    ocupada por **hc-siRNA** (heterocromático, DCL3/AGO4, via RdDM) — abundantíssimo. Com o config atual
-    esses loci sairiam rotulados "piRNA". Também não há ping-pong em planta (sem PIWI), então
-    `w_pingpong`/`w_pingpong_penalty` não deveriam pontuar.
-13. **Feature `pct_5a` (primeira base A).** Em planta o carregamento em Argonauta é guiado pela base 5':
-    5'U → AGO1 (miRNA/tasiRNA 21nt), 5'A → AGO4 (hc-siRNA 24nt). Medimos `pct_1u` (1ª base U) e `pct_10a`
-    (**10ª** base A, assinatura de ping-pong), mas não a 1ª base A — a discriminante em planta. Barata de
-    somar ao `FeatureExtractor`.
-14. **Validar em dados de planta.** Sem um dataset vegetal, os itens 12–13 são especulação informada.
+12. ~~**`rules.plant.yaml` com a taxonomia certa.**~~ **FEITO (2026-08-01), NÃO VALIDADO.**
+    Classes: `phasiRNA` (21–22nt, `w_phase: 1.5` como evidência principal, 5'U), `hcsiRNA` (23–24nt, 5'A,
+    bifita) e `siRNA` (21–22nt bifita sem registro). Sem classe piRNA e sem termos de ping-pong — planta
+    não tem PIWI. `--config rules.plant.yaml` no `classify`. 5 testes fixam a discriminação pretendida
+    (inclusive que ping-pong não move nenhum score em planta).
+13. ~~**Feature `pct_5a` (primeira base A).**~~ **FEITO (2026-08-01).** Nova coluna no `.clusters.tsv` e
+    peso `w_5a` no decider. Ponderada por 1/NH e lida na orientação da read, como `pct_1u`.
+14. **Validar em dados de planta.** ← **é o que falta.** Os pesos do item 12 são biologia de livro-texto,
+    não calibração: nenhum dado vegetal passou por eles. Candidato natural a landmark (o análogo do
+    flamenco/42AB): os loci **TAS** de *Arabidopsis* (TAS1a/b/c, TAS2, TAS3a, TAS4), que são tasiRNA
+    canônicos de 21nt fásicos disparados por miR173/miR390 — coordenadas conhecidas em TAIR10. Um
+    dataset de inflorescência de Arabidopsis daria phasiRNA e hc-siRNA no mesmo experimento.
 
 ### Tier 3 — features maiores (specs próprios)
 
