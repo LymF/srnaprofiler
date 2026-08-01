@@ -20,11 +20,14 @@ classes:
     size: {lo: 20, hi: 22}
     w_size: 1.0
     w_fractop_mid: 1.0        # rewards FracTop ~0.5 (double-stranded)
-    w_pingpong_penalty: 1.0   # penalizes ping-pong
+    w_pingpong_penalty: 1.0   # penalizes ping-pong (size-gated, like w_pingpong)
     w_phase: 0.5
   piRNA:
     size: {lo: 24, hi: 31}
     w_size: 1.0
+    # Gated by this class's own size window (see decider._score_class): outside
+    # 24-31nt the ping-pong bonus fades out, so a dual-strand 21-nt endo-siRNA
+    # locus is not dragged into piRNA by 10-nt overlaps it gets from geometry.
     w_pingpong: 1.5
     w_1u: 1.0
     w_phase: 0.5

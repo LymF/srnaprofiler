@@ -47,13 +47,20 @@ class RuleScorer:
         size = self._size(record)
         edge = self.shape.get("size_edge", 3.0)
         sigma = self.shape.get("fractop_sigma", 0.15)
+        # Size gate for the ping-pong terms: a 10-nt 5'-5' overlap only carries
+        # ping-pong evidence where the size is already compatible with the class.
+        # Dual-strand 21-nt loci (canonical endo-siRNA) hit that overlap by geometry
+        # alone; without the gate, w_pingpong (the heaviest weight) plus the siRNA
+        # penalty flipped them to piRNA against an unambiguous size call.
+        gate = (_window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
+                if "size" in spec else 1.0)
         s = 0.0
         terms = {}
         if "w_size" in spec:
             t = spec["w_size"] * _window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
             s += t; terms["size"] = round(t, 3)
         if "w_pingpong" in spec:
-            t = spec["w_pingpong"] * self._pp_signal(record)
+            t = spec["w_pingpong"] * self._pp_signal(record) * gate
             s += t; terms["pingpong"] = round(t, 3)
         if "w_1u" in spec:
             t = spec["w_1u"] * record.pct_1u
@@ -62,7 +69,7 @@ class RuleScorer:
             t = spec["w_fractop_mid"] * _mid(record.frac_top, sigma=sigma)
             s += t; terms["fractop_mid"] = round(t, 3)
         if "w_pingpong_penalty" in spec:
-            t = spec["w_pingpong_penalty"] * self._pp_signal(record)
+            t = spec["w_pingpong_penalty"] * self._pp_signal(record) * gate
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
         if "w_phase" in spec:
             # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].

@@ -54,9 +54,23 @@ Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master`
    - Como: cruzar os loci `piRNA` (GFF) com clusters de piRNA conhecidos de Drosophila (piRNAclusterDB; flamenco em `NT_037436`/X), e os `siRNA` 21nt bifita com loci de endo-siRNA/TE. Usar `bedtools intersect`.
    - Pronto quando: sobreposição alta dos clusters conhecidos e sanidade das assinaturas (1U em piRNA, ping-pong em loci germinativos).
 
-4. **Endurecer a guarda de `pingpong_frac` em loci minúsculos.**
-   - Porquê: `pingpong_frac=1.0` espúrio em loci de 11–42 reads (poucos pares que por acaso caem no offset 10).
-   - Onde: `features.build_record` (guarda de mínimo de pares — hoje `total_pairs≥10`, subir/tornar depth-aware).
+4. ~~**Endurecer a guarda de `pingpong_frac` em loci minúsculos.**~~ **FEITO (2026-08-01)** — mas o problema
+   real era outro.
+   - A guarda em si virou não-problema: com `--mincov 10` (item 1), `pingpong_frac=1.0` espúrio caiu para
+     4 loci na corrida inteira. `features.build_record` ficou como está (`total_pairs≥10`).
+   - O que a investigação achou: **1.756 loci eram piRNA APENAS pelo termo de ping-pong**, e nenhum deles
+     tinha tamanho de piRNA (813 de 21nt, 275 de 19nt, 251 de 22nt; 43% bifita). O 1U deles (0,61–0,66)
+     é o dos siRNA (0,606), não o dos piRNA sólidos (0,741) — ou seja, endo-siRNA clássico de Drosophila
+     sendo chamado de piRNA. Causa: reads de 21nt em fitas opostas pegam sobreposição 5'-5' de 10nt por
+     geometria, e `w_pingpong: 1.5` (o maior peso) + `w_pingpong_penalty` no siRNA viravam a decisão
+     contra uma chamada de tamanho inequívoca.
+   - Correção: os termos de ping-pong agora são **multiplicados pela janela de tamanho da própria classe**
+     (`decider._score_class`). Impacto medido: 644 loci (1,09%) mudam de classe, piRNA de 18–23nt cai de
+     9.100 → 8.456, e os **37.978 piRNA de 24–31nt ficam intactos**.
+   - Sobra: ~7.300 loci de 18–23nt ainda são piRNA por `w_1u` (que também não é condicionado ao tamanho).
+     Avaliar o mesmo gate no 1U — decidir junto com a validação (#3).
+   - Ferramenta nova: simulador do `RuleScorer` sobre o `.clusters.tsv` (reproduz classes e `review` com
+     fidelidade 100%) permite avaliar variantes de regra em segundos, sem re-rodar o BAM.
 
 5. **RPM consistente com a ponderação.**
    - Porquê: `lib_size` = `total_mapped` (linhas de alinhamento ≈ 4× reads únicos com `-k5`); RPM fica sub-escalado (consistente entre loci, mas escala absoluta off).
