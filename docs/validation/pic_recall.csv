@@ -1,0 +1,9 @@
+run_id,n_reference,recovered,recall,piRNA_enrichment,siRNA_enrichment
+dros_mincov2,90,86,0.9556,2.974,0.618
+dros_mincov5,90,86,0.9556,3.098,0.578
+dros_mincov10,90,86,0.9556,3.034,0.573
+dros_mincov20,90,78,0.8667,2.91,0.493
+dros_mincov30,90,71,0.7889,2.8,0.454
+dros_mincov50,90,67,0.7444,2.556,0.547
+dros_ppgate,90,85,0.9444,2.993,1.379
+dros_phasing,90,85,0.9444,2.905,1.776

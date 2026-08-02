@@ -1,0 +1,18 @@
+# Provenance of every classify run kept for validation. Paths are local (the
+# .clusters.tsv files are too large to version); rerun classify to rebuild.
+# Regenerate the tables with:
+#   TAIR_GFF=... TAIR_TE=... python3 extras/collect_validation.py \
+#       docs/validation/manifest.tsv docs/validation/
+run_id	kingdom	path	mincov	config	mirna_source	note
+dros_mincov2	arthropod	/home/lucas/classify_out/dros_w.clusters.tsv	2	rules.yaml	none	pre-calibration baseline
+dros_mincov5	arthropod	/home/lucas/calib_out/mc5.clusters.tsv	5	rules.yaml	none	mincov sweep
+dros_mincov10	arthropod	/home/lucas/calib_out/mc10.clusters.tsv	10	rules.yaml	none	mincov sweep
+dros_mincov20	arthropod	/home/lucas/calib_out/mc20.clusters.tsv	20	rules.yaml	none	mincov sweep
+dros_mincov30	arthropod	/home/lucas/calib_out/mc30.clusters.tsv	30	rules.yaml	none	mincov sweep
+dros_mincov50	arthropod	/home/lucas/calib_out/mc50.clusters.tsv	50	rules.yaml	none	mincov sweep
+dros_ppgate	arthropod	/home/lucas/calib_out/final.clusters.tsv	10	rules.yaml	none	ping-pong size gate + weighted RPM
+dros_phasing	arthropod	/home/lucas/calib_out/dros_refix.clusters.tsv	10	rules.yaml	none	windowed phasing, post window-ranking fix
+at_nomirna	plant	/mnt/d/srnaprofiler-teste/plant/classify/at_final.clusters.tsv	10	rules.plant.yaml	none	calibrated plant config
+at_annotation	plant	/mnt/d/srnaprofiler-teste/plant/classify/at_mir.clusters.tsv	10	rules.plant.yaml	TAIR10 annotation (428)	upper bound for the miRNA route
+at_denovo	plant	/mnt/d/srnaprofiler-teste/plant/classify/at_denovo.clusters.tsv	10	rules.plant.yaml	miRDeep2 de novo (87)	realistic non-model scenario
+at_mincov30	plant	/mnt/d/srnaprofiler-teste/plant/classify/fix_mc30.clusters.tsv	30	rules.plant.yaml	none	mincov sweep
