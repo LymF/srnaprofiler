@@ -636,6 +636,13 @@ Examples:
     cp.add_argument("-p", "--prefix", default="classplots")
     cp.add_argument("--top-n", dest="top_n", type=int, default=5,
                     help="Per-locus plots for the N most abundant loci per class (0 disables)")
+    cp.add_argument("--max-loci", dest="max_loci", type=int, default=500,
+                    help="Cap the loci aggregated into the per-class plots, taking "
+                         "the most abundant (default: %(default)s, 0 = no cap). "
+                         "Without it a large class holds most of the BAM in memory: "
+                         "the 1000 densest hc-siRNA loci of an Arabidopsis run are "
+                         "10.7M alignments. The log reports how much of the class "
+                         "read mass the plot covers.")
     cp.add_argument("--classes",
                     help="Comma-separated subset of classes to plot, case-insensitive "
                          "(e.g. 'piRNA,siRNA' or 'pirna'); default: all classes in the TSV")

@@ -215,10 +215,23 @@ def run_classplots(args):
     # runtime when a class has tens of thousands of loci.
     logo_fmt = getattr(args, "logo_format", "pdf")
     with pysam.AlignmentFile(args.bam, "rb") as fh:
+        max_loci = getattr(args, "max_loci", 1000) or 0
         for cls, cls_loci in grouped.items():
             period = dominant_dicer(cls_loci)
             trim = args.logo_trim or period
-            members = [(_fetch(fh, l, xm), l.chrom, l.start, l.end) for l in cls_loci]
+            # The class-level plots aggregate every member, and holding all of
+            # their alignments at once is what a big class cannot afford: an
+            # hc-siRNA class of 46k loci is most of the BAM as Python objects.
+            # Cap by abundance and say how much of the class the plot speaks for.
+            plotted = cls_loci
+            if max_loci and len(cls_loci) > max_loci:
+                total = sum(l.reads for l in cls_loci)
+                plotted = top_n_loci(cls_loci, max_loci)
+                covered = sum(l.reads for l in plotted) / total if total else 0.0
+                log(f"{cls}: aggregating the {max_loci} most abundant of "
+                    f"{len(cls_loci)} loci ({covered:.1%} of the class read mass); "
+                    f"raise --max-loci to include more", "WARN")
+            members = [(_fetch(fh, l, xm), l.chrom, l.start, l.end) for l in plotted]
             _signal_plots_for(cls, members, period, args.min_length, args.max_length,
                               trim, tables, plotsdir, args.prefix, rpath, logo_fmt)
             for l in top_n_loci(cls_loci, args.top_n):
