@@ -117,9 +117,13 @@ Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master`
      58.909 loci. O phasing era decorativo. Com o gate, ele aponta para a classe cujo tamanho bate, o que
      serve **os dois reinos com um único config**: em planta um locus fásico de 21/24nt é phasiRNA/tasiRNA
      (siRNA), em artrópode um de 24–31nt é piRNA.
-   - **Impacto medido:** 546 loci mudam de classe (543 piRNA→siRNA, majoritariamente 18–22nt — a direção
-     certa). Phasing significativo (p<0,001) em 427 loci (0,7%), concentrados em 24–27nt (piRNA por
-     Zucchini) e 21nt. Recall dos piCs e landmarks flamenco/42AB inalterados.
+   - **Impacto medido** (re-medido em 2026-08-01 após o fix `7057776`, que também é do phasing e
+     contaminava estes números): **591 loci** mudam de classe (588 piRNA→siRNA, majoritariamente
+     18–22nt — a direção certa). Phasing significativo (p<0,001) em **352 loci** (0,6%), concentrados
+     em 24–26nt (piRNA por Zucchini) e 21nt. Recall dos piCs e landmarks flamenco/42AB inalterados.
+     *(Os valores antes publicados aqui — 546 loci e 427 fásicos — foram medidos com o bug da janela
+     vazia ainda ativo. O fix isolado move 45 loci de classe no Drosophila, contra a recalibração
+     inteira em planta: lá `w_phase` é 0,5 e gated, aqui é 3,0 e define a classe.)*
    - **Limitação conhecida:** `phase_score` = `ratio × number × log(abun)` (fórmula PhasiHunter) ainda
      correlaciona 0,53 com `log(reads)` — mede abundância junto com fase, então não é comparável entre
      loci. Use `phase_pvalue` para comparar. Normalizar o score fica para o `MLDecider`.
