@@ -4,6 +4,9 @@ extractor:
   dicermax: 35
   strand_cutoff: 0.8
 decision:
+  # Minimum evidence BEYOND the size window for a class to be named; below it
+  # the locus is 'unclassified'. Size is a filter, not a signature.
+  min_evidence: 0.3
   review_confidence: 0.6
   # No-op while there are only two classes: with a two-way softmax,
   # confidence < 0.6 already implies margin < ln(1.5) ~= 0.405, so any

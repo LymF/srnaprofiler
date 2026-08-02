@@ -83,6 +83,11 @@ class RuleScorer:
             s += t; terms["phase"] = round(t, 3)
         return s, terms
 
+    @staticmethod
+    def _support(terms):
+        """Positive evidence excluding size: what actually earns the class."""
+        return sum(v for k, v in terms.items() if k != "size" and v > 0)
+
     def decide(self, record):
         scores = {}
         evidence = {}
@@ -106,4 +111,13 @@ class RuleScorer:
             or record.reads < dec["min_reads"]
             or record.dicer_call == "N"
         )
+        # Size is a filter, not a signature: without evidence beyond it, name
+        # nothing rather than hand out the class the size happens to fit.
+        min_ev = dec.get("min_evidence", 0.0)
+        if min_ev > 0:
+            support = self._support(evidence[top_name])
+            record.support = round(support, 3)
+            if support < min_ev:
+                record.cls = "unclassified"
+                record.review = True
         return record
