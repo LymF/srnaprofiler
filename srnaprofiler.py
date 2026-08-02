@@ -553,15 +553,18 @@ Examples:
     )
     
     # Reference options (mutually exclusive group)
-    mirna_ref = mirna_parser.add_argument_group("reference (choose one)")
-    ref_group = mirna_ref.add_mutually_exclusive_group(required=True)
-    ref_group.add_argument(
+    # miRDeep2 needs both: the index to map, the FASTA to fold precursors.
+    mirna_ref = mirna_parser.add_argument_group(
+        "reference (at least one; both avoids rebuilding the index)")
+    mirna_ref.add_argument(
         "-g", "--genome",
-        help="Reference genome FASTA (will build index)"
+        help="Reference genome FASTA. Needed by miRDeep2 to fold precursors; "
+             "an index is built from it if --index-prefix is not given"
     )
-    ref_group.add_argument(
+    mirna_ref.add_argument(
         "--index-prefix",
-        help="Pre-built Bowtie index prefix from mapping module"
+        help="Pre-built Bowtie index prefix (e.g. from the mapping module). "
+             "Without -g, the genome FASTA is looked up next to it"
     )
     
     # Reference files (optional)

@@ -11,9 +11,7 @@ from reporter import write_tsv, write_gff3, write_run_json
 from utils import log
 
 
-# Resident bytes per alignment held by a worker. Measured, not guessed: 339 B
-# on Drosophila 3R (6.9M alignments -> 2244 MB) and 192 B on Arabidopsis Chr3
-# (13.0M -> 2382 MB). The higher figure is used so the cap errs on the safe side.
+# Resident bytes per alignment, measured: 339 B (Drosophila), 192 B (Arabidopsis).
 _BYTES_PER_ALIGNMENT = 340
 
 

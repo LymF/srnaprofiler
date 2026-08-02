@@ -219,10 +219,8 @@ def run_classplots(args):
         for cls, cls_loci in grouped.items():
             period = dominant_dicer(cls_loci)
             trim = args.logo_trim or period
-            # The class-level plots aggregate every member, and holding all of
-            # their alignments at once is what a big class cannot afford: an
-            # hc-siRNA class of 46k loci is most of the BAM as Python objects.
-            # Cap by abundance and say how much of the class the plot speaks for.
+            # Holding every member's alignments at once is what a big class
+            # cannot afford; cap by abundance and report the coverage.
             plotted = cls_loci
             if max_loci and len(cls_loci) > max_loci:
                 total = sum(l.reads for l in cls_loci)

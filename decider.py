@@ -47,11 +47,8 @@ class RuleScorer:
         size = self._size(record)
         edge = self.shape.get("size_edge", 3.0)
         sigma = self.shape.get("fractop_sigma", 0.15)
-        # Size gate for the ping-pong terms: a 10-nt 5'-5' overlap only carries
-        # ping-pong evidence where the size is already compatible with the class.
-        # Dual-strand 21-nt loci (canonical endo-siRNA) hit that overlap by geometry
-        # alone; without the gate, w_pingpong (the heaviest weight) plus the siRNA
-        # penalty flipped them to piRNA against an unambiguous size call.
+        # Size gate: dual-strand 21-nt loci hit the 10-nt overlap by geometry, so
+        # ping-pong must not outvote an unambiguous size call.
         gate = (_window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
                 if "size" in spec else 1.0)
         s = 0.0
@@ -78,12 +75,8 @@ class RuleScorer:
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
         if "w_phase" in spec:
             # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].
-            # Size-gated like ping-pong, and for the same reason: phasing points at
-            # whichever class the size already fits. That is what lets one config
-            # serve both kingdoms — in plants a phased 21/24-nt locus is a
-            # phasiRNA/tasiRNA (siRNA), in arthropods a phased 24-31-nt locus is a
-            # Zucchini-processed piRNA. Ungated, w_phase was identical in both
-            # classes and cancelled out, so phasing decided nothing at all.
+            # Size-gated like ping-pong: phasing only counts where the size fits,
+            # which is what lets one config serve plants and arthropods.
             t = spec["w_phase"] * _sigmoid(
                 record.phase_score,
                 x0=spec.get("phase_x0", 5.0), scale=spec.get("phase_scale", 3.0)) * gate

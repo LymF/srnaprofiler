@@ -58,9 +58,7 @@ def build_record(region, region_alns, lib_size, config):
         if oriented[:1] in ("T", "U"):
             n_1u += w
         elif oriented[:1] == "A":
-            # 5'A sorts into AGO4 in plants (24-nt heterochromatic siRNA, RdDM),
-            # the counterpart of the 5'U/AGO1 route measured by pct_1u. Distinct
-            # from pct_10a, which is the TENTH base (a ping-pong signature).
+            # 5'A -> AGO4 in plants (24-nt hc-siRNA). Not pct_10a, which is base 10.
             n_5a += w
         if L >= 10 and oriented[9] == "A":
             n_10a += w
@@ -126,9 +124,7 @@ def build_record(region, region_alns, lib_size, config):
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)
-        # Only reads OF the phase length carry the register (PhasiHunter does the
-        # same): a 26-nt read in a 21-nt phased locus is not a phasing product, it
-        # is noise in the register.
+        # Only reads of the phase length carry the register (as PhasiHunter).
         in_phase_len = [(p, w) for p, w, L in phase_positions if L == pl]
         res = phase_test(in_phase_len, region_start=start, phase_length=pl)
         r.phase_score, r.phase_number = res.score, res.number

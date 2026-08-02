@@ -405,6 +405,31 @@ def clean_mirna_directories(processed_dir: Path, results_dir: Path):
         log(f"Warning: Could not clean all directories: {e}", "WARN")
 
 
+GENOME_SUFFIXES = (".fa", ".fasta", ".fna", ".fas")
+
+
+def find_genome_beside_index(index_prefix: str):
+    """Locate the genome FASTA sitting next to a bowtie index, or None.
+
+    Covers .fna as well as .fa/.fasta: genomes downloaded from NCBI (the common
+    case) use .fna, and missing it aborted the module with the file in plain
+    sight. Compressed FASTA is ignored on purpose — miRDeep2 needs it
+    uncompressed and would fail later, less clearly.
+
+    With several FASTAs in the directory, the one whose name matches the index
+    prefix wins; picking arbitrarily would silently analyse the wrong genome.
+    """
+    index_path = Path(index_prefix)
+    candidates = [p for p in index_path.parent.iterdir()
+                  if p.is_file() and p.suffix.lower() in GENOME_SUFFIXES]
+    if not candidates:
+        return None
+    for p in candidates:
+        if p.stem == index_path.name:
+            return p
+    return sorted(candidates)[0]
+
+
 def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
     """Copy all input files to pipeline directory structure for portability."""
     input_files = {}
@@ -416,14 +441,15 @@ def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
         input_files['genome'] = copy_input_file(genome_source, genome_local, "genome")
     elif hasattr(args, 'index_prefix') and args.index_prefix:
         # Try to find genome from index directory
-        index_dir = Path(args.index_prefix).parent
-        genome_candidates = list(index_dir.glob("*.fa")) + list(index_dir.glob("*.fasta"))
-        if genome_candidates:
-            genome_source = genome_candidates[0]
+        genome_source = find_genome_beside_index(args.index_prefix)
+        if genome_source:
+            log(f"Using genome found beside the index: {genome_source.name}", "INFO")
             genome_local = processed_dir / f"{args.prefix}.genome.fa"
             input_files['genome'] = copy_input_file(genome_source, genome_local, "genome")
         else:
-            log("Could not find genome file from index directory", "ERROR")
+            log(f"No genome FASTA ({'/'.join(GENOME_SUFFIXES)}) next to the index "
+                f"at {Path(args.index_prefix).parent} — pass -g/--genome "
+                f"explicitly", "ERROR")
             sys.exit(1)
     
     # 2. Handle reads file
