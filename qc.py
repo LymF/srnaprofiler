@@ -197,8 +197,15 @@ def standardize_fasta_headers(in_fa: Path, out_fa: Path) -> int:
     return seq_count
 
 
+_IUPAC_TO_N = str.maketrans("BDHKMRSVWY", "NNNNNNNNNN")
+
+
 def prepare_genome(genome_path, outdir, prefix):
-    """Standardizes the FASTA (uppercase) without tiling. Returns the output path."""
+    """Standardizes the FASTA (uppercase, IUPAC -> N) without tiling.
+
+    miRDeep2 rejects any base outside [ACGTNacgtn], and reference genomes do
+    carry ambiguity codes. Returns the output path.
+    """
     import os
     os.makedirs(outdir, exist_ok=True)
     out = os.path.join(outdir, f"{prefix}.genome.fa")
@@ -207,7 +214,7 @@ def prepare_genome(genome_path, outdir, prefix):
             if line.startswith(">"):
                 fout.write(line)
             else:
-                fout.write(line.strip().upper() + "\n")
+                fout.write(line.strip().upper().translate(_IUPAC_TO_N) + "\n")
     return out
 
 

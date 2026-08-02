@@ -88,6 +88,19 @@ def validate_fasta_file(fasta_path: Path) -> bool:
         return False
 
 
+READ_FORMATS = (".fastq", ".fq", ".fasta", ".fa", ".fna")
+
+
+def reads_suffix(path: Path) -> str:
+    """Extension to keep when copying reads: .suffix drops .fastq from .fastq.gz."""
+    sufs = [s.lower() for s in path.suffixes]
+    if sufs and sufs[-1] in (".gz", ".bz2"):
+        if len(sufs) >= 2 and sufs[-2] in READ_FORMATS:
+            return sufs[-2] + sufs[-1]
+        return sufs[-1]
+    return path.suffix
+
+
 def copy_input_file(source_path: Path, dest_path: Path, file_type: str) -> Path:
     """Copy input file to pipeline directory structure if needed."""
     if source_path == dest_path or dest_path.exists():
@@ -454,7 +467,7 @@ def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
     
     # 2. Handle reads file
     reads_source = Path(args.reads)
-    reads_local = processed_dir / f"{args.prefix}.input_reads{reads_source.suffix}"
+    reads_local = processed_dir / f"{args.prefix}.input_reads{reads_suffix(reads_source)}"
     input_files['reads'] = copy_input_file(reads_source, reads_local, "reads")
     
     # 3. Handle miRNA reference files
