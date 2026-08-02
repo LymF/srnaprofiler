@@ -170,6 +170,27 @@ O motor já é agnóstico: `decider`/`features`/`reporter` não têm nome de cla
       subestimava o `hcsiRNA` e inventava 3.080 mudanças de classe. Agora o script **aborta** se falta
       coluna, em vez de assumir 0 em silêncio.
 
+### Rota miRNA validada ponta a ponta (2026-08-02, Arabidopsis)
+
+Fluxo correto: **`qc -g` → `mapping` → `mirna` → `classify --mirna-loci`**. O `qc -g` NÃO é opcional
+(padroniza headers e agora mapeia IUPAC→N; o miRDeep2 recusa genoma sem isso).
+
+- **Especificidade do `classify` por cenário** (247 loci que SÃO miRNA anotado):
+
+  | `--mirna-loci` | loci miRNA | anotados corretos |
+  |---|---|---|
+  | nenhum | 0 | 0/247 (0%) — 184 recebem classe errada AFIRMADA |
+  | anotação TAIR10 (428) | 243 | **247/247 (100%)** |
+  | de novo miRDeep2 (87) | 85 | 63/247 (25,5%) |
+
+- **miRDeep2 de novo puro** (sem `--mature`/`--hairpin`): 94 predições, precisão 53,2% contra a anotação,
+  recall 16,1%. O score separa bem (mediana 96,3 nos que batem, 10,0 nos que não) → **filtrar por score é
+  obrigatório**; é a evidência empírica que faltava para o item 7.
+- **A recuperação não melhora com abundância** (25% nos loci >10k reads, 34% no top-50), então o gargalo
+  não é sensibilidade a baixa expressão: é o modo de novo puro. **Para organismo não-modelo, passar
+  miRBase de espécie relacionada** (`--mature`/`--hairpin`, que o miRDeep2 aceita como "other species").
+  Falta medir esse ganho.
+
 ### Achados operacionais desta rodada
 
 15. **`--create-bam` não dimensiona a memória do `samtools sort`.** `mapping.convert_sam_to_bam` não passa

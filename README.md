@@ -101,6 +101,21 @@ same scale as the per-locus counts. It costs one extra pass over the BAM (~70s f
 alignments); pass `--norm` to skip it. Counting alignment lines instead would deflate RPM
 by the average multiplicity — 3.19x on DRR351382 (30.8M lines for 9.66M reads).
 
+### Order of the steps
+
+    qc -g genome.fa  ->  mapping  ->  mirna  ->  classify --mirna-loci <miRDeep2 BED>
+
+`qc -g` is **not optional**: it standardizes the FASTA headers and maps IUPAC
+ambiguity codes to N. miRDeep2 rejects a genome that has either ("not allowed
+whitespaces in its first identifier", "allowed only to comprise characters
+[ACGTNacgtn]"), and NCBI genomes have both.
+
+`classify` has no miRNA class of its own — miRNA loci come from `--mirna-loci`.
+Skipping it on the Arabidopsis run left 184 annotated miRNAs carrying a
+confidently asserted wrong class; feeding the loci in fixed all 247. Filter the
+miRDeep2 predictions by score first: predictions matching an annotated miRNA
+score a median of 96.3, the rest 10.0.
+
 ### Plants vs arthropods (`--config`)
 
 The engine carries no class names: `decider`/`features`/`reporter` only iterate over
