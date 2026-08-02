@@ -137,11 +137,48 @@ O motor já é agnóstico: `decider`/`features`/`reporter` não têm nome de cla
     (inclusive que ping-pong não move nenhum score em planta).
 13. ~~**Feature `pct_5a` (primeira base A).**~~ **FEITO (2026-08-01).** Nova coluna no `.clusters.tsv` e
     peso `w_5a` no decider. Ponderada por 1/NH e lida na orientação da read, como `pct_1u`.
-14. **Validar em dados de planta.** ← **é o que falta.** Os pesos do item 12 são biologia de livro-texto,
-    não calibração: nenhum dado vegetal passou por eles. Candidato natural a landmark (o análogo do
-    flamenco/42AB): os loci **TAS** de *Arabidopsis* (TAS1a/b/c, TAS2, TAS3a, TAS4), que são tasiRNA
-    canônicos de 21nt fásicos disparados por miR173/miR390 — coordenadas conhecidas em TAIR10. Um
-    dataset de inflorescência de Arabidopsis daria phasiRNA e hc-siRNA no mesmo experimento.
+14. ~~**Validar em dados de planta.**~~ **FEITO (2026-08-01).**
+    - **Dados:** SRR30831721 (Col-0, botões florais, WT do BioProject PRJNA1011929 — estudo de Pol IV/CLSY,
+      ou seja, a via RdDM dos 24nt). 25,7M reads; adaptador `AGATCGGAAGAGCACACGTCTGAACTCCAGT` **lido das
+      próprias reads** (o default da tool, `TGGAATTCTCGGGTGCCAAGG`, é outro e teria destruído a
+      distribuição de tamanhos). 24,1M reads após trimming, 82,7% mapeadas no TAIR10 (`GCF_000001735.4`).
+      Ferramentas no env conda `srnaprofiler` (bowtie/fastp/samtools não estão no PATH padrão).
+    - **Resultado:** **6/6 loci TAS** chamados `phasiRNA` de 21nt; genoma 82,2% de 24nt, 94,5% `hcsiRNA`;
+      `pct_5a` 0,512 em 23–24nt contra 0,330 em 21–22nt (AGO4 vs AGO1). Taxa de review 33,1%.
+    - **Calibração** (os pesos de livro-texto do item 12 estavam errados em dois pontos):
+      `w_size` do phasiRNA 1.0→**0.5** e `w_phase` 1.5→**3.0** — com `w_size` alto a janela de tamanho
+      carregava a classe sozinha e todo locus de 21–22nt virava phasiRNA (6.557 loci, 2,8% com phasing;
+      a classe `siRNA` ficava com 311). `phase_scale` 3.0→**1.5**: a sigmoide larga devolvia 0,159 para
+      `phase_score` ZERO, dando 0,24 de score de graça. Depois: 1.165 phasiRNA, 2.701 siRNA, 6/6 TAS.
+    - **`review_confidence` 0.6→0.43** — e isso é MAIS estrito, não menos. O limiar é sobre softmax, logo
+      seu rigor depende do nº de classes: com 2 classes `conf≥0.6` = margem `ln(1,5)=0,405`; com 3 classes
+      = margem **1,10**, quase 3× mais severo sem ninguém ter decidido. Era a causa de 39,6% dos loci irem
+      a review só por confiança. Review 66,9% → 33,1%.
+    - **`mincov`: manter 10 em planta** (o default). Ao contrário do Drosophila, subir PERDE sinal:
+      mincov 30 mantém 17.396 loci contra 23.248, com a mesma massa de reads (0,164 vs 0,162). hc-siRNA
+      é difuso por natureza (espalhado por TEs), então cortar por profundidade descarta locus real.
+    - **Bug encontrado graças a esses dados** (não aparecia no Drosophila): `phase_test` ranqueava as
+      janelas por **menor p-valor**, e o hipergeométrico premia janela vazia (`P(X>=1)` com 1 draw = 0,046
+      < o p de uma janela com 7 ciclos reais). O TAS1C, locus mais abundante, tinha phasing 91,2 reportado
+      como 7,8, e o mesmo locus oscilava 4,15 / 0,69 / 11,84 conforme o `mincov`. Corrigido em `7057776`
+      (ranqueia por ciclos em registro, depois score); os valores ficaram estáveis entre mincov.
+    - **Bug no `simulate_rules.py`:** `pct_5a` faltava em `FEATURES`, então toda simulação de planta
+      subestimava o `hcsiRNA` e inventava 3.080 mudanças de classe. Agora o script **aborta** se falta
+      coluna, em vez de assumir 0 em silêncio.
+
+### Achados operacionais desta rodada
+
+15. **`--create-bam` não dimensiona a memória do `samtools sort`.** `mapping.convert_sam_to_bam` não passa
+    `-m`, então usa o default de 768 MB **por thread**: `--threads 12` pede 9,2 GB e morre com
+    "couldn't allocate memory for bam_mem" em máquina de 8 GB, em qualquer disco. O que ele produz está
+    correto (BAM `SO:coordinate` + `.bai`, verificado) — o defeito é só o dimensionamento.
+16. **O `classify` também não tem teto de memória.** Cada thread carrega os alinhamentos de um cromossomo
+    inteiro; com 4 threads em Arabidopsis o processo é morto pelo OOM killer numa máquina de 8 GB
+    (`--threads 1` usa ~4 GB de pico). Vale um aviso ou um teto automático.
+17. **O `/mnt/d` (drvfs) NÃO quebra o `samtools sort`** — testado forçando spill com `-m 40M`: criou 7
+    temporários no D:, mesclou e terminou íntegro. A nota antiga do ROADMAP não se sustentou no teste.
+    O workaround de manter o BAM em disco Linux talvez seja desnecessário; falta testar o `classify`
+    lendo BAM direto do D: (acesso aleatório via `fetch`, que é o padrão de I/O ainda não testado lá).
 
 ### Tier 3 — features maiores (specs próprios)
 

@@ -19,13 +19,20 @@ import pandas as pd
 sys.path.insert(0, __file__.rsplit("/", 2)[0])
 from decider import RuleScorer, load_config  # noqa: E402
 
-FEATURES = ("dicer_call", "frac_top", "pct_1u", "pingpong_frac", "phase_score", "reads")
+FEATURES = ("dicer_call", "frac_top", "pct_1u", "pct_5a", "pingpong_frac",
+            "phase_score", "reads")
 
 
 def replay(df, config):
     """Run the scorer over every row; returns (classes, review flags)."""
     scorer = RuleScorer(config)
     cls, review = [], []
+    missing = [f for f in FEATURES if f not in df.columns]
+    if missing:
+        # Silently defaulting a missing feature to 0 makes the replay disagree
+        # with the run for reasons that have nothing to do with the rule change.
+        sys.exit(f"{', '.join(missing)} missing from the TSV — it predates these "
+                 f"columns; re-run classify before simulating.")
     for row in df.itertuples(index=False):
         r = types.SimpleNamespace(**{f: getattr(row, f) for f in FEATURES})
         r.dicer_call = str(r.dicer_call)

@@ -106,10 +106,16 @@ by the average multiplicity — 3.19x on DRR351382 (30.8M lines for 9.66M reads)
 The engine carries no class names: `decider`/`features`/`reporter` only iterate over
 whatever `classes` the config declares, so the biology lives entirely in the YAML.
 
-| config | classes | notes |
+| config | classes | validated on |
 |---|---|---|
-| `rules.yaml` (default) | siRNA, piRNA | calibrated and validated on Drosophila ovary data |
-| `rules.plant.yaml` | phasiRNA, hcsiRNA, siRNA | **not yet validated on plant data** |
+| `rules.yaml` (default) | siRNA, piRNA | Drosophila ovary (DRR351382): 94.4% recall over known piRNA clusters |
+| `rules.plant.yaml` | phasiRNA, hcsiRNA, siRNA | Arabidopsis flower buds (SRR30831721): 6/6 TAS loci |
+
+One caveat that bites when writing a config: `decision.review_confidence` is a
+threshold on a **softmax**, so its strictness depends on how many classes compete.
+At two classes, 0.6 means a margin of `ln(1.5) = 0.405` over the runner-up; at
+three it means a margin of 1.10. The plant config uses 0.43 to get the same
+0.41 margin — stricter-looking, identical in practice.
 
 Plants have no PIWI proteins, hence no piRNA class and no ping-pong terms, and their
 24-nt window belongs to heterochromatic siRNA (DCL3 -> AGO4, RdDM) rather than piRNA.

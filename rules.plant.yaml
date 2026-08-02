@@ -23,7 +23,13 @@ extractor:
   dicermax: 35
   strand_cutoff: 0.8
 decision:
-  review_confidence: 0.6
+  # 0.43 here is as strict as the 0.6 the arthropod config uses, NOT looser.
+  # The threshold is on a softmax, so its meaning depends on how many classes
+  # compete. With two classes, conf >= 0.6 means a margin of ln(1.5) = 0.405
+  # over the rival. With three, it means e^m/(e^m+2) >= 0.6, i.e. a margin of
+  # 1.10 -- nearly three times stricter by accident. 0.43 restores the intended
+  # 0.41 margin. Keeping 0.6 sent 39.6% of loci to review on confidence alone.
+  review_confidence: 0.43
   min_margin: 0.15
   min_reads: 10
 classes:
