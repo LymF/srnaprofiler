@@ -111,3 +111,13 @@ def weighted_library_size(sam_path, xm_as_nh=False):
     index only knows alignment lines), unlike `total_mapped`.
     """
     return sum(1.0 / a.nh for a in read_alignments(sam_path, xm_as_nh))
+
+
+def reference_alignment_counts(bam_path):
+    """Alignments per reference (from the index, no scan).
+
+    Sets the memory footprint of `classify`: each worker loads one whole
+    reference at a time, so N workers hold the N references at once.
+    """
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        return [s.mapped for s in fh.get_index_statistics() if s.mapped > 0]

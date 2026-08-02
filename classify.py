@@ -3,10 +3,45 @@ import os
 from collections import defaultdict
 from features import extract_by_chrom
 from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
-                   prefers_xm_as_nh, weighted_library_size)
+                   prefers_xm_as_nh, weighted_library_size,
+                   reference_alignment_counts)
+from mapping import available_memory_mb
 from decider import RuleScorer, load_config
 from reporter import write_tsv, write_gff3, write_run_json
 from utils import log
+
+
+# Resident bytes per alignment held by a worker. Measured, not guessed: 339 B
+# on Drosophila 3R (6.9M alignments -> 2244 MB) and 192 B on Arabidopsis Chr3
+# (13.0M -> 2382 MB). The higher figure is used so the cap errs on the safe side.
+_BYTES_PER_ALIGNMENT = 340
+
+
+def safe_thread_count(requested, ref_alignments, available_mb, headroom=0.8):
+    """Threads that fit in memory, given one whole reference per worker.
+
+    `extract_by_chrom` uses a multiprocessing Pool, so N workers hold N whole
+    references at once and the peak is their SUM. Sizing by the largest
+    reference alone would be far too pessimistic on a genome with one big
+    chromosome and several small ones, so this adds up the N largest and keeps
+    the biggest N that fits.
+
+    It caps rather than warns because overshooting is not a slowdown: the OOM
+    killer takes the process out, losing the whole run.
+    """
+    if isinstance(ref_alignments, int):        # a single count: treat as one reference
+        ref_alignments = [ref_alignments]
+    counts = sorted((c for c in ref_alignments if c > 0), reverse=True)
+    if not counts or available_mb <= 0:
+        return max(1, requested)
+    budget_mb = available_mb * headroom
+    fits, total = 0, 0.0
+    for c in counts[:requested]:
+        total += (c * _BYTES_PER_ALIGNMENT) / (1024 ** 2)
+        if total > budget_mb:
+            break
+        fits += 1
+    return max(1, min(requested, fits))
 
 
 def parse_mirna_bed(path):
@@ -56,6 +91,13 @@ def run_classify(args):
             f"({total_mapped(bam_path)} alignment lines)", "INFO")
 
     chroms = mapped_chromosomes(bam_path)
+    safe = safe_thread_count(threads, reference_alignment_counts(bam_path),
+                             available_memory_mb())
+    if safe < threads:
+        log(f"Capping {threads} -> {safe} thread(s): each holds one whole "
+            f"chromosome in memory and there is not enough free RAM for more "
+            f"(this would be an OOM kill, not a slowdown)", "WARN")
+        threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
                                args.mincov, args.pad, threads, xm_as_nh)

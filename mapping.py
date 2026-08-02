@@ -3,6 +3,7 @@
 Mapping module for sRNA Profiler
 Handles read alignment using Bowtie1
 """
+import os
 import sys
 import subprocess
 from pathlib import Path
@@ -157,18 +158,46 @@ def run_bowtie_alignment(
     return stats
 
 
+def available_memory_mb() -> int:
+    """Physical memory currently free, in MB (0 if it cannot be probed)."""
+    try:
+        return (os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")) // (1024 ** 2)
+    except (ValueError, OSError, AttributeError):
+        return 0
+
+
+def sort_memory_per_thread_mb(threads: int, budget_mb: int = None) -> int:
+    """Per-thread share for `samtools sort -m`, so the total stays bounded.
+
+    samtools defaults to 768 MB PER THREAD, which is not a budget at all: it
+    scales with --threads and asks for ~9 GB at 12 threads, killing the sort on
+    a smaller machine. We spend at most half of the free memory (capped at
+    4 GB, since more buys little) and split that across the threads.
+    """
+    if budget_mb is None:
+        free = available_memory_mb()
+        budget_mb = min(4096, max(768, free // 2)) if free else 768
+    return max(64, budget_mb // max(1, threads))
+
+
 def convert_sam_to_bam(sam_file: Path, bam_file: Path, threads: int, sort: bool = True) -> None:
     """Convert SAM to BAM format with optional sorting."""
     if not which("samtools"):
         raise RuntimeError("samtools not found in PATH")
-    
+
     log(f"Converting SAM to BAM format...", "INFO")
-    
+
     if sort:
-        # Convert and sort in one step
+        per_thread = sort_memory_per_thread_mb(threads)
+        log(f"Sort memory: {per_thread} MB x {threads} thread(s)", "DEBUG")
+        # Convert and sort in one step. -T keeps the temporary files beside the
+        # output under a known prefix instead of a guessed one, so two runs
+        # writing to the same directory cannot collide.
         cmd = [
             "samtools", "sort",
             "-@", str(threads),
+            "-m", f"{per_thread}M",
+            "-T", str(bam_file) + ".tmp",
             "-o", str(bam_file),
             str(sam_file)
         ]
