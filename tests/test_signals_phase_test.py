@@ -50,3 +50,13 @@ def test_best_window_is_picked():
     res = phase_test(noise + _phased(11, start=5000), region_start=1000, phase_length=21)
     assert res.number == 11
     assert res.pvalue < 0.01
+
+
+def test_scan_does_not_prefer_an_empty_window():
+    # A real phased run plus a lone read far away. Ranking windows by p-value
+    # picked the window holding just that read -- P(X>=1) with one draw beats the
+    # p of a window with a genuine seven-cycle run -- and reported number=1.
+    positions = _phased(7, start=1000) + [(90000, 2.0)]
+    res = phase_test(positions, region_start=1000, phase_length=21)
+    assert res.number == 7
+    assert res.score > 1.0

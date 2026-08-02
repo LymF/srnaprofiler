@@ -114,8 +114,12 @@ def phase_test(positions, region_start, phase_length, cycles=11):
         if i == j:
             continue
         res = _phase_window(ordered[i:j], region_start, phase_length, cycles)
-        if best is None or res.pvalue < best.pvalue or (
-                res.pvalue == best.pvalue and res.score > best.score):
+        # Rank by EVIDENCE (cycles in register, then score), never by p-value:
+        # the hypergeometric rewards near-empty windows, since P(X>=1) with a
+        # single draw is smaller than the p of a full window holding seven real
+        # in-register cycles. Ranking by p made the scan pick the emptiest
+        # window and throw the actual phasing away.
+        if best is None or (res.number, res.score) > (best.number, best.score):
             best = res
     return best or PhaseResult(0.0, 0, 0.0, 1.0)
 

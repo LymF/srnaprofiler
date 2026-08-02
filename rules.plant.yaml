@@ -1,9 +1,11 @@
 # rules.plant.yaml — scoring config for PLANTS.
 #
-# STATUS: NOT VALIDATED. The weights below encode textbook plant small-RNA
-# biology, but unlike rules.yaml (calibrated and validated on DRR351382, see
-# docs/ROADMAP.md) no plant dataset has been run through them yet. Treat the
-# numbers as a starting point to calibrate, not as settled defaults.
+# STATUS: calibrated and validated on SRR30831721 (Arabidopsis Col-0 flower
+# buds, 24.1M reads, BioProject PRJNA1011929). All six TAS loci come out as
+# phasiRNA at 21nt, and the genome is 82% 24-nt hcsiRNA with 5'A enriched there
+# (0.512) against 21-22nt (0.330). See docs/ROADMAP.md item 14.
+# Validated on ONE dataset of ONE tissue of ONE species: treat as a good
+# starting point for another plant, not as a universal default.
 #
 # Why a separate file at all — plants are not arthropods:
 #   * There is no piRNA class: plants have no PIWI proteins.
@@ -26,13 +28,28 @@ decision:
   min_reads: 10
 classes:
   # DCL4 products from RDR6 dsRNA: 21 nt, strongly phased (that is the defining
-  # evidence), 5'U, loaded into AGO1. w_phase is the heaviest weight because
-  # phasing is what separates a phasiRNA from an ordinary 21-nt siRNA.
+  # evidence), 5'U, loaded into AGO1.
+  #
+  # Calibrated on SRR30831721 (Col-0 flower buds) against the six TAS loci:
+  #   * w_size is deliberately LOW (0.5) and w_phase HIGH. With w_size at 1.0 the
+  #     size window alone carried the class, so every 21-22nt locus landed here
+  #     regardless of phasing: 6557 loci, of which only 2.8% had any phasing
+  #     evidence, while the siRNA class was left with 311. Now the class costs
+  #     real phasing to enter.
+  #   * phase_scale 1.5 instead of the default 3.0: the wide sigmoid returned
+  #     0.159 for a phase_score of ZERO, handing out 0.24 of free score. The
+  #     narrow one gives 0.035.
+  #   * w_1u is low because in this tissue 5'U barely separates 21-22nt loci
+  #     (mean 0.345) from the 5'A background (0.330).
+  # Result: 1136 phasiRNA loci, siRNA in use (2715), and all six TAS loci
+  # recovered (see extras/validate_plant_tas.py).
   phasiRNA:
     size: {lo: 21, hi: 22}
-    w_size: 1.0
-    w_phase: 1.5
-    w_1u: 1.0
+    w_size: 0.5
+    w_phase: 3.0
+    phase_x0: 5.0
+    phase_scale: 1.5
+    w_1u: 0.3
   # DCL3 products from RDR2 dsRNA: 24 nt, 5'A, AGO4/RdDM. Repeat- and
   # TE-derived, dual-strand, and NOT phased.
   hcsiRNA:
