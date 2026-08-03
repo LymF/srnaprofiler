@@ -94,6 +94,35 @@ que o proTRAC exige, na forma mais simples.
 Evidências não definidoras (ex.: ping-pong numa classe de planta) continuam
 sendo reportadas em suas colunas, mas não entram no score.
 
+### Evidências definidoras por classe
+
+Da literatura, não de escolha nossa. O score da classe é o mínimo sobre a
+coluna "definidoras"; as demais features seguem reportadas mas não pesam.
+
+**Planta** (`rules.plant.yaml`)
+
+| classe | definidoras | acessórias | fonte |
+|---|---|---|---|
+| `hcsiRNA` | tamanho 24nt + **5'A** (AGO4) | densidade, bifita | Pol IV → DCL3 → AGO4, de repeat/transposon |
+| `phasiRNA` | tamanho 21nt + **phasing** | 5'U (AGO1) | clivagem processiva em incrementos regulares a partir de terminus definido; DCL4 |
+| `siRNA` | tamanho 21–22nt + bifita | — | classe residual explícita |
+
+**Artrópode** (`rules.yaml`)
+
+| classe | definidoras | acessórias | fonte |
+|---|---|---|---|
+| `piRNA` | tamanho 24–31nt + (**5'U** ou **ping-pong**) | phasing | Han et al. 2015; Mohn et al. 2015 |
+| `siRNA` | tamanho 20–22nt + bifita | — | endo-siRNA por Dcr-2 |
+
+O `miRNA` não tem evidência definidora baseada em reads: define-se pela
+estrutura do precursor (excisão precisa de um duplex de stem-loop), e por isso
+continua vindo de `--mirna-loci`. É a mesma razão pela qual o ShortStack só
+afirma essa classe.
+
+**Ressalva sobre phasiRNA de 24nt:** existe, mas é produto de **DCL5 em tecido
+reprodutivo de gramíneas** (Xia et al. 2019) — não ocorre em Arabidopsis. A
+subclasse 21/24 só faz sentido em Poaceae, e não deve entrar como default.
+
 ### Saída
 
 O `.clusters.tsv` ganha `score` (da classe) e uma coluna por evidência
