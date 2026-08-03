@@ -31,15 +31,39 @@ comparável entre features — score 2 é p = 0,01, score 3 é p = 0,001.
 
 | feature | teste | nulo |
 |---|---|---|
-| `pct_1u`, `pct_5a` | binomial unilateral | frequência da base na posição 1 em **toda a biblioteca** (background empírico, não 0,25) |
+| `pct_1u`, `pct_5a` | binomial unilateral | **EM ABERTO — ver "Decisão pendente" abaixo** |
 | `frac_top` | binomial bilateral | 0,5 (fitas equiprováveis) |
 | `pingpong_frac` | binomial unilateral | 1/20 (um par cair no offset 10 entre os 20 offsets testados) |
 | `phase_score` | hipergeométrico | **já implementado** (`signals.phase_test`) |
 | densidade de reads | Poisson | `lib_size` ponderado / bases das referências mapeadas × span do locus |
 
 O `n` dos testes binomiais é a contagem ponderada por 1/NH arredondada, mantendo
-a coerência com o resto do pipeline. O background empírico da base 5' é
-calculado uma vez por corrida, junto do `weighted_library_size`.
+a coerência com o resto do pipeline.
+
+### Decisão pendente: o nulo do viés de base 5'
+
+Nenhuma opção resolve os dois problemas ao mesmo tempo, e a escolha é
+metodológica — não deve ser fixada sem fundamento.
+
+| nulo candidato | cancela viés de ligase? | sofre auto-referência? |
+|---|---|---|
+| 0,25 fixo | não | não |
+| frequência média da biblioteca | **sim** (o viés é constante dentro dela) | **sim** (a classe dominante define o fundo) |
+| posições 3–8 da própria read | não (não passam por ligação) | não |
+
+**O viés de ligase é real e documentado:** a T4 RNA ligase 1 liga preferindo
+C > U ≥ A > G na extremidade 5' (Jayaprakash et al. 2011), e boa parte do viés
+vem da estrutura secundária dos substratos (Sorefan et al. 2012). Logo, a base
+5' observada mistura seleção por Argonauta com artefato de protocolo.
+
+**Auto-referência medida nestes dados:** a frequência de 5'A na biblioteca de
+Arabidopsis é ~0,49, e a média de `pct_5a` dos loci `hcsiRNA` é 0,51. Usar a
+média da biblioteca como nulo tornaria a classe dominante indetectável.
+
+Resolver antes de implementar: verificar que nulo o proTRAC usa para 1T/10A e
+se alguma ferramenta trata o viés de ligase explicitamente. Enquanto não houver
+fundamento, `0,25` é o default conservador — erra por excesso de significância,
+mas não se auto-sabota nem depende de premissa não verificada.
 
 ### Score da classe
 
@@ -120,6 +144,10 @@ também: ele fica melhor com as features já convertidas em score.
 
 ## Referências
 
+Jayaprakash, A. D., Jabado, O., Brown, B. D., & Sachidanandam, R. (2011). Identification and remediation of biases in the activity of RNA ligases in small-RNA deep sequencing. *Nucleic Acids Research*, 39(21), e141. https://doi.org/10.1093/nar/gkr693
+
 Rosenkranz, D., & Zischler, H. (2012). proTRAC — a software for probabilistic piRNA cluster detection, visualization and analysis. *BMC Bioinformatics*, 13, 5. https://doi.org/10.1186/1471-2105-13-5
+
+Sorefan, K., Pais, H., Hall, A. E., Kozomara, A., Griffiths-Jones, S., Moulton, V., & Dalmay, T. (2012). Reducing ligation bias of small RNAs in libraries for next generation sequencing. *Silence*, 3(1), 4. https://doi.org/10.1186/1758-907X-3-4
 
 Johnson, N. R., et al. (2025). Class-agnostic annotation of small RNAs balances sensitivity and specificity in diverse organisms. *Computational and Structural Biotechnology Journal*. https://doi.org/10.1016/j.csbj.2025.05.045
