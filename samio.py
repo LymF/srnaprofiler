@@ -121,3 +121,10 @@ def reference_alignment_counts(bam_path):
     """
     with pysam.AlignmentFile(bam_path, "rb") as fh:
         return [s.mapped for s in fh.get_index_statistics() if s.mapped > 0]
+
+
+def mapped_genome_size(bam_path):
+    """Total length of the references that carry reads (from the index)."""
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        return sum(fh.get_reference_length(s.contig)
+                   for s in fh.get_index_statistics() if s.mapped > 0)

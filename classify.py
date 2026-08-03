@@ -4,7 +4,7 @@ from collections import defaultdict
 from features import extract_by_chrom
 from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
                    prefers_xm_as_nh, weighted_library_size,
-                   reference_alignment_counts)
+                   reference_alignment_counts, mapped_genome_size)
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
 from reporter import write_tsv, write_gff3, write_run_json
@@ -98,7 +98,8 @@ def run_classify(args):
         threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
-                               args.mincov, args.pad, threads, xm_as_nh)
+                               args.mincov, args.pad, threads, xm_as_nh,
+                               mapped_genome_size(bam_path))
     log(f"{len(records)} clusters", "INFO")
 
     mirna_intervals = parse_mirna_bed(args.mirna_loci) if args.mirna_loci else {}
