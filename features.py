@@ -5,6 +5,8 @@ from records import ClusterRecord
 from samio import read_alignments, read_region
 from clustering import call_islands
 from signals import offset_spectrum, pingpong_zscore, phase_test
+from evidence import (base_bias_score, strand_bias_score, pingpong_score,
+                      density_score, score_from_p)
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -13,7 +15,7 @@ def revcomp(seq: str) -> str:
     return seq.translate(_COMP)[::-1]
 
 
-def build_record(region, region_alns, lib_size, config):
+def build_record(region, region_alns, lib_size, config, genome_bp=0):
     """Builds a ClusterRecord from the reads ALREADY assigned to the region.
 
     `region_alns` must contain all reads that overlap the region by span
@@ -90,6 +92,11 @@ def build_record(region, region_alns, lib_size, config):
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)
+    r.s_1u = base_bias_score(n_1u, r.reads)
+    r.s_5a = base_bias_score(n_5a, r.reads)
+    r.s_fractop = strand_bias_score(r.frac_top, r.reads)
+    if genome_bp > 0:
+        r.s_density = density_score(r.reads, end - start, lib_size, genome_bp)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
     r.multimap_frac = round(multimap / raw_n, 4)
@@ -121,6 +128,7 @@ def build_record(region, region_alns, lib_size, config):
     # 10-nt 5'-5' overlap fraction: bounded [0,1] and comparable across loci (unlike
     # the raw z). Guarded by a minimum number of pairs so noise can't yield a spurious 1.0.
     r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
+    r.s_pingpong = pingpong_score(overlap_counts.get(10, 0), total_pairs)
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)
@@ -129,6 +137,7 @@ def build_record(region, region_alns, lib_size, config):
         res = phase_test(in_phase_len, region_start=start, phase_length=pl)
         r.phase_score, r.phase_number = res.score, res.number
         r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
+        r.s_phase = score_from_p(r.phase_pvalue)
     return r
 
 
