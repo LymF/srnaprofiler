@@ -49,3 +49,37 @@ def test_strand_bias_scores_asymmetry_either_way():
 
 def test_strand_bias_zero_for_balanced_locus():
     assert strand_bias_score(0.5, 200) < 0.5
+
+
+def test_pingpong_peak_at_ten_scores_high():
+    from evidence import pingpong_score
+    # 200 of 400 pairs at offset 10, against 1/20 by chance
+    assert pingpong_score(200, 400) > 20
+
+
+def test_pingpong_at_chance_scores_zero():
+    from evidence import pingpong_score
+    assert pingpong_score(20, 400) < 0.5      # exactly 1/20
+
+
+def test_pingpong_few_pairs_cannot_prove_much():
+    from evidence import pingpong_score
+    # every pair at offset 10, but only 3 pairs: geometry, not biology
+    assert pingpong_score(3, 3) < 5
+
+
+def test_density_above_background_scores_high():
+    from evidence import density_score
+    # 5000 reads in 500bp, library 10M reads over 100Mb -> 50 expected
+    assert density_score(5000, 500, 10_000_000, 100_000_000) > 20
+
+
+def test_density_at_background_scores_zero():
+    from evidence import density_score
+    assert density_score(50, 500, 10_000_000, 100_000_000) < 1.0
+
+
+def test_density_handles_degenerate_input():
+    from evidence import density_score
+    assert density_score(100, 0, 10_000_000, 100_000_000) == 0.0
+    assert density_score(100, 500, 0, 100_000_000) == 0.0
