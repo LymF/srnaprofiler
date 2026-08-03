@@ -127,5 +127,6 @@ class RuleScorer:
             record.support = round(support, 3)
             if support < min_ev:
                 record.cls = "unclassified"
+                record.score = 0.0
                 record.review = True
         return record

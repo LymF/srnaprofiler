@@ -60,3 +60,18 @@ def test_score_belongs_to_the_winning_class():
     RuleScorer(CFG).decide(r)
     assert r.cls == "phasiRNA"
     assert r.score == 7.0
+
+
+def test_unclassified_by_min_evidence_gate_has_zero_score():
+    # winning class has defining evidence, but its support fails min_evidence,
+    # so cls is downgraded to unclassified -- score must not still describe
+    # the rejected candidate class.
+    cfg = {
+        "decision": {"review_confidence": 0.4, "min_margin": 0.0,
+                     "min_reads": 10, "min_evidence": 100.0},
+        "classes": CFG["classes"],
+    }
+    r = _rec(dicer_call="24", s_5a=14.0, s_density=9.0)
+    RuleScorer(cfg).decide(r)
+    assert r.cls == "unclassified"
+    assert r.score == 0.0
