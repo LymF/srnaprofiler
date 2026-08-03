@@ -56,6 +56,7 @@ classes:
     phase_x0: 5.0
     phase_scale: 1.5
     w_1u: 0.3
+    defining_evidence: [phase]
   # DCL3 products from RDR2 dsRNA: 24 nt, 5'A, AGO4/RdDM. Repeat- and
   # TE-derived, dual-strand, and NOT phased.
   hcsiRNA:
@@ -63,9 +64,11 @@ classes:
     w_size: 1.0
     w_5a: 1.0
     w_fractop_mid: 0.5
+    defining_evidence: [5a]
   # Everything else double-stranded in the DCL4/DCL2 range: nat-siRNA, viral
   # siRNA, secondary siRNA without a clean register.
   siRNA:
     size: {lo: 21, hi: 22}
     w_size: 1.0
     w_fractop_mid: 1.0
+    defining_evidence: [fractop]
