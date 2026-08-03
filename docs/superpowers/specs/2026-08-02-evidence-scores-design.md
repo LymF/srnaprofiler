@@ -31,7 +31,7 @@ comparável entre features — score 2 é p = 0,01, score 3 é p = 0,001.
 
 | feature | teste | nulo |
 |---|---|---|
-| `pct_1u`, `pct_5a` | binomial unilateral | **EM ABERTO — ver "Decisão pendente" abaixo** |
+| `pct_1u`, `pct_5a` | binomial unilateral | 0,25 (composição aleatória), como o proTRAC |
 | `frac_top` | binomial bilateral | 0,5 (fitas equiprováveis) |
 | `pingpong_frac` | binomial unilateral | 1/20 (um par cair no offset 10 entre os 20 offsets testados) |
 | `phase_score` | hipergeométrico | **já implementado** (`signals.phase_test`) |
@@ -40,10 +40,15 @@ comparável entre features — score 2 é p = 0,01, score 3 é p = 0,001.
 O `n` dos testes binomiais é a contagem ponderada por 1/NH arredondada, mantendo
 a coerência com o resto do pipeline.
 
-### Decisão pendente: o nulo do viés de base 5'
+### O nulo do viés de base 5' (resolvido pela literatura)
 
-Nenhuma opção resolve os dois problemas ao mesmo tempo, e a escolha é
-metodológica — não deve ser fixada sem fundamento.
+**0,25 por nucleotídeo, com teste binomial** — é o que o proTRAC faz, nas
+palavras do próprio paper: *"calculation of the score value for enrichment of
+putative piRNA loci with 1T or 10A was based on random base composition (25%
+for each nucleotide)"*. Não é o nulo perfeito, mas é a prática publicada da
+área e não se auto-sabota.
+
+As alternativas consideradas e por que não:
 
 | nulo candidato | cancela viés de ligase? | sofre auto-referência? |
 |---|---|---|
@@ -60,10 +65,18 @@ vem da estrutura secundária dos substratos (Sorefan et al. 2012). Logo, a base
 Arabidopsis é ~0,49, e a média de `pct_5a` dos loci `hcsiRNA` é 0,51. Usar a
 média da biblioteca como nulo tornaria a classe dominante indetectável.
 
-Resolver antes de implementar: verificar que nulo o proTRAC usa para 1T/10A e
-se alguma ferramenta trata o viés de ligase explicitamente. Enquanto não houver
-fundamento, `0,25` é o default conservador — erra por excesso de significância,
-mas não se auto-sabota nem depende de premissa não verificada.
+**Nenhuma ferramenta do campo corrige o viés de ligase** — nem o proTRAC nem o
+pingpongpro. É limitação aceita, e deve constar no README: o score de base 5'
+mede seleção biológica *mais* artefato de protocolo, e um score alto de 5'A não
+distingue os dois.
+
+**Alternativa para depois — nulo empírico por estratificação.** O pingpongpro
+não testa o viés de base: usa-o como estrato (`HAS_BASE_BIAS` /
+`HAS_NO_BASE_BIAS`) e calcula FDR *dentro* de cada estrato, com os offsets
+diferentes de 10 servindo de controle negativo interno
+(`pingpongpro.cpp:602,753`). É mais robusto que qualquer p0 teórico e dispensa
+suposição de composição; fica como evolução natural quando o score básico
+estiver validado.
 
 ### Score da classe
 
