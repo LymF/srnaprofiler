@@ -29,6 +29,14 @@ class ClusterRecord:
     pct_10a: float = 0.0
     pct_5a: float = 0.0
     support: float = 0.0
+    # evidence scores, log10(1/p) per signature
+    s_1u: float = 0.0
+    s_5a: float = 0.0
+    s_fractop: float = 0.0
+    s_pingpong: float = 0.0
+    s_phase: float = 0.0
+    s_density: float = 0.0
+    score: float = 0.0
     gc: float = 0.0
     # biogenesis
     pingpong_z: float = 0.0
