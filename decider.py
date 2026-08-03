@@ -84,6 +84,12 @@ class RuleScorer:
         return s, terms
 
     @staticmethod
+    def defining_scores(spec, record):
+        """Evidence scores the class is defined by, in config order."""
+        return [getattr(record, f"s_{name}", 0.0)
+                for name in spec.get("defining_evidence", [])]
+
+    @staticmethod
     def _support(terms):
         """Positive evidence excluding size: what actually earns the class."""
         return sum(v for k, v in terms.items() if k != "size" and v > 0)
@@ -103,6 +109,8 @@ class RuleScorer:
         margin = top_score - (ordered[1][1] if len(ordered) > 1 else 0.0)
         dec = self.cfg["decision"]
         record.cls = top_name
+        defining = self.defining_scores(self.cfg["classes"][top_name], record)
+        record.score = round(min(defining), 3) if defining else 0.0
         record.confidence = round(conf, 3)
         record.evidence = "; ".join(f"{k}={v}" for k, v in evidence[top_name].items())
         record.review = (
