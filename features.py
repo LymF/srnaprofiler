@@ -5,8 +5,8 @@ from records import ClusterRecord
 from samio import read_alignments, read_region
 from clustering import call_islands
 from signals import offset_spectrum, pingpong_zscore, phase_test
-from evidence import (base_bias_score, strand_bias_score, pingpong_score,
-                      density_score, score_from_p)
+from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
+                      pingpong_score, density_score, score_from_p)
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -92,9 +92,13 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)
-    r.s_1u = base_bias_score(n_1u, r.reads)
-    r.s_5a = base_bias_score(n_5a, r.reads)
-    r.s_fractop = strand_bias_score(r.frac_top, r.reads)
+    # n = distinct_seqs, not the 1/NH read count: PCR duplicates and stacked
+    # identical reads are not independent trials, so the read count
+    # pseudoreplicates the binomial n. k is scaled to the same denominator.
+    r.s_1u = base_bias_score(r.pct_1u * r.distinct_seqs, r.distinct_seqs)
+    r.s_5a = base_bias_score(r.pct_5a * r.distinct_seqs, r.distinct_seqs)
+    r.s_fractop = strand_bias_score(r.frac_top, r.distinct_seqs)
+    r.s_fractop_bal = strand_balance_score(r.frac_top, r.distinct_seqs)
     if genome_bp > 0:
         r.s_density = density_score(r.reads, end - start, lib_size, genome_bp)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0

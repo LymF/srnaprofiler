@@ -22,7 +22,7 @@ classes:
     w_fractop_mid: 1.0        # rewards FracTop ~0.5 (double-stranded)
     w_pingpong_penalty: 1.0   # penalizes ping-pong (size-gated, like w_pingpong)
     w_phase: 0.5
-    defining_evidence: [fractop]
+    defining_evidence: [fractop_bal]
   piRNA:
     size: {lo: 24, hi: 31}
     w_size: 1.0
@@ -32,4 +32,4 @@ classes:
     w_pingpong: 1.5
     w_1u: 1.0
     w_phase: 0.5
-    defining_evidence: [1u]
+    defining_evidence: [[1u, pingpong]]

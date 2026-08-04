@@ -37,6 +37,23 @@ def strand_bias_score(frac_top, n):
     return score_from_p(stats.binomtest(k, n, 0.5, alternative="two-sided").pvalue)
 
 
+def strand_balance_score(frac_top, n, delta=0.15):
+    """Equivalence (TOST) that the true strand split lies within 0.5 +/- delta.
+
+    Two one-sided tests: H0a p>=0.5+delta ("less"), H0b p<=0.5-delta ("greater").
+    TOST takes the LARGER p-value, so both one-sided nulls must be rejected.
+    """
+    n = int(round(n))
+    if n <= 0 or frac_top is None:
+        return 0.0
+    k = int(round(frac_top * n))
+    if k < 0 or k > n:
+        return 0.0
+    p_hi = stats.binomtest(k, n, 0.5 + delta, alternative="less").pvalue
+    p_lo = stats.binomtest(k, n, 0.5 - delta, alternative="greater").pvalue
+    return score_from_p(max(p_hi, p_lo))
+
+
 def pingpong_score(pairs_at_10, total_pairs, n_offsets=20):
     """Excess of 5'-5' pairs at the 10-nt offset over the other offsets."""
     k, n = int(round(pairs_at_10)), int(round(total_pairs))

@@ -51,6 +51,25 @@ def test_strand_bias_zero_for_balanced_locus():
     assert strand_bias_score(0.5, 200) < 0.5
 
 
+def test_strand_balance_scores_dual_strand_high():
+    from evidence import strand_balance_score
+    # dual-strand siRNA locus: frac_top ~0.5 should be scored HIGH, opposite
+    # of strand_bias_score (which tests departure from 0.5, not proximity).
+    assert strand_balance_score(0.5, 200) > 5
+
+
+def test_strand_balance_scores_uni_strand_near_zero():
+    from evidence import strand_balance_score
+    # uni-strand locus is far from 0.5 +/- delta: TOST must not reject.
+    assert strand_balance_score(0.95, 200) < 0.5
+
+
+def test_strand_balance_handles_degenerate_input():
+    from evidence import strand_balance_score
+    assert strand_balance_score(None, 200) == 0.0
+    assert strand_balance_score(0.5, 0) == 0.0
+
+
 def test_pingpong_peak_at_ten_scores_high():
     from evidence import pingpong_score
     # 200 of 400 pairs at offset 10, against 1/20 by chance
