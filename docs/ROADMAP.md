@@ -10,6 +10,67 @@ Design/planos: `docs/superpowers/specs/2026-07-22-classification-engine-design.m
 
 ---
 
+## Clustering reformulado — FEITO (2026-08-04)
+
+Spec `2026-08-04-clustering-design.md`, plano `2026-08-04-clustering.md`, 8 tarefas, na
+branch `evidence-scores`. 200 testes passando.
+
+- Ilha cresce `pad` **dos dois lados** e só funde com vizinho de perfil compatível (mesmo
+  tamanho dominante, `frac_top` dentro de 0,5). Vão tolerado passa a ser 2×pad.
+- `--mincov` agora em **RPM** (default 1,0), convertido uma vez por corrida pelo
+  `lib_size`. A calibração de 2026-08-01 (contagem bruta, `--mincov 10`) fica **superada**.
+- `clustering.pad` vive no config; **500 nos dois reinos** (era 75).
+- miRNA só toma o rótulo do locus se cobrir ≥50% dele.
+- Colunas novas: `size_purity` e `dicer_call_2`.
+
+**Antes → depois** (Drosophila DRR351382, 1 RPM, pad 500):
+
+| | antes (pad 75) | depois |
+|---|---|---|
+| span mediano | 88 bp | 1.025 bp |
+| reads por locus | 34 | 122 |
+| taxa de review | 79% | 10,3% |
+| recall de piC | 85/90 | 85/90 |
+| massa de piRNA nos piCs | 3,0× | 5,8× |
+| siRNA \|frac_top−0,5\| | **0,262** | **0,113** |
+
+O último número é o que destravou a branch: os loci de siRNA passaram a ser bifita, então o
+teste de equivalência do `s_fractop_bal` tem sobre o que se pronunciar.
+
+Arabidopsis no mesmo ajuste: **TAS 6/6**, reads por locus 34 → 197, review 33,1% → 2,6%.
+
+Varredura que fixou os valores (as duas em 2026-08-04, regra nova):
+
+| mincov (RPM) | loci | reads/locus | review | piC |
+|---|---|---|---|---|
+| 0,5 | 228.329 | 41 | 21,5% | 87/90 |
+| **1,0** | 171.322 | 55 | 15,0% | 85/90 |
+| 2,0 | 116.010 | 75 | 12,2% | 78/90 |
+| 5,0 | 52.565 | 116 | 11,1% | 65/90 |
+
+| pad (a 1 RPM) | reads/locus | review | piC |
+|---|---|---|---|
+| 200 | 55 | 15,0% | 85/90 |
+| **500** | 122 | 10,3% | 85/90 |
+| 1000 | 228 | 8,4% | 81/90 |
+
+**A preferência de `pad` inverteu-se**: na varredura antiga (regra de vão) o pad 500 custava
+2 piCs em Drosophila; com extensão bilateral + gate de perfil ele não custa nenhum. Os dois
+reinos convergiram para o mesmo valor, então o `pad` por organismo continua no config mas
+hoje não separa nada — mantido porque a calibração é por organismo por natureza.
+
+**Sobre `size_purity`:** mediana 0,19 em Drosophila e 0,63 em Arabidopsis, com o mesmo
+código. Não é fusão indevida: dentro da corrida do Drosophila a pureza é plana por tamanho
+de locus (0,21 em 150–300 bp, 0,15 acima de 1.200 bp) e por abundância. É a dispersão de
+tamanho do piRNA (24–31 nt) contra o pico único de 24 nt da planta. O 0,64 citado antes foi
+medido em loci de 41 bp medianos, onde pureza alta é trivial — não é comparável.
+
+**Pendência achada na corrida:** `evidence.py:18` emite
+`RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estoura antes
+do `min` com o teto). Não altera resultado; limpar.
+
+---
+
 ## RETOMAR AQUI (sessão de 2026-08-04)
 
 Branch **`evidence-scores`** — 17 commits à frente de `master`, 166 testes passando,
@@ -21,8 +82,7 @@ NÃO mesclada por decisão. Ledger completo em
 1. **Score de evidência** (spec `2026-08-02-evidence-scores-design.md`, plano
    `2026-08-02-evidence-scores.md`): implementado, revisado, com os 5 achados da
    revisão final corrigidos. `evidence.py` + colunas `score` e `s_*` no TSV.
-2. **Clustering** (spec `2026-08-04-clustering-design.md`, plano
-   `2026-08-04-clustering.md`): **planejado, não implementado** — 8 tarefas.
+2. **Clustering**: **FEITO** — ver a seção acima.
 
 ### Por que a branch do score está parada
 
@@ -51,14 +111,10 @@ significado do `pad` muda):
 
 ### Ordem da próxima sessão
 
-1. Executar o plano do clustering (8 tarefas). **Atenção:** a tarefa 3 passa a chamar
-   `call_islands` com `pad=0`; `clustering.cluster_regions:33` também o chama e precisa
-   ser ajustado na mesma tarefa, senão o caminho não-paralelo (`features.extract`) para
-   de fundir em silêncio.
-2. Recalibrar `mincov` (agora RPM) e `pad` — a calibração de 2026-08-01 fica superada.
-3. Revalidar a branch `evidence-scores` sobre os loci novos; conferir que
-   `s_fractop_bal` do siRNA deixou de ser ~0. Então mesclar.
-4. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
+1. ~~Executar o plano do clustering~~ e ~~recalibrar `mincov`/`pad`~~ — **FEITOS**, seção acima.
+2. Revalidar a branch `evidence-scores` sobre os loci novos: rodar o TOST do
+   `s_fractop_bal` agora que o `|frac_top−0,5|` do siRNA caiu para 0,113. Então mesclar.
+3. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
    (o domínio uni-mainz saiu do ar), 51 espécies, clusters em GTF preditos com proTRAC
    2.4.4. Ressalva: são preditos, não validados — servem para testar generalização entre
    clados, não para provar acerto.

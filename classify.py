@@ -15,7 +15,7 @@ from utils import log
 _BYTES_PER_ALIGNMENT = 340
 
 
-DEFAULT_PAD = 200
+DEFAULT_PAD = 500
 
 
 def resolve_pad(cli_pad, config):

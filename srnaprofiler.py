@@ -607,8 +607,8 @@ Examples:
                          "using the library size, so it transfers between runs.")
     cl.add_argument("--pad", type=int, default=None,
                     help="Extend each island by this many bp on both sides before "
-                         "merging (default: from the config; 200 for arthropods, "
-                         "500 for plants)")
+                         "merging (default: from the config; 500 in both shipped "
+                         "configs)")
     cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
     cl.add_argument("--config", default="rules.yaml",
                     help="Scoring config (default: %(default)s, calibrated for "
