@@ -70,14 +70,19 @@ def parse_mirna_bed(path):
     return intervals
 
 
-def mark_mirna(records, mirna_intervals):
+def mark_mirna(records, mirna_intervals, min_fraction=0.5):
+    """Label a locus miRNA only when the miRNA covers most of its span."""
     for r in records:
+        span = r.end - r.start
+        if span <= 0:
+            continue
+        covered = 0
         for (s, e) in mirna_intervals.get(r.chrom, []):
-            if r.start < e and s < r.end:
-                r.cls = "miRNA"
-                r.confidence = 1.0
-                r.review = False
-                break
+            covered = max(covered, min(r.end, e) - max(r.start, s))
+        if covered / span >= min_fraction:
+            r.cls = "miRNA"
+            r.confidence = 1.0
+            r.review = False
 
 
 def run_classify(args):

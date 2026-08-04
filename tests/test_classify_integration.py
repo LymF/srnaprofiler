@@ -4,7 +4,7 @@ from records import ClusterRecord
 
 def test_mark_mirna_overlap():
     recs = [ClusterRecord("chr1", 100, 200), ClusterRecord("chr1", 500, 600)]
-    mark_mirna(recs, {"chr1": [(150, 160)]})
+    mark_mirna(recs, {"chr1": [(100, 190)]})   # must dominate the locus, not just overlap
     assert recs[0].cls == "miRNA" and recs[0].review is False
     assert recs[1].cls == ""
 
