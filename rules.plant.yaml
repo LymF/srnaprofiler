@@ -18,6 +18,8 @@
 #
 # miRNA is not scored here: as in the arthropod config it comes from
 # --mirna-loci (overlap with a curated BED) and bypasses the scorer.
+clustering:
+  pad: 500
 extractor:
   dicermin: 18
   dicermax: 35

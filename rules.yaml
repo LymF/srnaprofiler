@@ -1,4 +1,6 @@
 # rules.yaml — per-organism scoring config (generic default)
+clustering:
+  pad: 200
 extractor:
   dicermin: 18
   dicermax: 35

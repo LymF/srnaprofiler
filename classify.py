@@ -15,6 +15,16 @@ from utils import log
 _BYTES_PER_ALIGNMENT = 340
 
 
+DEFAULT_PAD = 200
+
+
+def resolve_pad(cli_pad, config):
+    """CLI wins; otherwise the config's clustering.pad; otherwise the default."""
+    if cli_pad is not None:
+        return cli_pad
+    return (config.get("clustering", {}) or {}).get("pad", DEFAULT_PAD)
+
+
 def mincov_to_depth(mincov_rpm, lib_size):
     """Reads-per-million threshold as an absolute depth for this library."""
     if lib_size <= 0:
@@ -77,6 +87,7 @@ def run_classify(args):
     ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
     threads = getattr(args, "threads", 1) or 1
+    pad = resolve_pad(getattr(args, "pad", None), config)
 
     base = os.path.join(outdir, args.prefix)
     log(f"Ensuring sorted, indexed BAM (threads={threads})...", "INFO")
@@ -109,7 +120,7 @@ def run_classify(args):
         threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
-                               min_depth, args.pad, threads, xm_as_nh,
+                               min_depth, pad, threads, xm_as_nh,
                                mapped_genome_size(bam_path))
     log(f"{len(records)} clusters", "INFO")
 

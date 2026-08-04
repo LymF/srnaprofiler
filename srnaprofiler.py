@@ -605,7 +605,10 @@ Examples:
                     help="Minimum coverage to seed a locus, in READS PER MILLION "
                          "(default: %(default)s). Converted to an absolute depth "
                          "using the library size, so it transfers between runs.")
-    cl.add_argument("--pad", type=int, default=75)
+    cl.add_argument("--pad", type=int, default=None,
+                    help="Extend each island by this many bp on both sides before "
+                         "merging (default: from the config; 200 for arthropods, "
+                         "500 for plants)")
     cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
     cl.add_argument("--config", default="rules.yaml",
                     help="Scoring config (default: %(default)s, calibrated for "
