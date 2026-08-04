@@ -7,7 +7,7 @@ _COLS = [
     "pct_1u", "pct_10a", "pct_5a", "gc", "pingpong_z", "pingpong_pairs10", "pingpong_frac", "overlap19_frac",
     "phase_score", "phase_pvalue", "phase_number", "phase_ratio", "multimap_frac",
     "cls", "confidence", "score",
-    "s_1u", "s_5a", "s_fractop", "s_pingpong", "s_phase", "s_density",
+    "s_1u", "s_5a", "s_fractop", "s_fractop_bal", "s_pingpong", "s_phase", "s_density",
     "review", "evidence",
 ]
 
@@ -28,10 +28,10 @@ def write_gff3(records, path):
     with open(path, "w") as fh:
         fh.write("##gff-version 3\n")
         for r in records:
-            attrs = f"ID={r.name};confidence={r.confidence};review={r.review}"
+            attrs = f"ID={r.name};score={r.score};confidence={r.confidence};review={r.review}"
             fh.write("\t".join([
                 r.chrom, "srnaprofiler", r.cls or "unclassified",
-                str(r.start + 1), str(r.end), str(r.confidence),
+                str(r.start + 1), str(r.end), str(r.score),
                 r.strand_call, ".", attrs,
             ]) + "\n")
 
