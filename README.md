@@ -180,6 +180,15 @@ Two caveats:
 - **miRNA loci always score 0.** The class comes from `--mirna-loci`, defined by
   precursor structure rather than by read features, so it has no defining
   evidence to score. Filtering by score would drop every miRNA.
+- **`s_pingpong` and `s_density` are diagnostic only — no shipped config uses
+  them as defining evidence.** Both nulls are weak: the ping-pong test treats
+  the 20 offset bins as if they were independent trials, but the denominator
+  is actually a sum of 1/NH weight *products* across read pairs, not a count
+  of independent draws, so the p-value understates the true uncertainty. The
+  density test is conditioned on the locus existing in the first place — a
+  locus is only in the table because reads piled up there, so testing that
+  pile-up against a uniform-genome null is circular. Both will be revisited
+  once clustering no longer selects loci by the same read pile-up being tested.
 
 ### classplots — per-class plots
 
