@@ -205,6 +205,32 @@ Fluxo correto: **`qc -g` → `mapping` → `mirna` → `classify --mirna-loci`**
     O workaround de manter o BAM em disco Linux talvez seja desnecessário; falta testar o `classify`
     lendo BAM direto do D: (acesso aleatório via `fetch`, que é o padrão de I/O ainda não testado lá).
 
+### Score de evidência estatística — FEITO (2026-08-03)
+
+Spec: `docs/superpowers/specs/2026-08-02-evidence-scores-design.md`.
+Plano: `docs/superpowers/plans/2026-08-02-evidence-scores.md`. Branch `evidence-scores`.
+
+- Cada assinatura passa a ser testada contra um nulo explícito e vira
+  `score = log10(1/p)` (binomial para base 5' e fita, Poisson para densidade,
+  hipergeométrico já existente para fase). Nulo da base 5' = 0,25, como o proTRAC.
+- O score da classe é o **mínimo** entre as evidências que a definem
+  (`defining_evidence` no `rules.yaml`): score 2 significa que TODAS as
+  definidoras têm p ≤ 0,01. Mínimo e não soma, para que um sinal forte não
+  encubra um ausente.
+- Novas colunas no `.clusters.tsv`: `score` e `s_1u`, `s_5a`, `s_fractop`,
+  `s_pingpong`, `s_phase`, `s_density`.
+- **Validação:** piC 85/90 e TAS 6/6 mantidos (o score muda a confiança, não
+  quais loci existem). Em planta, organela tem score mediano **0,95** contra
+  **3,155** nuclear — o falso positivo que a via RdDM proíbe cai sozinho na
+  faixa baixa, sem a ferramenta saber o que é organela.
+- **`min_evidence` removido** (era de 2026-08-02): fazia o mesmo trabalho com
+  limiar sobre soma de pesos e custava o piC `2R:8443186-8476895` (recall
+  84/90). Os 8.794 loci que ele descartava têm score mediano 1,17 contra 2,77
+  dos demais, então `score >= 2` reproduz o filtro sem perder o cluster.
+  Lição: a validação dele usou `extras/simulate_rules.py`, que **não reproduz
+  `review`** — o simulador serve para comparar pesos, não mudanças que mexem no
+  review; use os validadores reais.
+
 ### Tier 3 — features maiores (specs próprios)
 
 7. **Módulo pós-miRDeep (rota miRNA).**

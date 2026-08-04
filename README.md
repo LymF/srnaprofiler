@@ -177,6 +177,9 @@ Two caveats:
   5'A test still show 2.71x transposon enrichment at 19 median reads.
 - **The 5' base score mixes biology with protocol.** T4 RNA ligase 1 prefers
   C > U >= A > G at the 5' end, and no tool in the field corrects for it.
+- **miRNA loci always score 0.** The class comes from `--mirna-loci`, defined by
+  precursor structure rather than by read features, so it has no defining
+  evidence to score. Filtering by score would drop every miRNA.
 
 ### classplots — per-class plots
 
