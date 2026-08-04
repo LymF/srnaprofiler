@@ -161,6 +161,23 @@ inside them, and the flamenco-vs-42AB signature contrast. On DRR351382: 94.4% re
 (0.519 / 0.132) — the published contrast, with nothing in the pipeline aware of either
 locus.
 
+### Reading the score
+
+`score` is `log10(1/p)`: **2 means p = 0.01**, 3 means p = 0.001. It is the
+weakest of the evidences that define the assigned class, so a score of 2 says
+every defining evidence cleared p = 0.01.
+
+Filter with it directly — there is no confirmed/unconfirmed flag, because the
+threshold belongs to whoever is analysing.
+
+Two caveats:
+
+- **A low score means "not demonstrated", not "false".** The test has little
+  power on shallow loci: on the Arabidopsis run the hcsiRNA loci that fail the
+  5'A test still show 2.71x transposon enrichment at 19 median reads.
+- **The 5' base score mixes biology with protocol.** T4 RNA ligase 1 prefers
+  C > U >= A > G at the 5' end, and no tool in the field corrects for it.
+
 ### classplots — per-class plots
 
 Re-aggregates a classify run's alignments grouped by the assigned class and produces

@@ -6,7 +6,7 @@ _COLS = [
     "major_rna", "dicer_call", "frac_in_window", "frac_top", "strand_call",
     "pct_1u", "pct_10a", "pct_5a", "gc", "pingpong_z", "pingpong_pairs10", "pingpong_frac", "overlap19_frac",
     "phase_score", "phase_pvalue", "phase_number", "phase_ratio", "multimap_frac",
-    "cls", "confidence", "support", "score",
+    "cls", "confidence", "score",
     "s_1u", "s_5a", "s_fractop", "s_pingpong", "s_phase", "s_density",
     "review", "evidence",
 ]

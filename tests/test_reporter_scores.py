@@ -6,10 +6,10 @@ SCORE_COLS = ["s_1u", "s_5a", "s_fractop", "s_pingpong", "s_phase",
               "s_density", "score"]
 
 
-def test_score_columns_present_and_after_support():
+def test_score_columns_present_and_after_confidence():
     for c in SCORE_COLS:
         assert c in _COLS
-    assert _COLS.index("score") > _COLS.index("support")
+    assert _COLS.index("score") > _COLS.index("confidence")
 
 
 def test_scores_are_written(tmp_path):
