@@ -2,8 +2,8 @@
 import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
-from samio import read_alignments, read_region
-from clustering import call_islands
+from samio import read_alignments, read_region, reference_lengths
+from clustering import call_islands, merge_compatible
 from signals import offset_spectrum, pingpong_zscore, phase_test
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
                       pingpong_score, density_score, score_from_p)
@@ -188,8 +188,33 @@ def extract(sam_path, regions, lib_size, config):
             for i, region in enumerate(regions)]
 
 
+def island_profiles(islands, alns):
+    """Dominant read length and strand fraction per island, for the merge rule."""
+    sizes = [Counter() for _ in islands]
+    plus = [0.0] * len(islands)
+    total = [0.0] * len(islands)
+    starts = [s for s, _ in islands]
+    for a in alns:
+        j = bisect.bisect_right(starts, a.pos) - 1
+        if j < 0 or a.pos >= islands[j][1]:
+            continue
+        w = 1.0 / a.nh
+        sizes[j][len(a.seq)] += w
+        total[j] += w
+        if a.strand == "+":
+            plus[j] += w
+    out = []
+    for j in range(len(islands)):
+        if not total[j]:
+            out.append({"size": None, "frac_top": None})
+        else:
+            out.append({"size": sizes[j].most_common(1)[0][0],
+                        "frac_top": round(plus[j] / total[j], 4)})
+    return out
+
+
 def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
-                       xm_as_nh=False, genome_bp=0):
+                       xm_as_nh=False, genome_bp=0, chrom_len=0):
     """Cluster and extract features for a single chromosome of an indexed BAM.
 
     Reads only this chromosome's alignments into memory (via fetch), builds its
@@ -203,7 +228,11 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     for a in alns:
         for p in range(a.pos, a.pos + len(a.seq)):
             depth[p] += 1
-    regions = [(chrom, s, e) for (s, e) in call_islands(depth, mincov, pad)]
+    islands = call_islands(depth, mincov, 0)
+    profiles = island_profiles(islands, alns)
+    regions = [(chrom, s, e) for (s, e) in
+               merge_compatible(islands, profiles, pad,
+                                chrom_len=chrom_len or None)]
     if not regions:
         return []
     buckets = _assign_reads(regions, alns)
@@ -225,7 +254,9 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
     multiprocessing pool; otherwise it runs serially. Records are returned in
     chromosome order.
     """
-    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh, genome_bp) for c in chroms]
+    lengths = reference_lengths(bam_path)
+    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh, genome_bp,
+             lengths.get(c, 0)) for c in chroms]
     if threads > 1 and len(jobs) > 1:
         import multiprocessing as mp
         with mp.Pool(min(threads, len(jobs))) as pool:

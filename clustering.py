@@ -85,13 +85,23 @@ def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5
 
 
 def cluster_regions(sam_path, mincov, pad):
-    """Builds per-chromosome coverage and calls islands."""
+    """Builds per-chromosome coverage and calls islands.
+
+    Same rule as the per-chromosome path in `features`: raw islands, then a
+    profile-conditioned bilateral merge.
+    """
+    from features import island_profiles
+
     depth = defaultdict(lambda: defaultdict(int))
+    by_chrom = defaultdict(list)
     for a in read_alignments(sam_path):
+        by_chrom[a.chrom].append(a)
         for p in range(a.pos, a.pos + len(a.seq)):
             depth[a.chrom][p] += 1
     regions = []
     for chrom in sorted(depth):
-        for start, end in call_islands(depth[chrom], mincov, pad):
+        islands = call_islands(depth[chrom], mincov, 0)
+        profiles = island_profiles(islands, by_chrom[chrom])
+        for start, end in merge_compatible(islands, profiles, pad):
             regions.append((chrom, start, end))
     return regions

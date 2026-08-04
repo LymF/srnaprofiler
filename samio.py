@@ -97,6 +97,12 @@ def mapped_chromosomes(bam_path):
         return [s.contig for s in fh.get_index_statistics() if s.mapped > 0]
 
 
+def reference_lengths(bam_path):
+    """Reference name -> length, from the BAM header."""
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        return dict(zip(fh.references, fh.lengths))
+
+
 def total_mapped(bam_path):
     """Total number of mapped alignments (fast, from the BAM index)."""
     with pysam.AlignmentFile(bam_path, "rb") as fh:
