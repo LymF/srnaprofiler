@@ -89,6 +89,14 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
     in_window = r.reads - r.short - r.long
     r.frac_in_window = round(in_window / r.reads, 4)
     r.dicer_call = str(predom_len) if r.frac_in_window >= 0.8 else "N"
+    in_window_by_len = {int(k): v for k, v in seq_lens.items() if k.isdigit()}
+    win_total = sum(in_window_by_len.values())
+    if win_total:
+        ranked = sorted(in_window_by_len.items(), key=lambda kv: kv[1], reverse=True)
+        r.size_purity = round(ranked[0][1] / win_total, 4)
+        # A second size is only worth reporting when no single population dominates.
+        if len(ranked) > 1 and r.size_purity < 0.8:
+            r.dicer_call_2 = str(ranked[1][0])
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)

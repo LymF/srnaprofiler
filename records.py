@@ -17,6 +17,8 @@ class ClusterRecord:
     major_rna_reads: int = 0
     # size
     dicer_call: str = "N"
+    size_purity: float = 0.0
+    dicer_call_2: str = ""
     frac_in_window: float = 0.0
     short: int = 0
     long: int = 0
