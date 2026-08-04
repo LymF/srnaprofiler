@@ -1,9 +1,5 @@
-"""Bilateral extension, as ShortStack does it (bedtools slop + merge).
-
-Each island grows by `pad` on both sides and overlapping results are merged, so
-the effective tolerated gap is 2*pad -- not pad, which is what the old
-gap-based rule gave.
-"""
+"""Bilateral extension: each island grows by `pad` on both sides before
+overlaps are merged, so the tolerated gap is 2*pad."""
 from clustering import extend_and_merge
 
 
@@ -32,3 +28,50 @@ def test_empty_input():
 
 def test_touching_islands_merge_into_one():
     assert extend_and_merge([(100, 200), (200, 300)], pad=0) == [(100, 300)]
+
+
+# Merging also requires a compatible profile: distance alone would fuse a 24-nt
+# neighbour with a 21-nt one, different pathways.
+from clustering import merge_compatible
+
+
+def _p(size, frac_top):
+    return {"size": size, "frac_top": frac_top}
+
+
+def test_same_profile_and_close_merges():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(24, 0.5), _p(24, 0.55)]
+    assert merge_compatible(islands, profiles, pad=100) == [(900, 1450)]
+
+
+def test_different_dominant_size_does_not_merge():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(24, 0.5), _p(21, 0.5)]
+    assert merge_compatible(islands, profiles, pad=100) == [(900, 1200), (1150, 1450)]
+
+
+def test_opposite_strand_bias_does_not_merge():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(24, 0.05), _p(24, 0.95)]     # difference 0.90 > 0.5
+    assert merge_compatible(islands, profiles, pad=100) == [(900, 1200), (1150, 1450)]
+
+
+def test_unknown_profile_never_blocks_merging():
+    # a locus with no size call must not prevent a merge it knows nothing about
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(None, None), _p(24, 0.5)]
+    assert merge_compatible(islands, profiles, pad=100) == [(900, 1450)]
+
+
+def test_chain_merges_only_through_compatible_neighbours():
+    # A(24) B(24) C(21): A+B merge, C stays out even though it is near B
+    islands = [(1000, 1100), (1250, 1350), (1500, 1600)]
+    profiles = [_p(24, 0.5), _p(24, 0.5), _p(21, 0.5)]
+    out = merge_compatible(islands, profiles, pad=100)
+    assert out[0] == (900, 1450)
+    assert out[-1] == (1400, 1700)
+
+
+def test_merge_compatible_empty_input():
+    assert merge_compatible([], [], pad=100) == []
