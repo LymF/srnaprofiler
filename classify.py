@@ -15,6 +15,13 @@ from utils import log
 _BYTES_PER_ALIGNMENT = 340
 
 
+def mincov_to_depth(mincov_rpm, lib_size):
+    """Reads-per-million threshold as an absolute depth for this library."""
+    if lib_size <= 0:
+        return 1
+    return max(1, round(mincov_rpm * lib_size / 1e6))
+
+
 def safe_thread_count(requested, ref_alignments, available_mb, headroom=0.8):
     """Threads that fit in memory, given one whole reference per worker.
 
@@ -88,6 +95,10 @@ def run_classify(args):
         log(f"Weighted library size: {lib_size:.1f} reads "
             f"({total_mapped(bam_path)} alignment lines)", "INFO")
 
+    min_depth = mincov_to_depth(args.mincov, lib_size)
+    log(f"--mincov {args.mincov} RPM -> minimum depth {min_depth} "
+        f"for a library of {lib_size:.0f} reads", "INFO")
+
     chroms = mapped_chromosomes(bam_path)
     safe = safe_thread_count(threads, reference_alignment_counts(bam_path),
                              available_memory_mb())
@@ -98,7 +109,7 @@ def run_classify(args):
         threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
-                               args.mincov, args.pad, threads, xm_as_nh,
+                               min_depth, args.pad, threads, xm_as_nh,
                                mapped_genome_size(bam_path))
     log(f"{len(records)} clusters", "INFO")
 
