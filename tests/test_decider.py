@@ -61,3 +61,24 @@ def test_weak_locus_flagged_review():
                       dicer_call="N", frac_top=0.5)
     RuleScorer(_cfg()).decide(r)
     assert r.review is True
+
+
+def test_no_size_call_scores_zero():
+    # dicer_call == "N" means no size call, so no class evidence is meaningful,
+    # even if a class is still picked and non-zero defining evidence exists.
+    r = ClusterRecord(chrom="c", start=0, end=100, reads=500,
+                      dicer_call="N", frac_top=0.95, pct_1u=0.9, pingpong_frac=0.3)
+    r.s_1u, r.s_pingpong = 30.0, 30.0
+    RuleScorer(_cfg()).decide(r)
+    assert r.score == 0.0
+
+
+def test_pirna_defining_evidence_is_1u_or_pingpong():
+    # piRNA is size + (5'U OR ping-pong): either evidence alone must carry the score.
+    r_1u = ClusterRecord(chrom="c", start=0, end=100, reads=500, dicer_call="27")
+    r_1u.s_1u, r_1u.s_pingpong = 8.0, 0.0
+    r_pp = ClusterRecord(chrom="c", start=0, end=100, reads=500, dicer_call="27")
+    r_pp.s_1u, r_pp.s_pingpong = 0.0, 8.0
+    spec = _cfg()["classes"]["piRNA"]
+    assert RuleScorer.defining_scores(spec, r_1u) == [8.0]
+    assert RuleScorer.defining_scores(spec, r_pp) == [8.0]

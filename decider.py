@@ -85,9 +85,18 @@ class RuleScorer:
 
     @staticmethod
     def defining_scores(spec, record):
-        """Evidence scores the class is defined by, in config order."""
-        return [getattr(record, f"s_{name}", 0.0)
-                for name in spec.get("defining_evidence", [])]
+        """Evidence scores the class is defined by, in config order.
+
+        A nested list is an OR slot: score it as the max over its members
+        (e.g. piRNA is size + (5'U OR ping-pong)). A plain string is AND, as before.
+        """
+        scores = []
+        for name in spec.get("defining_evidence", []):
+            if isinstance(name, list):
+                scores.append(max(getattr(record, f"s_{n}", 0.0) for n in name))
+            else:
+                scores.append(getattr(record, f"s_{name}", 0.0))
+        return scores
 
     def decide(self, record):
         scores = {}
@@ -106,6 +115,9 @@ class RuleScorer:
         record.cls = top_name
         defining = self.defining_scores(self.cfg["classes"][top_name], record)
         record.score = round(min(defining), 3) if defining else 0.0
+        # No size call means no class evidence is meaningful.
+        if record.dicer_call == "N":
+            record.score = 0.0
         record.confidence = round(conf, 3)
         record.evidence = "; ".join(f"{k}={v}" for k, v in evidence[top_name].items())
         record.review = (
