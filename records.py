@@ -48,7 +48,7 @@ class ClusterRecord:
     phase_pvalue: float = 1.0
     phase_number: int = 0
     phase_ratio: float = 0.0
-    overlap19_frac: float = 0.0
+    overlap_dup_frac: float = 0.0
     # repetition
     multimap_frac: float = 0.0
     # classification

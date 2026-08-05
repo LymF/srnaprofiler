@@ -133,10 +133,17 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
             phase5 = five - 2
         (plus5 if a.strand == "+" else minus5)[five] += w
         phase_positions.append((phase5, w, L))
-    overlap_counts = offset_spectrum(plus5, minus5, lo=1, hi=20)
+    # Wide enough to reach the duplex offset (L-2) of any size in the window;
+    # ping-pong keeps its own 1..20 window so its scale does not shift.
+    wide_counts = offset_spectrum(plus5, minus5, lo=1, hi=dmax)
+    overlap_counts = Counter({d: c for d, c in wide_counts.items() if d <= 20})
     r.pingpong_z, r.pingpong_pairs10 = pingpong_zscore(overlap_counts)
     total_pairs = sum(overlap_counts.values())
-    r.overlap19_frac = round(overlap_counts.get(19, 0) / total_pairs, 4) if total_pairs else 0.0
+    # Dicer duplex: the two strands of one duplex leave their 5' ends L-2 apart.
+    wide_total = sum(wide_counts.values())
+    if r.dicer_call != "N" and wide_total:
+        r.overlap_dup_frac = round(
+            wide_counts.get(int(r.dicer_call) - 2, 0) / wide_total, 4)
     # 10-nt 5'-5' overlap fraction: bounded [0,1] and comparable across loci (unlike
     # the raw z). Guarded by a minimum number of pairs so noise can't yield a spurious 1.0.
     r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
