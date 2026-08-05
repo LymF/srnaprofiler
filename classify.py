@@ -103,7 +103,7 @@ def run_classify(args):
     ext_cfg.update(config.get("extractor", {}))
     ext_cfg["size_windows"] = class_size_windows(config)
     ext_cfg["profile_min_reads"] = (config.get("clustering", {}) or {}).get(
-        "profile_min_reads", 10)
+        "profile_min_reads", 2)
     threads = getattr(args, "threads", 1) or 1
     pad = resolve_pad(getattr(args, "pad", None), config)
 

@@ -55,3 +55,40 @@ def test_minimum_counts_weighted_reads():
 def test_default_keeps_every_profile():
     prof = island_profiles([(100, 160)], _reads("A" * 24, [100]))
     assert prof[0]["size"] == 24
+
+
+# Which class window holds most of the read mass is far more stable with few
+# reads than the exact modal length, and it is what the merge actually needs.
+_WIN = [(20, 22), (24, 31)]
+
+
+def test_window_survives_a_noisy_mode():
+    # 3 reads of 25, 2 of 26, 2 of 27: no majority length, but all piRNA-window
+    alns = (_reads("A" * 25, [100, 110, 120]) + _reads("A" * 26, [130, 140])
+            + _reads("A" * 27, [150, 160]))
+    prof = island_profiles([(100, 200)], alns, size_windows=_WIN)
+    assert prof[0]["window"] == 1
+
+
+def test_window_separates_the_pathways():
+    p21 = island_profiles([(100, 200)], _reads("A" * 21, [100, 110, 120]),
+                          size_windows=_WIN)
+    p25 = island_profiles([(100, 200)], _reads("A" * 25, [100, 110, 120]),
+                          size_windows=_WIN)
+    assert p21[0]["window"] == 0 and p25[0]["window"] == 1
+
+
+def test_no_dominant_window_is_unknown():
+    # half 21-nt, half 25-nt: genuinely mixed, so no call
+    alns = _reads("A" * 21, [100, 110]) + _reads("A" * 25, [120, 130])
+    assert island_profiles([(100, 200)], alns, size_windows=_WIN)[0]["window"] is None
+
+
+def test_mass_outside_every_window_is_unknown():
+    # 19 nt degradation product: belongs to no pathway, must not be a barrier
+    assert island_profiles([(100, 200)], _reads("A" * 19, [100, 110, 120]),
+                           size_windows=_WIN)[0]["window"] is None
+
+
+def test_window_is_absent_without_windows():
+    assert island_profiles([(100, 200)], _reads("A" * 25, [100]))[0]["window"] is None

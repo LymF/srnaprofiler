@@ -203,12 +203,14 @@ def extract(sam_path, regions, lib_size, config):
             for i, region in enumerate(regions)]
 
 
-def island_profiles(islands, alns, min_reads=0):
-    """Dominant read length and strand fraction per island, for the merge rule.
+def island_profiles(islands, alns, min_reads=0, size_windows=None,
+                    min_window_frac=0.5):
+    """Size profile and strand fraction per island, for the merge rule.
 
-    Below `min_reads` weighted reads the profile is reported unknown: a modal
-    size estimated from a handful of reads flips with one read either way, and
-    an unknown profile never blocks a merge.
+    The size call is the class window holding most of the read mass, which
+    survives the handful of reads a raw island has -- the modal length does not,
+    and flips with one read either way. No window over `min_window_frac` of the
+    mass means unknown, and unknown never blocks a merge.
     """
     sizes = [Counter() for _ in islands]
     plus = [0.0] * len(islands)
@@ -226,10 +228,17 @@ def island_profiles(islands, alns, min_reads=0):
     out = []
     for j in range(len(islands)):
         if not total[j] or total[j] < min_reads:
-            out.append({"size": None, "frac_top": None})
-        else:
-            out.append({"size": sizes[j].most_common(1)[0][0],
-                        "frac_top": round(plus[j] / total[j], 4)})
+            out.append({"size": None, "window": None, "frac_top": None})
+            continue
+        window = None
+        if size_windows:
+            mass = [sum(v for L, v in sizes[j].items() if lo <= L <= hi)
+                    for lo, hi in size_windows]
+            best = max(range(len(mass)), key=lambda i: mass[i])
+            if mass[best] / total[j] > min_window_frac:
+                window = best
+        out.append({"size": sizes[j].most_common(1)[0][0], "window": window,
+                    "frac_top": round(plus[j] / total[j], 4)})
     return out
 
 
@@ -250,7 +259,8 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
             depth[p] += 1
     islands = call_islands(depth, mincov, 0)
     profiles = island_profiles(islands, alns,
-                               min_reads=config.get("profile_min_reads", 0))
+                               min_reads=config.get("profile_min_reads", 0),
+                               size_windows=config.get("size_windows"))
     regions = [(chrom, s, e) for (s, e) in
                merge_compatible(islands, profiles, pad,
                                 chrom_len=chrom_len or None,

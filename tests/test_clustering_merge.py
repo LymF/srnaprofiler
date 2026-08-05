@@ -122,3 +122,34 @@ def test_size_outside_every_window_does_not_block_a_merge():
     islands = [(1000, 1100), (1250, 1350)]
     profiles = [_p(25, 0.5), _p(19, 0.5)]
     assert merge_compatible(islands, profiles, pad=100, size_windows=_WIN) == [(900, 1450)]
+
+
+def test_merge_prefers_the_window_over_the_mode():
+    # different modes (25 vs 27) but the same pathway window: they belong together
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [{"size": 25, "window": 1, "frac_top": 0.5},
+                {"size": 27, "window": 1, "frac_top": 0.5}]
+    assert merge_compatible(islands, profiles, pad=100, size_windows=_WIN) == [(900, 1450)]
+
+
+def test_different_windows_block_even_with_close_modes():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [{"size": 22, "window": 0, "frac_top": 0.5},
+                {"size": 24, "window": 1, "frac_top": 0.5}]
+    assert len(merge_compatible(islands, profiles, pad=100, size_windows=_WIN)) == 2
+
+
+def test_unknown_window_falls_back_to_not_blocking():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [{"size": 19, "window": None, "frac_top": 0.5},
+                {"size": 25, "window": 1, "frac_top": 0.5}]
+    assert merge_compatible(islands, profiles, pad=100, size_windows=_WIN) == [(900, 1450)]
+
+
+def test_window_wins_when_it_disagrees_with_the_mode():
+    # island A: mass is mostly 20-22 but the single commonest length is 25.
+    # The mode says "piRNA", the mass says "siRNA" -- the mass is what counts.
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [{"size": 25, "window": 0, "frac_top": 0.5},
+                {"size": 21, "window": 0, "frac_top": 0.5}]
+    assert merge_compatible(islands, profiles, pad=100, size_windows=_WIN) == [(900, 1450)]

@@ -62,7 +62,14 @@ def _same_size_group(sa, sb, size_windows):
 
 def _compatible(a, b, max_strand_diff, size_windows=None):
     """Whether two neighbouring profiles may be merged."""
-    if (a["size"] is not None and b["size"] is not None
+    wa, wb = a.get("window"), b.get("window")
+    if wa is not None and wb is not None:
+        # The window comes from the read mass, which holds up on the few reads a
+        # raw island has; the modal length does not. Prefer it when both have one.
+        if wa != wb:
+            return False
+    elif (wa is None and wb is None and a["size"] is not None
+            and b["size"] is not None
             and not _same_size_group(a["size"], b["size"], size_windows)):
         return False
     ta, tb = a["frac_top"], b["frac_top"]
