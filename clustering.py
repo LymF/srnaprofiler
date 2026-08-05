@@ -44,9 +44,25 @@ def extend_and_merge(islands, pad, chrom_len=None):
     return merged
 
 
-def _compatible(a, b, max_strand_diff):
+def _same_size_group(sa, sb, size_windows):
+    """Whether two dominant sizes belong to the same biogenesis window.
+
+    Without windows, exact equality. Sizes outside every window are their own
+    group, so an 18-nt island does not join a 19-nt one for free.
+    """
+    if not size_windows:
+        return sa == sb
+    ga = frozenset(i for i, (lo, hi) in enumerate(size_windows) if lo <= sa <= hi)
+    gb = frozenset(i for i, (lo, hi) in enumerate(size_windows) if lo <= sb <= hi)
+    if not ga and not gb:
+        return sa == sb
+    return bool(ga & gb)
+
+
+def _compatible(a, b, max_strand_diff, size_windows=None):
     """Whether two neighbouring profiles may be merged."""
-    if a["size"] is not None and b["size"] is not None and a["size"] != b["size"]:
+    if (a["size"] is not None and b["size"] is not None
+            and not _same_size_group(a["size"], b["size"], size_windows)):
         return False
     ta, tb = a["frac_top"], b["frac_top"]
     if ta is not None and tb is not None and abs(ta - tb) > max_strand_diff:
@@ -54,7 +70,8 @@ def _compatible(a, b, max_strand_diff):
     return True
 
 
-def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5):
+def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5,
+                     size_windows=None):
     """Extend and merge, but only across neighbours with a compatible profile.
 
     Unknown values (None) never block a merge.
@@ -73,7 +90,7 @@ def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5
         if cur_s is None:
             cur_s, cur_e, cur_raw_e, cur_prof = s, e, raw_e, prof
             continue
-        if s <= cur_e and _compatible(cur_prof, prof, max_strand_diff):
+        if s <= cur_e and _compatible(cur_prof, prof, max_strand_diff, size_windows):
             cur_e, cur_raw_e = max(cur_e, e), max(cur_raw_e, raw_e)
             if cur_prof["size"] is None:
                 cur_prof = prof

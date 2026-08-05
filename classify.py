@@ -25,6 +25,16 @@ def resolve_pad(cli_pad, config):
     return (config.get("clustering", {}) or {}).get("pad", DEFAULT_PAD)
 
 
+def class_size_windows(config):
+    """Size windows of the classes, used to group neighbouring islands."""
+    out = []
+    for spec in (config.get("classes") or {}).values():
+        size = (spec or {}).get("size")
+        if size and "lo" in size and "hi" in size:
+            out.append((size["lo"], size["hi"]))
+    return out
+
+
 def mincov_to_depth(mincov_rpm, lib_size):
     """Reads-per-million threshold as an absolute depth for this library."""
     if lib_size <= 0:
@@ -91,6 +101,7 @@ def run_classify(args):
     config = load_config(args.config)
     ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
+    ext_cfg["size_windows"] = class_size_windows(config)
     threads = getattr(args, "threads", 1) or 1
     pad = resolve_pad(getattr(args, "pad", None), config)
 

@@ -84,3 +84,33 @@ def test_output_is_always_disjoint():
 
 def test_merge_compatible_empty_input():
     assert merge_compatible([], [], pad=100) == []
+
+
+# Size compatibility is by CLASS WINDOW, not by exact modal equality: neighbouring
+# islands of one piRNA cluster differ by 1-2 nt from sampling alone.
+_WIN = [(20, 22), (24, 31)]
+
+
+def test_neighbouring_sizes_in_the_same_window_merge():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(25, 0.5), _p(26, 0.5)]
+    assert merge_compatible(islands, profiles, pad=100, size_windows=_WIN) == [(900, 1450)]
+
+
+def test_sizes_in_different_windows_still_do_not_merge():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(21, 0.5), _p(24, 0.5)]
+    out = merge_compatible(islands, profiles, pad=100, size_windows=_WIN)
+    assert len(out) == 2
+
+
+def test_size_outside_every_window_only_matches_its_own_size():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(18, 0.5), _p(19, 0.5)]
+    assert len(merge_compatible(islands, profiles, pad=100, size_windows=_WIN)) == 2
+
+
+def test_without_windows_it_falls_back_to_exact_equality():
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(25, 0.5), _p(26, 0.5)]
+    assert len(merge_compatible(islands, profiles, pad=100)) == 2

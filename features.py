@@ -247,7 +247,8 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     profiles = island_profiles(islands, alns)
     regions = [(chrom, s, e) for (s, e) in
                merge_compatible(islands, profiles, pad,
-                                chrom_len=chrom_len or None)]
+                                chrom_len=chrom_len or None,
+                                size_windows=config.get("size_windows"))]
     if not regions:
         return []
     buckets = _assign_reads(regions, alns)

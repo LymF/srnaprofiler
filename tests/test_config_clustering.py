@@ -28,3 +28,28 @@ def test_config_used_when_cli_absent():
 
 def test_falls_back_when_config_is_silent():
     assert resolve_pad(cli_pad=None, config={}) == 500
+
+
+# The merge groups neighbouring sizes by the class windows of the config, so a
+# 25-nt island joins a 26-nt one (both piRNA) but not a 21-nt one.
+from classify import class_size_windows
+
+
+def test_windows_come_from_the_class_definitions():
+    cfg = {"classes": {"siRNA": {"size": {"lo": 20, "hi": 22}},
+                       "piRNA": {"size": {"lo": 24, "hi": 31}}}}
+    assert sorted(class_size_windows(cfg)) == [(20, 22), (24, 31)]
+
+
+def test_classes_without_a_size_window_are_skipped():
+    cfg = {"classes": {"miRNA": {}, "piRNA": {"size": {"lo": 24, "hi": 31}}}}
+    assert class_size_windows(cfg) == [(24, 31)]
+
+
+def test_empty_config_gives_no_windows():
+    assert class_size_windows({}) == []
+
+
+def test_real_configs_declare_windows():
+    assert len(class_size_windows(load_config("rules.yaml"))) >= 2
+    assert len(class_size_windows(load_config("rules.plant.yaml"))) >= 2
