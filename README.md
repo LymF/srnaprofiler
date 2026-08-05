@@ -68,33 +68,40 @@ python3 srnaprofiler.py --help
 
 Run `python3 srnaprofiler.py <command> --help` for per-module options.
 
-### classify — calibrating `--mincov`
+### classify — calibrating `--mincov` and `--pad`
 
-Read counts are weighted by `1/NH`, so honest per-locus abundances are much lower than
-raw alignment pileups. With a permissive `--mincov`, shallow mapping tails seed tens of
-thousands of 1–3 read islands that can never pass `decision.min_reads`, and most loci end
-up flagged `review`. Raising `--mincov` removes that noise at the source — it does not
-cost signal.
+`--mincov` is in **reads per million**, converted once per run into an absolute depth
+using the library size. As a raw count it did not transfer between libraries: a 10
+calibrated on a 30.8M-alignment run means something else at any other depth.
 
-Sweep on DRR351382 (Drosophila ovary, 30.8M alignments; `min_reads: 10`):
+A locus is an island of positions above that depth, extended by `--pad` on **both** sides;
+neighbours merge only when they share the dominant read length and their strand fractions
+are within 0.5. So the tolerated gap is `2*pad`, and a merge needs a compatible profile —
+a 24-nt neighbour is not fused with a 21-nt one.
 
-| `--mincov` | clusters | review rate | kept loci | read mass kept | loci >=50 reads |
-|-----------:|---------:|------------:|----------:|---------------:|----------------:|
-| 2          | 83,464   | 79.3%       | 17,271    | 0.704          | 7,324           |
-| 5          | 64,828   | 66.2%       | 21,926    | 0.697          | 8,511           |
-| 10         | 58,909   | 56.4%       | 25,673    | 0.685          | 9,395           |
-| 20         | 48,278   | 44.2%       | 26,932    | 0.680          | 10,120          |
-| 30         | 41,015   | 35.2%       | 26,587    | 0.669          | 10,298          |
-| 50         | 30,176   | 15.1%       | 25,619    | 0.664          | 9,787           |
+Sweep on DRR351382 (Drosophila ovary, 9.66M weighted reads, `pad 200`), against the 90
+reference piRNA clusters:
 
-The 1,000 most abundant loci called at `--mincov 2` are recovered in full (loci and read
-mass) at every threshold, including 50. Kept loci and substantial loci peak at 20–30 while
-the retained read mass stays flat, so the default is **10** (safe for shallow libraries);
-deep libraries (>=30M alignments) do better with **20–30**.
+| `--mincov` (RPM) | depth | loci    | median span | reads/locus | review | piC recall |
+|-----------------:|------:|--------:|------------:|------------:|-------:|-----------:|
+| 0.5              | 5     | 228,329 | 427         | 41          | 21.5%  | 87/90      |
+| 1.0              | 10    | 171,322 | 426         | 55          | 15.0%  | 85/90      |
+| 2.0              | 20    | 116,010 | 425         | 75          | 12.2%  | 78/90      |
+| 5.0              | 50    | 52,565  | 424         | 116         | 11.1%  | 65/90      |
 
-Raising `decision.min_reads` instead is the wrong lever: it only relabels loci as `review`
-without retaining more signal (read mass kept drops to 0.671 / 0.644 / 0.615 at
-`min_reads` 20 / 50 / 100 for `--mincov 10`).
+Above 1 RPM the recall of known clusters falls off, so the default is **1.0**.
+
+`--pad` at 1 RPM, same reference:
+
+| `--pad` | median span | reads/locus | review | piC recall | piRNA read mass in piCs |
+|--------:|------------:|------------:|-------:|-----------:|------------------------:|
+| 200     | 426         | 55          | 15.0%  | 85/90      | 5.1x                    |
+| 500     | 1025        | 122         | 10.3%  | 85/90      | 5.8x                    |
+| 1000    | 2025        | 228         | 8.4%   | 81/90      | 6.2x                    |
+
+500 is the default in both configs: it keeps the recall of 200 while doubling the reads per
+locus, and 1000 starts eroding recall. Arabidopsis at the same setting keeps all six TAS
+loci, with 197 reads per locus and a 2.6% review rate.
 
 Without `--norm`, the library size for RPM is the **weighted** one (sum of `1/NH`), on the
 same scale as the per-locus counts. It costs one extra pass over the BAM (~70s for 30M
@@ -160,6 +167,35 @@ inside them, and the flamenco-vs-42AB signature contrast. On DRR351382: 94.4% re
 (frac_top 0.900, pingpong_frac 0.059) against a dual-strand, ping-pong-rich 42AB
 (0.519 / 0.132) — the published contrast, with nothing in the pipeline aware of either
 locus.
+
+### Reading the score
+
+`score` is `log10(1/p)`: **2 means p = 0.01**, 3 means p = 0.001. It is the
+weakest of the evidences that define the assigned class, so a score of 2 says
+every defining evidence cleared p = 0.01.
+
+Filter with it directly — there is no confirmed/unconfirmed flag, because the
+threshold belongs to whoever is analysing.
+
+Two caveats:
+
+- **A low score means "not demonstrated", not "false".** The test has little
+  power on shallow loci: on the Arabidopsis run the hcsiRNA loci that fail the
+  5'A test still show 2.71x transposon enrichment at 19 median reads.
+- **The 5' base score mixes biology with protocol.** T4 RNA ligase 1 prefers
+  C > U >= A > G at the 5' end, and no tool in the field corrects for it.
+- **miRNA loci always score 0.** The class comes from `--mirna-loci`, defined by
+  precursor structure rather than by read features, so it has no defining
+  evidence to score. Filtering by score would drop every miRNA.
+- **`s_pingpong` and `s_density` are diagnostic only — no shipped config uses
+  them as defining evidence.** Both nulls are weak: the ping-pong test treats
+  the 20 offset bins as if they were independent trials, but the denominator
+  is actually a sum of 1/NH weight *products* across read pairs, not a count
+  of independent draws, so the p-value understates the true uncertainty. The
+  density test is conditioned on the locus existing in the first place — a
+  locus is only in the table because reads piled up there, so testing that
+  pile-up against a uniform-genome null is circular. Both will be revisited
+  once clustering no longer selects loci by the same read pile-up being tested.
 
 ### classplots — per-class plots
 

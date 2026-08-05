@@ -4,7 +4,7 @@ from reporter import write_tsv, write_gff3, write_run_json
 
 def _rec():
     r = ClusterRecord(chrom="chr1", start=100, end=200, reads=50, dicer_call="21")
-    r.cls, r.confidence, r.review = "siRNA", 0.8, False
+    r.cls, r.confidence, r.review, r.score = "siRNA", 0.8, False, 4.2
     return r
 
 def test_write_tsv(tmp_path):
@@ -19,7 +19,9 @@ def test_write_gff3(tmp_path):
     write_gff3([_rec()], str(p))
     txt = p.read_text()
     assert txt.startswith("##gff-version 3")
-    assert "chr1\tsrnaprofiler\tsiRNA\t101\t200" in txt  # GFF 1-based
+    assert "chr1\tsrnaprofiler\tsiRNA\t101\t200\t4.2\t" in txt  # score in column 6, GFF 1-based
+    assert "score=4.2" in txt
+    assert "confidence=0.8" in txt  # kept alongside score=
 
 def test_write_run_json(tmp_path):
     p = tmp_path / "run.json"

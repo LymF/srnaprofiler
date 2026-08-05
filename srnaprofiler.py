@@ -601,11 +601,14 @@ Examples:
     cl.add_argument("-o", "--outdir", required=True)
     cl.add_argument("--sam", required=True, help="SAM/BAM mapped to the whole genome")
     cl.add_argument("-g", "--genome", help="Genome FASTA (optional in v1)")
-    cl.add_argument("--mincov", type=int, default=10,
-                    help="Minimum raw alignment depth to seed a coverage island "
-                         "(default: %(default)s). Deep libraries (>=30M alignments) do "
-                         "better with 20-30; see the calibration table in the README.")
-    cl.add_argument("--pad", type=int, default=75)
+    cl.add_argument("--mincov", type=float, default=1.0,
+                    help="Minimum coverage to seed a locus, in READS PER MILLION "
+                         "(default: %(default)s). Converted to an absolute depth "
+                         "using the library size, so it transfers between runs.")
+    cl.add_argument("--pad", type=int, default=None,
+                    help="Extend each island by this many bp on both sides before "
+                         "merging (default: from the config; 500 in both shipped "
+                         "configs)")
     cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
     cl.add_argument("--config", default="rules.yaml",
                     help="Scoring config (default: %(default)s, calibrated for "

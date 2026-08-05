@@ -2,9 +2,11 @@
 import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
-from samio import read_alignments, read_region
-from clustering import call_islands
+from samio import read_alignments, read_region, reference_lengths
+from clustering import call_islands, merge_compatible
 from signals import offset_spectrum, pingpong_zscore, phase_test
+from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
+                      pingpong_score, density_score, score_from_p)
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -13,7 +15,7 @@ def revcomp(seq: str) -> str:
     return seq.translate(_COMP)[::-1]
 
 
-def build_record(region, region_alns, lib_size, config):
+def build_record(region, region_alns, lib_size, config, genome_bp=0):
     """Builds a ClusterRecord from the reads ALREADY assigned to the region.
 
     `region_alns` must contain all reads that overlap the region by span
@@ -87,9 +89,26 @@ def build_record(region, region_alns, lib_size, config):
     in_window = r.reads - r.short - r.long
     r.frac_in_window = round(in_window / r.reads, 4)
     r.dicer_call = str(predom_len) if r.frac_in_window >= 0.8 else "N"
+    in_window_by_len = {int(k): v for k, v in seq_lens.items() if k.isdigit()}
+    win_total = sum(in_window_by_len.values())
+    if win_total:
+        ranked = sorted(in_window_by_len.items(), key=lambda kv: kv[1], reverse=True)
+        r.size_purity = round(ranked[0][1] / win_total, 4)
+        # A second size is only worth reporting when no single population dominates.
+        if len(ranked) > 1 and r.size_purity < 0.8:
+            r.dicer_call_2 = str(ranked[1][0])
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)
+    # n = distinct_seqs, not the 1/NH read count: PCR duplicates and stacked
+    # identical reads are not independent trials, so the read count
+    # pseudoreplicates the binomial n. k is scaled to the same denominator.
+    r.s_1u = base_bias_score(r.pct_1u * r.distinct_seqs, r.distinct_seqs)
+    r.s_5a = base_bias_score(r.pct_5a * r.distinct_seqs, r.distinct_seqs)
+    r.s_fractop = strand_bias_score(r.frac_top, r.distinct_seqs)
+    r.s_fractop_bal = strand_balance_score(r.frac_top, r.distinct_seqs)
+    if genome_bp > 0:
+        r.s_density = density_score(r.reads, end - start, lib_size, genome_bp)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
     r.multimap_frac = round(multimap / raw_n, 4)
@@ -121,6 +140,7 @@ def build_record(region, region_alns, lib_size, config):
     # 10-nt 5'-5' overlap fraction: bounded [0,1] and comparable across loci (unlike
     # the raw z). Guarded by a minimum number of pairs so noise can't yield a spurious 1.0.
     r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
+    r.s_pingpong = pingpong_score(overlap_counts.get(10, 0), total_pairs)
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)
@@ -129,6 +149,7 @@ def build_record(region, region_alns, lib_size, config):
         res = phase_test(in_phase_len, region_start=start, phase_length=pl)
         r.phase_score, r.phase_number = res.score, res.number
         r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
+        r.s_phase = score_from_p(r.phase_pvalue)
     return r
 
 
@@ -175,7 +196,33 @@ def extract(sam_path, regions, lib_size, config):
             for i, region in enumerate(regions)]
 
 
-def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config, xm_as_nh=False):
+def island_profiles(islands, alns):
+    """Dominant read length and strand fraction per island, for the merge rule."""
+    sizes = [Counter() for _ in islands]
+    plus = [0.0] * len(islands)
+    total = [0.0] * len(islands)
+    starts = [s for s, _ in islands]
+    for a in alns:
+        j = bisect.bisect_right(starts, a.pos) - 1
+        if j < 0 or a.pos >= islands[j][1]:
+            continue
+        w = 1.0 / a.nh
+        sizes[j][len(a.seq)] += w
+        total[j] += w
+        if a.strand == "+":
+            plus[j] += w
+    out = []
+    for j in range(len(islands)):
+        if not total[j]:
+            out.append({"size": None, "frac_top": None})
+        else:
+            out.append({"size": sizes[j].most_common(1)[0][0],
+                        "frac_top": round(plus[j] / total[j], 4)})
+    return out
+
+
+def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
+                       xm_as_nh=False, genome_bp=0, chrom_len=0):
     """Cluster and extract features for a single chromosome of an indexed BAM.
 
     Reads only this chromosome's alignments into memory (via fetch), builds its
@@ -189,11 +236,15 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config, xm_as_nh=
     for a in alns:
         for p in range(a.pos, a.pos + len(a.seq)):
             depth[p] += 1
-    regions = [(chrom, s, e) for (s, e) in call_islands(depth, mincov, pad)]
+    islands = call_islands(depth, mincov, 0)
+    profiles = island_profiles(islands, alns)
+    regions = [(chrom, s, e) for (s, e) in
+               merge_compatible(islands, profiles, pad,
+                                chrom_len=chrom_len or None)]
     if not regions:
         return []
     buckets = _assign_reads(regions, alns)
-    return [build_record(regions[i], buckets[i], lib_size, config)
+    return [build_record(regions[i], buckets[i], lib_size, config, genome_bp=genome_bp)
             for i in range(len(regions))]
 
 
@@ -202,7 +253,8 @@ def _chrom_job(job):
     return process_chromosome(*job)
 
 
-def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1, xm_as_nh=False):
+def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
+                     xm_as_nh=False, genome_bp=0):
     """Cluster + extract features across chromosomes, optionally in parallel.
 
     Each chromosome is processed independently by `process_chromosome`. With
@@ -210,7 +262,9 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
     multiprocessing pool; otherwise it runs serially. Records are returned in
     chromosome order.
     """
-    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh) for c in chroms]
+    lengths = reference_lengths(bam_path)
+    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh, genome_bp,
+             lengths.get(c, 0)) for c in chroms]
     if threads > 1 and len(jobs) > 1:
         import multiprocessing as mp
         with mp.Pool(min(threads, len(jobs))) as pool:

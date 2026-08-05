@@ -4,7 +4,7 @@ from collections import defaultdict
 from features import extract_by_chrom
 from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
                    prefers_xm_as_nh, weighted_library_size,
-                   reference_alignment_counts)
+                   reference_alignment_counts, mapped_genome_size)
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
 from reporter import write_tsv, write_gff3, write_run_json
@@ -13,6 +13,23 @@ from utils import log
 
 # Resident bytes per alignment, measured: 339 B (Drosophila), 192 B (Arabidopsis).
 _BYTES_PER_ALIGNMENT = 340
+
+
+DEFAULT_PAD = 500
+
+
+def resolve_pad(cli_pad, config):
+    """CLI wins; otherwise the config's clustering.pad; otherwise the default."""
+    if cli_pad is not None:
+        return cli_pad
+    return (config.get("clustering", {}) or {}).get("pad", DEFAULT_PAD)
+
+
+def mincov_to_depth(mincov_rpm, lib_size):
+    """Reads-per-million threshold as an absolute depth for this library."""
+    if lib_size <= 0:
+        return 1
+    return max(1, round(mincov_rpm * lib_size / 1e6))
 
 
 def safe_thread_count(requested, ref_alignments, available_mb, headroom=0.8):
@@ -53,14 +70,19 @@ def parse_mirna_bed(path):
     return intervals
 
 
-def mark_mirna(records, mirna_intervals):
+def mark_mirna(records, mirna_intervals, min_fraction=0.5):
+    """Label a locus miRNA only when the miRNA covers most of its span."""
     for r in records:
+        span = r.end - r.start
+        if span <= 0:
+            continue
+        covered = 0
         for (s, e) in mirna_intervals.get(r.chrom, []):
-            if r.start < e and s < r.end:
-                r.cls = "miRNA"
-                r.confidence = 1.0
-                r.review = False
-                break
+            covered = max(covered, min(r.end, e) - max(r.start, s))
+        if covered / span >= min_fraction:
+            r.cls = "miRNA"
+            r.confidence = 1.0
+            r.review = False
 
 
 def run_classify(args):
@@ -70,6 +92,7 @@ def run_classify(args):
     ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
     threads = getattr(args, "threads", 1) or 1
+    pad = resolve_pad(getattr(args, "pad", None), config)
 
     base = os.path.join(outdir, args.prefix)
     log(f"Ensuring sorted, indexed BAM (threads={threads})...", "INFO")
@@ -88,6 +111,10 @@ def run_classify(args):
         log(f"Weighted library size: {lib_size:.1f} reads "
             f"({total_mapped(bam_path)} alignment lines)", "INFO")
 
+    min_depth = mincov_to_depth(args.mincov, lib_size)
+    log(f"--mincov {args.mincov} RPM -> minimum depth {min_depth} "
+        f"for a library of {lib_size:.0f} reads", "INFO")
+
     chroms = mapped_chromosomes(bam_path)
     safe = safe_thread_count(threads, reference_alignment_counts(bam_path),
                              available_memory_mb())
@@ -98,7 +125,8 @@ def run_classify(args):
         threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
-                               args.mincov, args.pad, threads, xm_as_nh)
+                               min_depth, pad, threads, xm_as_nh,
+                               mapped_genome_size(bam_path))
     log(f"{len(records)} clusters", "INFO")
 
     mirna_intervals = parse_mirna_bed(args.mirna_loci) if args.mirna_loci else {}

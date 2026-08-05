@@ -84,9 +84,19 @@ class RuleScorer:
         return s, terms
 
     @staticmethod
-    def _support(terms):
-        """Positive evidence excluding size: what actually earns the class."""
-        return sum(v for k, v in terms.items() if k != "size" and v > 0)
+    def defining_scores(spec, record):
+        """Evidence scores the class is defined by, in config order.
+
+        A nested list is an OR slot: score it as the max over its members
+        (e.g. piRNA is size + (5'U OR ping-pong)). A plain string is AND, as before.
+        """
+        scores = []
+        for name in spec.get("defining_evidence", []):
+            if isinstance(name, list):
+                scores.append(max(getattr(record, f"s_{n}", 0.0) for n in name))
+            else:
+                scores.append(getattr(record, f"s_{name}", 0.0))
+        return scores
 
     def decide(self, record):
         scores = {}
@@ -103,6 +113,11 @@ class RuleScorer:
         margin = top_score - (ordered[1][1] if len(ordered) > 1 else 0.0)
         dec = self.cfg["decision"]
         record.cls = top_name
+        defining = self.defining_scores(self.cfg["classes"][top_name], record)
+        record.score = round(min(defining), 3) if defining else 0.0
+        # No size call means no class evidence is meaningful.
+        if record.dicer_call == "N":
+            record.score = 0.0
         record.confidence = round(conf, 3)
         record.evidence = "; ".join(f"{k}={v}" for k, v in evidence[top_name].items())
         record.review = (
@@ -111,13 +126,4 @@ class RuleScorer:
             or record.reads < dec["min_reads"]
             or record.dicer_call == "N"
         )
-        # Size is a filter, not a signature: without evidence beyond it, name
-        # nothing rather than hand out the class the size happens to fit.
-        min_ev = dec.get("min_evidence", 0.0)
-        if min_ev > 0:
-            support = self._support(evidence[top_name])
-            record.support = round(support, 3)
-            if support < min_ev:
-                record.cls = "unclassified"
-                record.review = True
         return record

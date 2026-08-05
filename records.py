@@ -17,6 +17,8 @@ class ClusterRecord:
     major_rna_reads: int = 0
     # size
     dicer_call: str = "N"
+    size_purity: float = 0.0
+    dicer_call_2: str = ""
     frac_in_window: float = 0.0
     short: int = 0
     long: int = 0
@@ -28,7 +30,15 @@ class ClusterRecord:
     pct_1u: float = 0.0
     pct_10a: float = 0.0
     pct_5a: float = 0.0
-    support: float = 0.0
+    # evidence scores, log10(1/p) per signature
+    s_1u: float = 0.0
+    s_5a: float = 0.0
+    s_fractop: float = 0.0
+    s_fractop_bal: float = 0.0
+    s_pingpong: float = 0.0
+    s_phase: float = 0.0
+    s_density: float = 0.0
+    score: float = 0.0
     gc: float = 0.0
     # biogenesis
     pingpong_z: float = 0.0

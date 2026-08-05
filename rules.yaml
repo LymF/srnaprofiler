@@ -1,12 +1,11 @@
 # rules.yaml — per-organism scoring config (generic default)
+clustering:
+  pad: 500
 extractor:
   dicermin: 18
   dicermax: 35
   strand_cutoff: 0.8
 decision:
-  # Minimum evidence BEYOND the size window for a class to be named; below it
-  # the locus is 'unclassified'. Size is a filter, not a signature.
-  min_evidence: 0.3
   review_confidence: 0.6
   # No-op while there are only two classes: with a two-way softmax,
   # confidence < 0.6 already implies margin < ln(1.5) ~= 0.405, so any
@@ -25,6 +24,7 @@ classes:
     w_fractop_mid: 1.0        # rewards FracTop ~0.5 (double-stranded)
     w_pingpong_penalty: 1.0   # penalizes ping-pong (size-gated, like w_pingpong)
     w_phase: 0.5
+    defining_evidence: [fractop_bal]
   piRNA:
     size: {lo: 24, hi: 31}
     w_size: 1.0
@@ -34,3 +34,4 @@ classes:
     w_pingpong: 1.5
     w_1u: 1.0
     w_phase: 0.5
+    defining_evidence: [[1u, pingpong]]
