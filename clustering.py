@@ -63,23 +63,28 @@ def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5
         return []
     order = sorted(range(len(islands)), key=lambda i: islands[i])
     out = []
-    cur_s, cur_e = None, None
+    cur_s = cur_e = cur_raw_e = None
     cur_prof = None
     for i in order:
-        s, e = islands[i]
-        s = max(0, s - pad)
-        e = e + pad if chrom_len is None else min(chrom_len, e + pad)
+        raw_s, raw_e = islands[i]
+        s = max(0, raw_s - pad)
+        e = raw_e + pad if chrom_len is None else min(chrom_len, raw_e + pad)
         prof = profiles[i]
         if cur_s is None:
-            cur_s, cur_e, cur_prof = s, e, prof
+            cur_s, cur_e, cur_raw_e, cur_prof = s, e, raw_e, prof
             continue
         if s <= cur_e and _compatible(cur_prof, prof, max_strand_diff):
-            cur_e = max(cur_e, e)
+            cur_e, cur_raw_e = max(cur_e, e), max(cur_raw_e, raw_e)
             if cur_prof["size"] is None:
                 cur_prof = prof
         else:
+            # Not merged: they split the gap, because a read is assigned to
+            # every locus it touches and overlapping loci would count it twice.
+            if s < cur_e:
+                bound = (cur_raw_e + raw_s) // 2
+                cur_e, s = min(cur_e, bound), max(s, bound)
             out.append((cur_s, cur_e))
-            cur_s, cur_e, cur_prof = s, e, prof
+            cur_s, cur_e, cur_raw_e, cur_prof = s, e, raw_e, prof
     out.append((cur_s, cur_e))
     return out
 

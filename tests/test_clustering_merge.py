@@ -46,15 +46,16 @@ def test_same_profile_and_close_merges():
 
 
 def test_different_dominant_size_does_not_merge():
+    # they split the gap between them: loci must never overlap
     islands = [(1000, 1100), (1250, 1350)]
     profiles = [_p(24, 0.5), _p(21, 0.5)]
-    assert merge_compatible(islands, profiles, pad=100) == [(900, 1200), (1150, 1450)]
+    assert merge_compatible(islands, profiles, pad=100) == [(900, 1175), (1175, 1450)]
 
 
 def test_opposite_strand_bias_does_not_merge():
     islands = [(1000, 1100), (1250, 1350)]
     profiles = [_p(24, 0.05), _p(24, 0.95)]     # difference 0.90 > 0.5
-    assert merge_compatible(islands, profiles, pad=100) == [(900, 1200), (1150, 1450)]
+    assert merge_compatible(islands, profiles, pad=100) == [(900, 1175), (1175, 1450)]
 
 
 def test_unknown_profile_never_blocks_merging():
@@ -69,8 +70,16 @@ def test_chain_merges_only_through_compatible_neighbours():
     islands = [(1000, 1100), (1250, 1350), (1500, 1600)]
     profiles = [_p(24, 0.5), _p(24, 0.5), _p(21, 0.5)]
     out = merge_compatible(islands, profiles, pad=100)
-    assert out[0] == (900, 1450)
-    assert out[-1] == (1400, 1700)
+    assert out == [(900, 1425), (1425, 1700)]
+
+
+def test_output_is_always_disjoint():
+    # reads are assigned to every locus they touch, so overlapping loci would
+    # count the same read more than once
+    islands = [(1000, 1100), (1150, 1250), (1300, 1400), (1450, 1550)]
+    profiles = [_p(21, 0.5), _p(24, 0.5), _p(21, 0.5), _p(24, 0.5)]
+    out = merge_compatible(islands, profiles, pad=300)
+    assert all(a[1] <= b[0] for a, b in zip(out, out[1:])), out
 
 
 def test_merge_compatible_empty_input():
