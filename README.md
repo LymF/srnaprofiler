@@ -81,22 +81,32 @@ compatible: dominant read lengths in the same class size window (from the config
 Neighbours that do not merge split the gap between them — loci are always disjoint,
 because a read is assigned to every locus it touches.
 
-Measured on DRR351382 (Drosophila ovary, 9.66M weighted reads) at the defaults
-(`--mincov 1.0`, `pad 500`), against the 90 reference piRNA clusters, and on
-SRR30831721 (Arabidopsis flower buds) against the six TAS loci:
+Compatibility is judged by the class window holding most of the read mass, not by
+the modal length: a raw island has ~5 weighted reads, so its mode flips with one read
+either way, while the dominant window is stable (76% of the islands under 10 reads have
+one). Islands with no dominant window do not block a merge.
 
-| | Drosophila | Arabidopsis |
-|---|---|---|
-| loci | 126,530 | 70,976 |
-| median span | 111 bp | 256 bp |
-| reads per locus | 24 | 54 |
-| review rate | 59.0% | 21.8% |
-| known loci recovered | 87/90 piCs | 6/6 TAS |
+Measured at the defaults on DRR351382 (Drosophila ovary) and SRR30831721 (Arabidopsis
+flower buds), against the 90 reference piRNA clusters and the six TAS loci:
 
-**Known limitation:** the loci are still shorter than the field's (~500 bp) and hold fewer
-reads than they should, which costs power in every per-locus test. The size-window merge
-above fused 26% of the loci without losing any known cluster, so the criterion is sound —
-but it is not the main constraint. Under investigation.
+| | Drosophila | | Arabidopsis | |
+|---|---|---|---|---|
+| | before (pad 75) | now | before | now |
+| loci | ~186,000 | 45,666 | 23,248 | 46,492 |
+| median span | 88 bp | **335 bp** | ~100 bp | **532 bp** |
+| reads per locus | 34 | 36 | 34 | **74** |
+| review rate | 79% | **29.2%** | 33.1% | **8.2%** |
+| known loci | 85/90 piCs | 85/90 piCs | 6/6 TAS | 6/6 TAS |
+| piRNA read mass in piCs | 3.0x | **3.4x** | — | — |
+| siRNA read mass in piCs | 1.4x | **1.6x** | — | — |
+
+**On piC recall as a criterion:** it asks whether a 10-40 kb reference region holds at
+least one non-review piRNA locus, so it *rewards fragmentation* — the more loci a region
+is cut into, the likelier one of them is piRNA-sized. A run that scored 87/90 did so with
+111-bp loci; with larger loci the dominant population wins and genuinely 22-nt sub-regions
+inside those references are correctly called siRNA (three of them hold 88-96% of their
+read mass at 20-22 nt, with 0-2% at 24-31 nt). Prefer the enrichment figures, which sum
+read mass instead of counting occurrences, when calibrating clustering parameters.
 
 Without `--norm`, the library size for RPM is the **weighted** one (sum of `1/NH`), on the
 same scale as the per-locus counts. It costs one extra pass over the BAM (~70s for 30M

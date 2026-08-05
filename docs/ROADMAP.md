@@ -23,40 +23,42 @@ branch `evidence-scores`. 200 testes passando.
 - miRNA só toma o rótulo do locus se cobrir ≥50% dele.
 - Colunas novas: `size_purity` e `dicer_call_2`.
 
-**Antes → depois** (Drosophila DRR351382 e Arabidopsis SRR30831721, nos defaults):
+**Antes → depois** (nos defaults, medido sem os bugs de sobreposição):
 
-| | antes (pad 75) | depois | |
-|---|---|---|---|
-| recall de piC | 85/90 | **87/90** | ganho real |
-| TAS | 6/6 | **6/6** | mantido |
-| review (Dros.) | 79% | **59,0%** | ganho real |
-| review (Arab.) | 33,1% | **21,8%** | ganho real |
-| span mediano (Dros.) | 88 bp | 111 bp | pouco |
-| reads por locus (Dros.) | 34 | 24 | **pior** |
+| | Drosophila antes | depois | Arabidopsis antes | depois |
+|---|---|---|---|---|
+| span mediano | 88 bp | **335 bp** | ~100 bp | **532 bp** |
+| reads por locus | 34 | 36 | 34 | **74** |
+| review | 79% | **29,2%** | 33,1% | **8,2%** |
+| loci conhecidos | 85/90 piC | 85/90 | 6/6 TAS | 6/6 |
+| massa piRNA nos piCs | 3,0× | **3,4×** | — | — |
 
-**Correção do que foi reportado antes (2026-08-04):** os ganhos anunciados de span
-(1.025 bp) e reads por locus (122) eram **artefato de um bug**: vizinhos incompatíveis se
-estendiam `pad` um contra o outro e ficavam sobrepostos em até 2×pad (95% dos loci em
-Drosophila, 85% em Arabidopsis, ~960 bp de sobreposição mediana). Como `_assign_reads` dá
-cada read a todo locus que ela toca, a mesma read era contada várias vezes — os três loci
-de planta mais abundantes eram uma região TAS reportada três vezes com 0,8–1,4M reads cada.
-Corrigido em `bf63d22` (vizinhos que não fundem dividem o vão no meio).
+**Correção do que foi reportado em 2026-08-04:** os ganhos anunciados (span 1.025 bp,
+122 reads/locus) eram **artefato de bug** — vizinhos incompatíveis se sobrepunham em até
+2×pad (95% dos loci) e `_assign_reads` contava a mesma read em vários loci. Corrigido em
+`bf63d22`. Igualmente, o `|frac_top−0,5|` do siRNA **não** caiu para 0,113; medido sem o
+bug é ~0,20 contra 0,262 do baseline. A tese de que o clustering resolveria o termo de
+fita não se sustentou — a branch foi mesclada pelos ganhos de review e enriquecimento,
+que são reais, não pelo motivo alegado.
 
-**A premissa que destravou a branch também não se sustentou.** O `|frac_top−0,5|` do siRNA
-medido sem o bug é **0,223**, contra 0,262 do baseline — não os 0,113 que eu tinha
-reportado, que vinham da corrida sobreposta. Os loci de siRNA continuam não sendo bifita de
-forma convincente, então o problema do `s_fractop_bal` (seção abaixo) **não** foi resolvido
-pelo clustering. A branch foi mesclada mesmo assim, e isso segue certo — o score é
-reportado, não decide —, mas pelo ganho de recall e de review, não pelo motivo alegado.
+**A cadeia de causa da fragmentação** (três correções, nesta ordem):
+1. `bf63d22` — loci sobrepostos: vizinhos que não fundem dividem o vão no meio.
+2. `cba0def` — gate de tamanho por igualdade exata da moda barrava 87,7% dos pares
+   alcançáveis no X, com diferença mais comum de **1 nt**; trocado por janela de classe.
+3. `d82f3f9` + o estimador por massa — a **moda é o estimador errado** com ~5 reads
+   (p25 = 1,4) por ilha crua, e 16,3% das ilhas tinham moda fora de toda janela. Passou a
+   ser a janela de classe que concentra >50% da massa de reads, estável em 76% das ilhas
+   com <10 reads. `clustering.profile_min_reads` = 2.
 
-**Fragmentação continua aberta.** Span de 111 bp contra ~500 do campo, e reads por locus
-ABAIXO do baseline (24 contra 34) porque o mesmo número de loci passou a ter contagem
-honesta. O gate de tamanho por igualdade exata da moda era parte do problema — barrava
-87,7% dos pares de ilhas alcançáveis no X, com diferença mais comum de 1 nt, porque o piRNA
-se espalha por 24–31 nt e duas ilhas do mesmo cluster raramente têm a mesma moda. Trocado
-por pertencer à mesma janela de classe (`cba0def`): fundiu 26% dos loci sem perder cluster
-conhecido, mas não era o gargalo principal. Próximo suspeito: `call_islands` com `pad=0`
-corta em qualquer posição abaixo do limiar, mesmo de 1 bp.
+**Lição metodológica — o recall de piC premia fragmentação.** Ele pergunta se uma região
+de 10–40 kb contém ≥1 locus piRNA não-review, então quanto mais picados os loci, maior a
+chance de sobrar um fragmento com tamanho de piRNA. A corrida que deu 87/90 tinha loci de
+111 bp. Com loci maiores, a população dominante ganha e sub-regiões genuinamente de 22 nt
+dentro dessas referências são corretamente chamadas siRNA — três delas têm **88–96% da
+massa em 20–22 nt e 0–2% em 24–31 nt**, com 14k–40k reads. Não era regressão, era acerto.
+**Para calibrar clustering, usar o enriquecimento** (soma massa) e não o recall (conta
+ocorrências). Um limiar de perfil alto (10) chegou a borrar as classes: piRNA 2,8× contra
+siRNA 2,7×, separação ~1,0.
 
 ### O termo de fita mede o construto errado (aberto, 2026-08-04)
 
@@ -109,13 +111,11 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 ### Ordem da próxima sessão
 
-1. **Investigar a fragmentação** (é o item que bloqueia todo o resto): span de 111 bp
-   contra ~500 do campo, 24 reads por locus. Suspeito principal: `call_islands` é chamado
-   com `pad=0` e corta a ilha em qualquer posição abaixo do limiar, mesmo de 1 bp, então a
-   ilha crua já nasce picada e o `merge_compatible` só remenda depois. Medir a distribuição
-   dos vãos internos antes de mexer.
-2. Decidir o construto do termo de fita (seção acima) — depende de 1, porque com loci
-   fragmentados a medição de `frac_top` não é confiável.
+1. **Decidir o construto do termo de fita** (seção acima) — agora é o item que bloqueia:
+   os loci já não são o problema, e `s_fractop_bal` segue medindo simetria em vez de
+   bidirecionalidade.
+2. Refazer a varredura de `mincov` em RPM com o clustering atual (as tabelas anteriores
+   foram todas medidas com os bugs de sobreposição; o default 1,0 nunca foi reconfirmado).
 3. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
    (o domínio uni-mainz saiu do ar), 51 espécies, clusters em GTF preditos com proTRAC
    2.4.4. Ressalva: são preditos, não validados — servem para testar generalização entre
