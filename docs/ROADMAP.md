@@ -23,47 +23,40 @@ branch `evidence-scores`. 200 testes passando.
 - miRNA só toma o rótulo do locus se cobrir ≥50% dele.
 - Colunas novas: `size_purity` e `dicer_call_2`.
 
-**Antes → depois** (Drosophila DRR351382, 1 RPM, pad 500):
+**Antes → depois** (Drosophila DRR351382 e Arabidopsis SRR30831721, nos defaults):
 
-| | antes (pad 75) | depois |
-|---|---|---|
-| span mediano | 88 bp | 1.025 bp |
-| reads por locus | 34 | 122 |
-| taxa de review | 79% | 10,3% |
-| recall de piC | 85/90 | 85/90 |
-| massa de piRNA nos piCs | 3,0× | 5,8× |
-| siRNA \|frac_top−0,5\| | **0,262** | **0,113** |
-
-O último número é o que destravou a branch: os loci de siRNA passaram a ser bifita, então o
-teste de equivalência do `s_fractop_bal` tem sobre o que se pronunciar.
-
-Arabidopsis no mesmo ajuste: **TAS 6/6**, reads por locus 34 → 197, review 33,1% → 2,6%.
-
-Varredura que fixou os valores (as duas em 2026-08-04, regra nova):
-
-| mincov (RPM) | loci | reads/locus | review | piC |
-|---|---|---|---|---|
-| 0,5 | 228.329 | 41 | 21,5% | 87/90 |
-| **1,0** | 171.322 | 55 | 15,0% | 85/90 |
-| 2,0 | 116.010 | 75 | 12,2% | 78/90 |
-| 5,0 | 52.565 | 116 | 11,1% | 65/90 |
-
-| pad (a 1 RPM) | reads/locus | review | piC |
+| | antes (pad 75) | depois | |
 |---|---|---|---|
-| 200 | 55 | 15,0% | 85/90 |
-| **500** | 122 | 10,3% | 85/90 |
-| 1000 | 228 | 8,4% | 81/90 |
+| recall de piC | 85/90 | **87/90** | ganho real |
+| TAS | 6/6 | **6/6** | mantido |
+| review (Dros.) | 79% | **59,0%** | ganho real |
+| review (Arab.) | 33,1% | **21,8%** | ganho real |
+| span mediano (Dros.) | 88 bp | 111 bp | pouco |
+| reads por locus (Dros.) | 34 | 24 | **pior** |
 
-**A preferência de `pad` inverteu-se**: na varredura antiga (regra de vão) o pad 500 custava
-2 piCs em Drosophila; com extensão bilateral + gate de perfil ele não custa nenhum. Os dois
-reinos convergiram para o mesmo valor, então o `pad` por organismo continua no config mas
-hoje não separa nada — mantido porque a calibração é por organismo por natureza.
+**Correção do que foi reportado antes (2026-08-04):** os ganhos anunciados de span
+(1.025 bp) e reads por locus (122) eram **artefato de um bug**: vizinhos incompatíveis se
+estendiam `pad` um contra o outro e ficavam sobrepostos em até 2×pad (95% dos loci em
+Drosophila, 85% em Arabidopsis, ~960 bp de sobreposição mediana). Como `_assign_reads` dá
+cada read a todo locus que ela toca, a mesma read era contada várias vezes — os três loci
+de planta mais abundantes eram uma região TAS reportada três vezes com 0,8–1,4M reads cada.
+Corrigido em `bf63d22` (vizinhos que não fundem dividem o vão no meio).
 
-**Sobre `size_purity`:** mediana 0,19 em Drosophila e 0,63 em Arabidopsis, com o mesmo
-código. Não é fusão indevida: dentro da corrida do Drosophila a pureza é plana por tamanho
-de locus (0,21 em 150–300 bp, 0,15 acima de 1.200 bp) e por abundância. É a dispersão de
-tamanho do piRNA (24–31 nt) contra o pico único de 24 nt da planta. O 0,64 citado antes foi
-medido em loci de 41 bp medianos, onde pureza alta é trivial — não é comparável.
+**A premissa que destravou a branch também não se sustentou.** O `|frac_top−0,5|` do siRNA
+medido sem o bug é **0,223**, contra 0,262 do baseline — não os 0,113 que eu tinha
+reportado, que vinham da corrida sobreposta. Os loci de siRNA continuam não sendo bifita de
+forma convincente, então o problema do `s_fractop_bal` (seção abaixo) **não** foi resolvido
+pelo clustering. A branch foi mesclada mesmo assim, e isso segue certo — o score é
+reportado, não decide —, mas pelo ganho de recall e de review, não pelo motivo alegado.
+
+**Fragmentação continua aberta.** Span de 111 bp contra ~500 do campo, e reads por locus
+ABAIXO do baseline (24 contra 34) porque o mesmo número de loci passou a ter contagem
+honesta. O gate de tamanho por igualdade exata da moda era parte do problema — barrava
+87,7% dos pares de ilhas alcançáveis no X, com diferença mais comum de 1 nt, porque o piRNA
+se espalha por 24–31 nt e duas ilhas do mesmo cluster raramente têm a mesma moda. Trocado
+por pertencer à mesma janela de classe (`cba0def`): fundiu 26% dos loci sem perder cluster
+conhecido, mas não era o gargalo principal. Próximo suspeito: `call_islands` com `pad=0`
+corta em qualquer posição abaixo do limiar, mesmo de 1 bp.
 
 ### O termo de fita mede o construto errado (aberto, 2026-08-04)
 

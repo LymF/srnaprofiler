@@ -74,34 +74,29 @@ Run `python3 srnaprofiler.py <command> --help` for per-module options.
 using the library size. As a raw count it did not transfer between libraries: a 10
 calibrated on a 30.8M-alignment run means something else at any other depth.
 
-A locus is an island of positions above that depth, extended by `--pad` on **both** sides;
-neighbours merge only when they share the dominant read length and their strand fractions
-are within 0.5. So the tolerated gap is `2*pad`, and a merge needs a compatible profile —
-a 24-nt neighbour is not fused with a 21-nt one.
+A locus is an island of positions above that depth, extended by `--pad` on **both** sides
+(so the tolerated gap is `2*pad`). Neighbours merge only when their profiles are
+compatible: dominant read lengths in the same class size window (from the config, so a
+25-nt island joins a 26-nt one but not a 21-nt one) and strand fractions within 0.5.
+Neighbours that do not merge split the gap between them — loci are always disjoint,
+because a read is assigned to every locus it touches.
 
-Sweep on DRR351382 (Drosophila ovary, 9.66M weighted reads, `pad 200`), against the 90
-reference piRNA clusters:
+Measured on DRR351382 (Drosophila ovary, 9.66M weighted reads) at the defaults
+(`--mincov 1.0`, `pad 500`), against the 90 reference piRNA clusters, and on
+SRR30831721 (Arabidopsis flower buds) against the six TAS loci:
 
-| `--mincov` (RPM) | depth | loci    | median span | reads/locus | review | piC recall |
-|-----------------:|------:|--------:|------------:|------------:|-------:|-----------:|
-| 0.5              | 5     | 228,329 | 427         | 41          | 21.5%  | 87/90      |
-| 1.0              | 10    | 171,322 | 426         | 55          | 15.0%  | 85/90      |
-| 2.0              | 20    | 116,010 | 425         | 75          | 12.2%  | 78/90      |
-| 5.0              | 50    | 52,565  | 424         | 116         | 11.1%  | 65/90      |
+| | Drosophila | Arabidopsis |
+|---|---|---|
+| loci | 126,530 | 70,976 |
+| median span | 111 bp | 256 bp |
+| reads per locus | 24 | 54 |
+| review rate | 59.0% | 21.8% |
+| known loci recovered | 87/90 piCs | 6/6 TAS |
 
-Above 1 RPM the recall of known clusters falls off, so the default is **1.0**.
-
-`--pad` at 1 RPM, same reference:
-
-| `--pad` | median span | reads/locus | review | piC recall | piRNA read mass in piCs |
-|--------:|------------:|------------:|-------:|-----------:|------------------------:|
-| 200     | 426         | 55          | 15.0%  | 85/90      | 5.1x                    |
-| 500     | 1025        | 122         | 10.3%  | 85/90      | 5.8x                    |
-| 1000    | 2025        | 228         | 8.4%   | 81/90      | 6.2x                    |
-
-500 is the default in both configs: it keeps the recall of 200 while doubling the reads per
-locus, and 1000 starts eroding recall. Arabidopsis at the same setting keeps all six TAS
-loci, with 197 reads per locus and a 2.6% review rate.
+**Known limitation:** the loci are still shorter than the field's (~500 bp) and hold fewer
+reads than they should, which costs power in every per-locus test. The size-window merge
+above fused 26% of the loci without losing any known cluster, so the criterion is sound —
+but it is not the main constraint. Under investigation.
 
 Without `--norm`, the library size for RPM is the **weighted** one (sum of `1/NH`), on the
 same scale as the per-locus counts. It costs one extra pass over the BAM (~70s for 30M
