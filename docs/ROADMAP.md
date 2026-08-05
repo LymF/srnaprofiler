@@ -65,6 +65,37 @@ de locus (0,21 em 150–300 bp, 0,15 acima de 1.200 bp) e por abundância. É a 
 tamanho do piRNA (24–31 nt) contra o pico único de 24 nt da planta. O 0,64 citado antes foi
 medido em loci de 41 bp medianos, onde pureza alta é trivial — não é comparável.
 
+### O termo de fita mede o construto errado (aberto, 2026-08-04)
+
+`s_fractop_bal` é um TOST de equivalência: afirma que `frac_top` está em 0,5 ± 0,15. Mas
+**bifita não quer dizer 50/50** — um cluster genuinamente bidirecional pode ser 70/30 por
+viés de transcrição ou de carregamento em AGO. Medido nos loci novos: 82,8% dos loci de
+siRNA têm fita minoritária ≥ 0,2 (são bidirecionais), mas só 60,9% caem dentro da margem
+de equivalência, e 26,4% dos bidirecionais são reprovados **só por assimetria**.
+
+O construto certo seria unilateral sobre a fita minoritária (H₀: minoritária ≤ 0,10).
+Ressalva medida: isso torna o termo MENOS discriminativo entre as classes (0,828 no siRNA
+contra 0,625 no piRNA, contra 0,609 × 0,327 do TOST) — a assimetria separa melhor as
+classes do que a bidirecionalidade. Ou seja, é preciso decidir antes se o termo existe
+para **definir** o siRNA ou para **discriminar** dele o piRNA; hoje ele é usado como
+definidor (`defining_evidence: [fractop_bal]`).
+
+Não bloqueia: o `score` é reportado, **não decide** (`decider.py:116` — a classe sai dos
+pesos, o review sai de confiança/margem/`min_reads`/`dicer_call`). O efeito é a coluna
+`score` ficar pessimista em loci de siRNA assimétricos.
+
+Relacionado: o piRNA não tem `w_fractop` porque `frac_top` é **bimodal** na classe
+(flamenco 0,90 somático uni-fita, 42AB 0,50 germinativo bifita) — um peso único quebraria
+um dos dois. A saída seria `defining_evidence` com duas rotas (bifita COM ping-pong, ou
+uni-fita SEM), que a sintaxe de slots OR já suporta.
+
+**A geometria de dúplex NÃO serve de saída** (testado 2026-08-04, e corrige uma leitura
+anterior errada minha): com `overlap_dup_frac` corrigido, a fração no offset `L−2` fica em
+0,020–0,023 em TODOS os tamanhos, **abaixo** do uniforme da janela (1/35 = 0,029),
+inclusive nos 21 nt. Não há pico de dúplex em Drosophila. Falta checar em planta (21 nt de
+DCL4 são dúplex de livro-texto) para separar "é biologia do tecido" de "o pico se dilui no
+locus de 1 kb, como acontecia no phasing antes da varredura por janelas".
+
 **Pendência achada na corrida:** `evidence.py:18` emite
 `RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estoura antes
 do `min` com o teto). Não altera resultado; limpar.
