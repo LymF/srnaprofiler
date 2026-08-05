@@ -203,8 +203,13 @@ def extract(sam_path, regions, lib_size, config):
             for i, region in enumerate(regions)]
 
 
-def island_profiles(islands, alns):
-    """Dominant read length and strand fraction per island, for the merge rule."""
+def island_profiles(islands, alns, min_reads=0):
+    """Dominant read length and strand fraction per island, for the merge rule.
+
+    Below `min_reads` weighted reads the profile is reported unknown: a modal
+    size estimated from a handful of reads flips with one read either way, and
+    an unknown profile never blocks a merge.
+    """
     sizes = [Counter() for _ in islands]
     plus = [0.0] * len(islands)
     total = [0.0] * len(islands)
@@ -220,7 +225,7 @@ def island_profiles(islands, alns):
             plus[j] += w
     out = []
     for j in range(len(islands)):
-        if not total[j]:
+        if not total[j] or total[j] < min_reads:
             out.append({"size": None, "frac_top": None})
         else:
             out.append({"size": sizes[j].most_common(1)[0][0],
@@ -244,7 +249,8 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
         for p in range(a.pos, a.pos + len(a.seq)):
             depth[p] += 1
     islands = call_islands(depth, mincov, 0)
-    profiles = island_profiles(islands, alns)
+    profiles = island_profiles(islands, alns,
+                               min_reads=config.get("profile_min_reads", 0))
     regions = [(chrom, s, e) for (s, e) in
                merge_compatible(islands, profiles, pad,
                                 chrom_len=chrom_len or None,

@@ -104,13 +104,21 @@ def test_sizes_in_different_windows_still_do_not_merge():
     assert len(out) == 2
 
 
-def test_size_outside_every_window_only_matches_its_own_size():
+def test_sizes_outside_every_window_do_not_block_each_other():
+    # neither belongs to a known pathway, so neither is evidence of conflict
     islands = [(1000, 1100), (1250, 1350)]
     profiles = [_p(18, 0.5), _p(19, 0.5)]
-    assert len(merge_compatible(islands, profiles, pad=100, size_windows=_WIN)) == 2
+    assert len(merge_compatible(islands, profiles, pad=100, size_windows=_WIN)) == 1
 
 
 def test_without_windows_it_falls_back_to_exact_equality():
     islands = [(1000, 1100), (1250, 1350)]
     profiles = [_p(25, 0.5), _p(26, 0.5)]
     assert len(merge_compatible(islands, profiles, pad=100)) == 2
+
+
+def test_size_outside_every_window_does_not_block_a_merge():
+    # 19 nt is not a class here: unknown pathway, so it must not act as a barrier
+    islands = [(1000, 1100), (1250, 1350)]
+    profiles = [_p(25, 0.5), _p(19, 0.5)]
+    assert merge_compatible(islands, profiles, pad=100, size_windows=_WIN) == [(900, 1450)]

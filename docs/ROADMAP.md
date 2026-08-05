@@ -1,7 +1,7 @@
 # srnaprofiler — Roadmap / Próximos passos
 
 **Autor:** Lucas
-**Atualizado:** 2026-08-04
+**Atualizado:** 2026-08-05
 
 Documento vivo para alinhar sessões. Estado atual + backlog priorizado. Detalhes de COMO a
 pipeline funciona (todas as fórmulas) estão na memória `srnaprofiler-pipeline-reference`.
@@ -95,49 +95,27 @@ do `min` com o teto). Não altera resultado; limpar.
 
 ---
 
-## RETOMAR AQUI (sessão de 2026-08-04)
+## RETOMAR AQUI (sessão de 2026-08-05)
 
-Branch **`evidence-scores`** — 17 commits à frente de `master`, 166 testes passando,
-NÃO mesclada por decisão. Ledger completo em
-`.superpowers/sdd/2026-08-02-evidence-scores/progress.md`.
+Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apagada).
+214 testes passando.
 
-### O que está pronto e esperando
+### O que está pronto
 
-1. **Score de evidência** (spec `2026-08-02-evidence-scores-design.md`, plano
-   `2026-08-02-evidence-scores.md`): implementado, revisado, com os 5 achados da
-   revisão final corrigidos. `evidence.py` + colunas `score` e `s_*` no TSV.
-2. **Clustering**: **FEITO** — ver a seção acima.
-
-### Por que a branch do score está parada
-
-O teste de equivalência (TOST) do `s_fractop_bal` revelou que os loci de `siRNA`
-**não são bifita** (`|frac_top−0,5|` mediano 0,262), então o score da classe fica ~0.
-O teste está certo; os **loci** é que estão errados. Validar o score sobre loci
-fragmentados não prova nada, então: **clustering primeiro, revalidar o score, mesclar.**
-
-### A descoberta que reordenou tudo
-
-Nossos loci têm 88–140 bp medianos; o ShortStack, **no mesmo BAM**, produz 529 bp.
-Metade dos vãos entre loci vizinhos tem 75–200 bp — cortamos por buracos pequenos
-demais. Consequência: **34 reads por locus contra 444 dele**, o que tira o poder de
-todos os testes estatísticos, e destrói a assinatura de fita. O `--pad 75` nunca foi
-calibrado; veio da substituição do tiling de 2 kb.
-
-Varredura já feita (mas que **não transfere** depois da extensão bilateral, porque o
-significado do `pad` muda):
-
-| pad | Drosophila | Arabidopsis |
-|---|---|---|
-| 75 | recall 85/90, 28 reads/locus | TAS 6/6, 34 reads/locus |
-| 200 | recall 85/90, 36 reads | TAS 6/6, 59 reads |
-| 500 | recall 83/90, 61 reads | TAS 6/6, 131 reads |
-| 1000 | recall 81/90 | — |
+1. **Score de evidência**: `evidence.py` + colunas `score` e `s_*` no TSV. Reportado,
+   não decide. Ressalva do `s_fractop_bal` na seção acima.
+2. **Clustering**: reformulado + 3 bugs corrigidos depois (offset do dúplex, loci
+   sobrepostos, gate de tamanho). Ver a seção acima, com os números honestos.
 
 ### Ordem da próxima sessão
 
-1. ~~Executar o plano do clustering~~ e ~~recalibrar `mincov`/`pad`~~ — **FEITOS**, seção acima.
-2. Revalidar a branch `evidence-scores` sobre os loci novos: rodar o TOST do
-   `s_fractop_bal` agora que o `|frac_top−0,5|` do siRNA caiu para 0,113. Então mesclar.
+1. **Investigar a fragmentação** (é o item que bloqueia todo o resto): span de 111 bp
+   contra ~500 do campo, 24 reads por locus. Suspeito principal: `call_islands` é chamado
+   com `pad=0` e corta a ilha em qualquer posição abaixo do limiar, mesmo de 1 bp, então a
+   ilha crua já nasce picada e o `merge_compatible` só remenda depois. Medir a distribuição
+   dos vãos internos antes de mexer.
+2. Decidir o construto do termo de fita (seção acima) — depende de 1, porque com loci
+   fragmentados a medição de `frac_top` não é confiável.
 3. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
    (o domínio uni-mainz saiu do ar), 51 espécies, clusters em GTF preditos com proTRAC
    2.4.4. Ressalva: são preditos, não validados — servem para testar generalização entre

@@ -47,15 +47,16 @@ def extend_and_merge(islands, pad, chrom_len=None):
 def _same_size_group(sa, sb, size_windows):
     """Whether two dominant sizes belong to the same biogenesis window.
 
-    Without windows, exact equality. Sizes outside every window are their own
-    group, so an 18-nt island does not join a 19-nt one for free.
+    Without windows, exact equality.
     """
     if not size_windows:
         return sa == sb
     ga = frozenset(i for i, (lo, hi) in enumerate(size_windows) if lo <= sa <= hi)
     gb = frozenset(i for i, (lo, hi) in enumerate(size_windows) if lo <= sb <= hi)
-    if not ga and not gb:
-        return sa == sb
+    # A size outside every window belongs to no known pathway, so it is not
+    # evidence of a conflict -- same treatment as an unknown profile.
+    if not ga or not gb:
+        return True
     return bool(ga & gb)
 
 
