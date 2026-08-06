@@ -112,6 +112,42 @@ locus — MIR173, MIR390; o locus TAS produz tasiRNA. A classe `phasiRNA` está 
 PHAS anotados em várias espécies em vez de seis TAS. Ordem: (a) diagnosticar TAS3 com o
 que já temos; (b) puxar os PHAS do sRNAanno; (c) só então decidir sobre pesos.
 
+### Multimapeamento — investigado e encerrado (2026-08-06)
+
+O `-k 5` do BAM antigo foi trocado por `-k 20` (default da tool). Multiplicidade média
+4,36 → **14,36**, e ainda assim **48,6% dos alinhamentos ficam no teto de 20** — a
+multiplicidade real de metade das reads é maior que isso, o que é a cara de cluster de
+piRNA (transpóson com centenas de cópias).
+
+**Três coisas que se pensava e que a medição desmentiu:**
+
+1. **Não há viés de contagem no 1/NH.** Com `-k` 5 ou 20 a biblioteca ponderada é
+   *idêntica* (9.658.002) e `reads` por locus também (63). O teto reduz a chance de o locus
+   ser sorteado mas aumenta a fatia na mesma proporção — a esperança se conserva. O teto
+   adiciona **ruído**, não viés. (Chegou a ser afirmado aqui o contrário, em ambas as
+   direções; ambas erradas.)
+2. **O ganho do `-k` maior foi no `n` dos testes:** `distinct_seqs` 163 → **365**. Os testes
+   binomiais (fita, base 5') usam `distinct_seqs`, não `reads`, então o poder dobrou. Era
+   justamente o que se supunha que NÃO mudaria.
+3. **Alocação única guiada por reads únicas não se sustenta neste organismo.** Ela precisa
+   de sinal único como guia, e **57,3% dos loci de piRNA têm ZERO reads únicas** (fração
+   única mediana 0,0000; só 17,1% chegam a 5%). No conjunto que importa o guia é nulo e o
+   algoritmo cai no fallback 1/NH. Pior: nos 17% com sinal, o peso seria puxado para eles e
+   drenado dos 57% sem — e a ausência de read única ali é a **norma biológica** da região
+   densa em transpóson, não sinal de locus falso. Seria introduzir viés, não corrigir.
+   Custo adicional: duas passadas em 72M alinhamentos e um dicionário de milhões de
+   sequências por worker, numa máquina que já teve processo morto por OOM (item 16).
+
+O que sobrou de valor é uma coluna, não uma arquitetura: **`unique_frac`** (`59346cd`),
+a fração da massa do locus vinda de reads únicas, na escala 1/NH — ao contrário de
+`multimap_frac`, que conta linhas de alinhamento e por isso pesa mais justamente as reads
+menos confiáveis. Marca os loci cuja assinatura é toda emprestada de repetição.
+
+*Contexto de método:* 1/NH não é invenção nossa — é o `normalize by genomic hits` do
+tiny-count e o modo `f` do ShortStack. O modo `u` do ShortStack (colocação guiada,
+Johnson et al. 2016, https://doi.org/10.1534/g3.116.030452) é o que foi avaliado e
+descartado acima.
+
 **Pendência achada na corrida:** `evidence.py:18` emite
 `RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estoura antes
 do `min` com o teto). Não altera resultado; limpar.
@@ -132,18 +168,9 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 ### Ordem da próxima sessão
 
-1. **Remapear com `-k` maior e remedir** (barato, e é o conserto certo). O BAM de teste
-   `~/dros.sorted.bam` foi feito com **`-k 5`** (está no header), mas o default da tool é
-   **20** (`utils.py:24`): 79% dos alinhamentos vêm com NH=5, que é o teto batendo, não a
-   multiplicidade real. Nos loci de piRNA `multimap_frac` é **1,000**, então é exatamente
-   ali que o 1/NH divide por um número errado. Refazer o mapeamento resolve sem tocar no
-   modelo de peso.
-   *Alocação única de multi-read (ShortStack `--mmap u` / piRAT) fica em BAIXA prioridade:*
-   ela resolve outra pergunta (ONDE atribuir a read entre repetições, guiado por reads
-   únicas). Reconsiderar só se, com o `-k` correto, os loci de piRNA seguirem sem poder.
-   *Nota:* os testes de base 5' e de fita usam `distinct_seqs` (mediana 172 no piRNA), que
-   o 1/NH **não** afeta — o ganho de alocação única seria em comparabilidade, nos portões
-   que usam `reads` e na estatística de ping-pong, não no `n` desses testes.
+1. ~~Remapear com `-k` maior~~ **FEITO (2026-08-06)** e ~~alocação única de multi-read~~
+   **DESCARTADA com evidência** — ver a seção "Multimapeamento" abaixo. O BAM de referência
+   agora é `~/dros_k20.sorted.bam` (`-k 20`).
 
 2. **Score do phasiRNA** (seção acima) — checar se o hipergeométrico é conservador demais
    nos TAS, que vêm com p entre 0,10 e 0,45.

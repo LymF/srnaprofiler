@@ -112,10 +112,11 @@ not discard piRNA mass — it concentrates the same mass into fewer, deeper loci
 | 0.5 | 41,473 | 38 | 2.9x | 103 | 19.7% |
 | **1.0** | 25,661 | 63 | **4.2x** | **163** | 14.2% |
 
-**Counts are not comparable to tools that place each multi-read once.** A read mapping to
-N places contributes `1/N` here, while ShortStack assigns it a single position, so its
-per-locus counts run higher by the average multiplicity — 3.19x on this library. The 63
-weighted reads above are ~200 in that unit.
+**Multi-mapping reads** contribute `1/NH` at each place they align — the same scheme as
+tiny-count's *normalize by genomic hits* and ShortStack's `f` mode. Tools that instead place
+each read at a single position report higher per-locus counts, by roughly the average
+multiplicity. `unique_frac` reports how much of a locus's mass comes from uniquely-mapping
+reads: 57% of Drosophila piRNA loci have none, so their whole signature rests on repeats.
 
 **On piC recall as a criterion:** it asks whether a 10-40 kb reference region holds at
 least one non-review piRNA locus, so it *rewards fragmentation* — the more loci a region
