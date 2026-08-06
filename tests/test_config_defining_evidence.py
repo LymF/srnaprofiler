@@ -5,7 +5,7 @@ import pytest
 from decider import load_config
 
 CONFIGS = ["rules.yaml", "rules.plant.yaml"]
-KNOWN = {"1u", "5a", "fractop", "fractop_bal", "pingpong", "phase", "density"}
+KNOWN = {"1u", "5a", "fractop", "fractop_bal", "fractop_bid", "pingpong", "phase", "density"}
 
 
 def _flat_names(defining_evidence):

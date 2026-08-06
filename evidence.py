@@ -37,6 +37,22 @@ def strand_bias_score(frac_top, n):
     return score_from_p(stats.binomtest(k, n, 0.5, alternative="two-sided").pvalue)
 
 
+def strand_bidirectional_score(frac_top, n, null=0.10):
+    """Evidence that BOTH strands produce: minority strand above `null`.
+
+    One-sided binomial. Bidirectional does not mean 50/50 -- a cluster can be
+    genuinely bidirectional at 70/30 -- so this asks whether the minority strand
+    carries more than a uni-strand locus would leak, not whether the split is even.
+    """
+    n = int(round(n))
+    if n <= 0 or frac_top is None:
+        return 0.0
+    k = int(round(min(frac_top, 1.0 - frac_top) * n))
+    if k <= 0:
+        return 0.0
+    return score_from_p(stats.binomtest(k, n, null, alternative="greater").pvalue)
+
+
 def strand_balance_score(frac_top, n, delta=0.15):
     """Equivalence (TOST) that the true strand split lies within 0.5 +/- delta.
 

@@ -35,6 +35,7 @@ class ClusterRecord:
     s_5a: float = 0.0
     s_fractop: float = 0.0
     s_fractop_bal: float = 0.0
+    s_fractop_bid: float = 0.0
     s_pingpong: float = 0.0
     s_phase: float = 0.0
     s_density: float = 0.0
