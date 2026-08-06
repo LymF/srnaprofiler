@@ -52,6 +52,7 @@ class ClusterRecord:
     overlap_dup_frac: float = 0.0
     # repetition
     multimap_frac: float = 0.0
+    unique_frac: float = 0.0
     # classification
     cls: str = ""
     confidence: float = 0.0

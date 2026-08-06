@@ -43,6 +43,7 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
     total_bases = 0.0
     n_1u = n_10a = n_5a = 0.0
     multimap = 0
+    unique_w = 0.0
 
     for a in local:
         w = 1.0 / a.nh
@@ -67,6 +68,8 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
             n_10a += w
         if a.nh > 1:
             multimap += 1
+        else:
+            unique_w += w
 
     r.reads = round(strand_count["+"] + strand_count["-"], 4)
     r.distinct_seqs = len(seqs)
@@ -114,6 +117,9 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
     r.multimap_frac = round(multimap / raw_n, 4)
+    # unique_frac is on the 1/NH scale of `reads`: how much of the locus's mass is
+    # evidence of its own, rather than borrowed from repeated copies elsewhere.
+    r.unique_frac = round(unique_w / r.reads, 4) if r.reads else 0.0
     r.reads_rpm = round(r.reads / lib_size * 1e6, 4) if lib_size else 0.0
 
     # --- biogenesis signals (5' positions weighted by 1/NH, as above) ---

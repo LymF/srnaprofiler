@@ -5,7 +5,7 @@ _COLS = [
     "chrom", "start", "end", "name", "reads", "reads_rpm", "distinct_seqs",
     "major_rna", "dicer_call", "size_purity", "dicer_call_2", "frac_in_window", "frac_top", "strand_call",
     "pct_1u", "pct_10a", "pct_5a", "gc", "pingpong_z", "pingpong_pairs10", "pingpong_frac", "overlap_dup_frac",
-    "phase_score", "phase_pvalue", "phase_number", "phase_ratio", "multimap_frac",
+    "phase_score", "phase_pvalue", "phase_number", "phase_ratio", "multimap_frac", "unique_frac",
     "cls", "confidence", "score",
     "s_1u", "s_5a", "s_fractop", "s_fractop_bal", "s_fractop_bid", "s_pingpong", "s_phase", "s_density",
     "review", "evidence",
