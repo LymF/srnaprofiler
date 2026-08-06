@@ -23,15 +23,23 @@ branch `evidence-scores`. 200 testes passando.
 - miRNA só toma o rótulo do locus se cobrir ≥50% dele.
 - Colunas novas: `size_purity` e `dicer_call_2`.
 
-**Antes → depois** (nos defaults, medido sem os bugs de sobreposição):
+**Antes → depois** (nos defaults, `mincov 1.0` RPM e `pad 500`):
 
 | | Drosophila antes | depois | Arabidopsis antes | depois |
 |---|---|---|---|---|
-| span mediano | 88 bp | **335 bp** | ~100 bp | **532 bp** |
-| reads por locus | 34 | 36 | 34 | **74** |
-| review | 79% | **29,2%** | 33,1% | **8,2%** |
-| loci conhecidos | 85/90 piC | 85/90 | 6/6 TAS | 6/6 |
-| massa piRNA nos piCs | 3,0× | **3,4×** | — | — |
+| span mediano | 88 bp | **546 bp** | ~100 bp | **605 bp** |
+| reads ponderadas/locus | 34 | **63** | 34 | **124** |
+| cobertura por base no locus | ~2× | **4,2×** | — | **6,4×** |
+| sequências distintas (`n` dos testes) | ~40 | **163** | — | **115** |
+| review | 79% | **14,2%** | 33,1% | **3,7%** |
+| loci conhecidos | 85/90 piC | 84/90 | 6/6 TAS | 6/6 |
+| massa piRNA nos piCs | 3,0× | **3,3×** | — | — |
+
+**Unidade:** contagens NÃO são comparáveis com ferramentas que alocam a multi-read a uma
+única posição. Aqui a read vai 1/NH para cada lugar; o ShortStack põe tudo num só, então
+as contagens dele são maiores pelo fator de multiplicidade (3,19× nesta biblioteca). Os 63
+reads ponderados equivalem a ~200 naquela unidade. A comparação "34 contra 444" que estava
+neste documento misturava as duas escalas.
 
 **Correção do que foi reportado em 2026-08-04:** os ganhos anunciados (span 1.025 bp,
 122 reads/locus) eram **artefato de bug** — vizinhos incompatíveis se sobrepunham em até
@@ -60,36 +68,39 @@ massa em 20–22 nt e 0–2% em 24–31 nt**, com 14k–40k reads. Não era regr
 ocorrências). Um limiar de perfil alto (10) chegou a borrar as classes: piRNA 2,8× contra
 siRNA 2,7×, separação ~1,0.
 
-### O termo de fita mede o construto errado (aberto, 2026-08-04)
+### O termo de fita — RESOLVIDO (2026-08-06)
 
-`s_fractop_bal` é um TOST de equivalência: afirma que `frac_top` está em 0,5 ± 0,15. Mas
-**bifita não quer dizer 50/50** — um cluster genuinamente bidirecional pode ser 70/30 por
-viés de transcrição ou de carregamento em AGO. Medido nos loci novos: 82,8% dos loci de
-siRNA têm fita minoritária ≥ 0,2 (são bidirecionais), mas só 60,9% caem dentro da margem
-de equivalência, e 26,4% dos bidirecionais são reprovados **só por assimetria**.
+`s_fractop_bal` era um TOST de equivalência afirmando `frac_top` em 0,5 ± 0,15. Tinha
+**dois** defeitos, ambos medidos nos loci limpos:
 
-O construto certo seria unilateral sobre a fita minoritária (H₀: minoritária ≤ 0,10).
-Ressalva medida: isso torna o termo MENOS discriminativo entre as classes (0,828 no siRNA
-contra 0,625 no piRNA, contra 0,609 × 0,327 do TOST) — a assimetria separa melhor as
-classes do que a bidirecionalidade. Ou seja, é preciso decidir antes se o termo existe
-para **definir** o siRNA ou para **discriminar** dele o piRNA; hoje ele é usado como
-definidor (`defining_evidence: [fractop_bal]`).
+- **Construto errado:** bifita não é 50/50 — um cluster pode ser genuinamente bidirecional
+  a 70/30 (viés de transcrição e de carregamento em AGO). 68,5% dos loci de siRNA têm ≥20%
+  na fita minoritária, mas só 36,8% caíam dentro da margem.
+- **Sem poder:** um locus perfeitamente equilibrado com 50 sequências distintas tirava
+  **1,68**, abaixo do 2 que ele deveria passar. Disparava em 4,4% dos siRNA contra 5,5% dos
+  piRNA — não discriminava nada e era ~0 para todos, então o `score` da classe siRNA era
+  zero **por construção**. Era este o sintoma que travou a branch `evidence-scores`; a
+  causa era o termo, não os loci.
 
-Não bloqueia: o `score` é reportado, **não decide** (`decider.py:116` — a classe sai dos
-pesos, o review sai de confiança/margem/`min_reads`/`dicer_call`). O efeito é a coluna
-`score` ficar pessimista em loci de siRNA assimétricos.
+Substituído por `s_fractop_bid`: binomial unilateral da fita minoritária contra nulo de
+0,10. Dispara em 68,2% dos siRNA e 57,5% dos piRNA. **Score mediano do siRNA: 0 → 4,79**,
+com 61,5% dos loci passando `score >= 2`. As duas colunas seguem no TSV; só a
+`defining_evidence` mudou, nos dois configs.
 
-Relacionado: o piRNA não tem `w_fractop` porque `frac_top` é **bimodal** na classe
-(flamenco 0,90 somático uni-fita, 42AB 0,50 germinativo bifita) — um peso único quebraria
-um dos dois. A saída seria `defining_evidence` com duas rotas (bifita COM ping-pong, ou
-uni-fita SEM), que a sintaxe de slots OR já suporta.
+Fica em aberto (do mesmo diagnóstico): o piRNA não tem `w_fractop` porque `frac_top` é
+bimodal na classe (flamenco 0,90 uni-fita somático; 42AB 0,50 bifita germinativo). A saída
+seria `defining_evidence` com duas rotas — bifita COM ping-pong, ou uni-fita SEM — que a
+sintaxe de slots OR já suporta.
 
-**A geometria de dúplex NÃO serve de saída** (testado 2026-08-04, e corrige uma leitura
-anterior errada minha): com `overlap_dup_frac` corrigido, a fração no offset `L−2` fica em
-0,020–0,023 em TODOS os tamanhos, **abaixo** do uniforme da janela (1/35 = 0,029),
-inclusive nos 21 nt. Não há pico de dúplex em Drosophila. Falta checar em planta (21 nt de
-DCL4 são dúplex de livro-texto) para separar "é biologia do tecido" de "o pico se dilui no
-locus de 1 kb, como acontecia no phasing antes da varredura por janelas".
+### O score do phasiRNA é fraco (aberto, 2026-08-06)
+
+Em planta, `phasiRNA` tem `defining_evidence: [phase]` e o `phase_pvalue` mediano dos loci
+chamados é **0,082** — só 9,5% alcançam p ≤ 0,01, então o score da classe fica em 1,09
+(contra 8,24 do hcsiRNA). O teste mede o construto certo; o que ele diz é que a maioria das
+chamadas se apoia em fase fraca, porque a classificação usa o peso sigmoide (`w_phase: 3.0`,
+`phase_scale: 1.5`), que dispara bem antes da significância. Decidir se o peso é frouxo
+demais ou se o hipergeométrico é conservador demais nesses loci — os TAS reais também vêm
+com p entre 0,10 e 0,45, o que é suspeito para tasiRNA de livro-texto.
 
 **Pendência achada na corrida:** `evidence.py:18` emite
 `RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estoura antes
@@ -111,11 +122,14 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 ### Ordem da próxima sessão
 
-1. **Decidir o construto do termo de fita** (seção acima) — agora é o item que bloqueia:
-   os loci já não são o problema, e `s_fractop_bal` segue medindo simetria em vez de
-   bidirecionalidade.
-2. Refazer a varredura de `mincov` em RPM com o clustering atual (as tabelas anteriores
-   foram todas medidas com os bugs de sobreposição; o default 1,0 nunca foi reconfirmado).
+1. **Alocação de multi-read estilo ShortStack/piRAT** (era o item 11, "baixa prioridade" —
+   subiu). O 1/NH divide a read por todas as posições, e cluster de piRNA é repetitivo por
+   definição, então é justo onde mais dilui: as contagens saem 3,19× menores que as da
+   literatura, o que atrapalha comparar e tira `n` dos testes. Não cria read, mas para de
+   dividir a que existe.
+2. **Score do phasiRNA** (seção acima) — checar se o hipergeométrico é conservador demais
+   nos TAS, que vêm com p entre 0,10 e 0,45.
+3. Rota bimodal do piRNA no `defining_evidence` (seção acima).
 3. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
    (o domínio uni-mainz saiu do ar), 51 espécies, clusters em GTF preditos com proTRAC
    2.4.4. Ressalva: são preditos, não validados — servem para testar generalização entre

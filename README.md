@@ -86,19 +86,36 @@ the modal length: a raw island has ~5 weighted reads, so its mode flips with one
 either way, while the dominant window is stable (76% of the islands under 10 reads have
 one). Islands with no dominant window do not block a merge.
 
+Island depth is on the same `1/NH` scale as every other count, so `--mincov 1.0` means one
+weighted read per million of library — genuinely ten reads deep on a 10M-read library.
+
 Measured at the defaults on DRR351382 (Drosophila ovary) and SRR30831721 (Arabidopsis
 flower buds), against the 90 reference piRNA clusters and the six TAS loci:
 
-| | Drosophila | | Arabidopsis | |
-|---|---|---|---|---|
-| | before (pad 75) | now | before | now |
-| loci | ~186,000 | 45,666 | 23,248 | 46,492 |
-| median span | 88 bp | **335 bp** | ~100 bp | **532 bp** |
-| reads per locus | 34 | 36 | 34 | **74** |
-| review rate | 79% | **29.2%** | 33.1% | **8.2%** |
-| known loci | 85/90 piCs | 85/90 piCs | 6/6 TAS | 6/6 TAS |
-| piRNA read mass in piCs | 3.0x | **3.4x** | — | — |
-| siRNA read mass in piCs | 1.4x | **1.6x** | — | — |
+| | Drosophila | Arabidopsis |
+|---|---|---|
+| loci | 25,661 | 29,407 |
+| median span | 546 bp | 605 bp |
+| weighted reads per locus | 63 | 124 |
+| per-base coverage in a locus | 4.2x | 6.4x |
+| distinct sequences (the `n` of the tests) | 163 | 115 |
+| review rate | 14.2% | 3.7% |
+| known loci | 84/90 piCs | 6/6 TAS |
+| piRNA read mass in the piCs | 3.3x | — |
+
+`--mincov` sweep on Drosophila (piRNA enrichment is flat across it, so the threshold does
+not discard piRNA mass — it concentrates the same mass into fewer, deeper loci):
+
+| `--mincov` (RPM) | loci | reads/locus | per-base coverage | distinct seqs | review |
+|---:|---:|---:|---:|---:|---:|
+| 0.3 | 53,547 | 33 | 2.1x | 88 | 31.9% |
+| 0.5 | 41,473 | 38 | 2.9x | 103 | 19.7% |
+| **1.0** | 25,661 | 63 | **4.2x** | **163** | 14.2% |
+
+**Counts are not comparable to tools that place each multi-read once.** A read mapping to
+N places contributes `1/N` here, while ShortStack assigns it a single position, so its
+per-locus counts run higher by the average multiplicity — 3.19x on this library. The 63
+weighted reads above are ~200 in that unit.
 
 **On piC recall as a criterion:** it asks whether a 10-40 kb reference region holds at
 least one non-review piRNA locus, so it *rewards fragmentation* — the more loci a region
