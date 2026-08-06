@@ -92,15 +92,25 @@ bimodal na classe (flamenco 0,90 uni-fita somático; 42AB 0,50 bifita germinativ
 seria `defining_evidence` com duas rotas — bifita COM ping-pong, ou uni-fita SEM — que a
 sintaxe de slots OR já suporta.
 
-### O score do phasiRNA é fraco (aberto, 2026-08-06)
+### O score do phasiRNA (parcialmente resolvido, 2026-08-06)
 
-Em planta, `phasiRNA` tem `defining_evidence: [phase]` e o `phase_pvalue` mediano dos loci
-chamados é **0,082** — só 9,5% alcançam p ≤ 0,01, então o score da classe fica em 1,09
-(contra 8,24 do hcsiRNA). O teste mede o construto certo; o que ele diz é que a maioria das
-chamadas se apoia em fase fraca, porque a classificação usa o peso sigmoide (`w_phase: 3.0`,
-`phase_scale: 1.5`), que dispara bem antes da significância. Decidir se o peso é frouxo
-demais ou se o hipergeométrico é conservador demais nesses loci — os TAS reais também vêm
-com p entre 0,10 e 0,45, o que é suspeito para tasiRNA de livro-texto.
+Com o clustering corrigido, **4 dos 6 TAS passaram a ser significativos**: TAS1A 5,7e-4,
+TAS1C 7,7e-4, TAS2 2,0e-3, TAS1B 8,0e-3 (na corrida com os bugs davam 0,08–0,13). O score
+baixo da classe (mediana 1,09) vale para os 377 loci chamados, não para os caracterizados.
+
+Sobram **TAS3 (0,034) e TAS3B (0,455)**, e eles são mecanisticamente distintos: dependem de
+**miR390/AGO7**, não de miR173 como TAS1/TAS2. No TAS3 o sítio 5' de miR390 é não-clivável
+e a fase propaga a partir do sítio 3', com poucos ciclos produtivos (Montgomery et al.,
+2008) — cenário em que a janela de 11 ciclos do `phase_test` dilui o sinal. Hipótese
+testável, e o diagnóstico certo antes de mexer em peso.
+
+*(Lembrete conceitual: TAS **não** são miRNA. O miRNA é o gatilho, codificado em outro
+locus — MIR173, MIR390; o locus TAS produz tasiRNA. A classe `phasiRNA` está certa.)*
+
+**Ampliar o conjunto de referência** (sugestão do usuário, boa): usar o **sRNAanno**
+(Chen et al., 2021, https://doi.org/10.1038/s41438-021-00480-8) para ter dezenas de loci
+PHAS anotados em várias espécies em vez de seis TAS. Ordem: (a) diagnosticar TAS3 com o
+que já temos; (b) puxar os PHAS do sRNAanno; (c) só então decidir sobre pesos.
 
 **Pendência achada na corrida:** `evidence.py:18` emite
 `RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estoura antes
@@ -122,11 +132,19 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 ### Ordem da próxima sessão
 
-1. **Alocação de multi-read estilo ShortStack/piRAT** (era o item 11, "baixa prioridade" —
-   subiu). O 1/NH divide a read por todas as posições, e cluster de piRNA é repetitivo por
-   definição, então é justo onde mais dilui: as contagens saem 3,19× menores que as da
-   literatura, o que atrapalha comparar e tira `n` dos testes. Não cria read, mas para de
-   dividir a que existe.
+1. **Remapear com `-k` maior e remedir** (barato, e é o conserto certo). O BAM de teste
+   `~/dros.sorted.bam` foi feito com **`-k 5`** (está no header), mas o default da tool é
+   **20** (`utils.py:24`): 79% dos alinhamentos vêm com NH=5, que é o teto batendo, não a
+   multiplicidade real. Nos loci de piRNA `multimap_frac` é **1,000**, então é exatamente
+   ali que o 1/NH divide por um número errado. Refazer o mapeamento resolve sem tocar no
+   modelo de peso.
+   *Alocação única de multi-read (ShortStack `--mmap u` / piRAT) fica em BAIXA prioridade:*
+   ela resolve outra pergunta (ONDE atribuir a read entre repetições, guiado por reads
+   únicas). Reconsiderar só se, com o `-k` correto, os loci de piRNA seguirem sem poder.
+   *Nota:* os testes de base 5' e de fita usam `distinct_seqs` (mediana 172 no piRNA), que
+   o 1/NH **não** afeta — o ganho de alocação única seria em comparabilidade, nos portões
+   que usam `reads` e na estatística de ping-pong, não no `n` desses testes.
+
 2. **Score do phasiRNA** (seção acima) — checar se o hipergeométrico é conservador demais
    nos TAS, que vêm com p entre 0,10 e 0,45.
 3. Rota bimodal do piRNA no `defining_evidence` (seção acima).
