@@ -205,6 +205,20 @@ def extract(sam_path, regions, lib_size, config):
             for i, region in enumerate(regions)]
 
 
+def chromosome_depth(alns):
+    """Per-position depth on the 1/NH scale, matching the per-locus counts.
+
+    The mincov threshold is derived from the weighted library size, so counting
+    alignment lines here would make it looser by the average multiplicity.
+    """
+    depth = defaultdict(float)
+    for a in alns:
+        w = 1.0 / a.nh
+        for p in range(a.pos, a.pos + len(a.seq)):
+            depth[p] += w
+    return depth
+
+
 def island_profiles(islands, alns, min_reads=0, size_windows=None,
                     min_window_frac=0.5):
     """Size profile and strand fraction per island, for the merge rule.
@@ -255,10 +269,7 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     alns = list(read_region(bam_path, chrom, xm_as_nh=xm_as_nh))
     if not alns:
         return []
-    depth = defaultdict(int)
-    for a in alns:
-        for p in range(a.pos, a.pos + len(a.seq)):
-            depth[p] += 1
+    depth = chromosome_depth(alns)
     islands = call_islands(depth, mincov, 0)
     profiles = island_profiles(islands, alns,
                                min_reads=config.get("profile_min_reads", 0),

@@ -122,12 +122,13 @@ def cluster_regions(sam_path, mincov, pad):
     """
     from features import island_profiles
 
-    depth = defaultdict(lambda: defaultdict(int))
+    depth = defaultdict(lambda: defaultdict(float))
     by_chrom = defaultdict(list)
     for a in read_alignments(sam_path):
         by_chrom[a.chrom].append(a)
+        w = 1.0 / a.nh
         for p in range(a.pos, a.pos + len(a.seq)):
-            depth[a.chrom][p] += 1
+            depth[a.chrom][p] += w
     regions = []
     for chrom in sorted(depth):
         islands = call_islands(depth[chrom], mincov, 0)
