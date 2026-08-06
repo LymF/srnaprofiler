@@ -92,25 +92,39 @@ bimodal na classe (flamenco 0,90 uni-fita somático; 42AB 0,50 bifita germinativ
 seria `defining_evidence` com duas rotas — bifita COM ping-pong, ou uni-fita SEM — que a
 sintaxe de slots OR já suporta.
 
-### O score do phasiRNA (parcialmente resolvido, 2026-08-06)
+### O score do phasiRNA — ENCERRADO, não é defeito (2026-08-06)
 
-Com o clustering corrigido, **4 dos 6 TAS passaram a ser significativos**: TAS1A 5,7e-4,
-TAS1C 7,7e-4, TAS2 2,0e-3, TAS1B 8,0e-3 (na corrida com os bugs davam 0,08–0,13). O score
-baixo da classe (mediana 1,09) vale para os 377 loci chamados, não para os caracterizados.
+Com o clustering corrigido, **4 dos 6 TAS ficam significativos**: TAS1A 5,7e-4, TAS1C
+7,7e-4, TAS2 2,0e-3, TAS1B 8,0e-3 (com os bugs davam 0,08–0,13).
 
-Sobram **TAS3 (0,034) e TAS3B (0,455)**, e eles são mecanisticamente distintos: dependem de
-**miR390/AGO7**, não de miR173 como TAS1/TAS2. No TAS3 o sítio 5' de miR390 é não-clivável
-e a fase propaga a partir do sítio 3', com poucos ciclos produtivos (Montgomery et al.,
-2008) — cenário em que a janela de 11 ciclos do `phase_test` dilui o sinal. Hipótese
-testável, e o diagnóstico certo antes de mexer em peso.
+Os dois fracos — TAS3 (0,034) e TAS3B (0,455) — foram diagnosticados lendo o registro de
+fase direto do BAM, e **a hipótese da janela de 11 ciclos foi refutada**:
 
-*(Lembrete conceitual: TAS **não** são miRNA. O miRNA é o gatilho, codificado em outro
-locus — MIR173, MIR390; o locus TAS produz tasiRNA. A classe `phasiRNA` está certa.)*
+| locus | massa 21 nt | massa no registro dominante | ciclos ocupados | composição |
+|---|---|---|---|---|
+| TAS1C | 40.681 | **84,7%** | 12 (em 22) | 69% de 21 nt |
+| TAS2 | 6.620 | 34,8% | 9 (em 13) | — |
+| TAS3B | 1.106 | 35,0% | 4 (em 5) | 43% 21 nt + 42% 22 nt |
+| TAS3 | 793 | **15,1%** | 4 (em 12) | 32% 21 nt, resto 22/24/27 |
 
-**Ampliar o conjunto de referência** (sugestão do usuário, boa): usar o **sRNAanno**
+No TAS3 os três registros mais fortes têm massa quase igual (120/116/109) — **não há
+registro dominante**, e a massa total do locus é 24× menor que a do TAS1C. Não é a janela
+diluindo: nesta biblioteca o TAS3 tem pouca expressão e seus 21-mers não estão em fase.
+O `phase_test` está certo e o `score` baixo é a leitura correta da evidência — que é
+exatamente o trabalho da coluna: separar locus chamado por peso de locus com evidência.
+
+*Em aberto (menor):* se essa baixa expressão do TAS3 é esperada em botão floral (o tecido
+de SRR30831721) ou indica problema de amostra — precisa de referência de expressão por
+tecido, não verificada.
+
+*Lembrete conceitual:* TAS **não** são miRNA. O miRNA é o gatilho, codificado em outro
+locus (MIR173 para TAS1/TAS2, MIR390 para TAS3); o locus TAS produz tasiRNA pela via
+RDR6/DCL4. A classe `phasiRNA` está certa.
+
+**Ampliar o conjunto de referência** (sugestão do usuário): usar o **sRNAanno**
 (Chen et al., 2021, https://doi.org/10.1038/s41438-021-00480-8) para ter dezenas de loci
-PHAS anotados em várias espécies em vez de seis TAS. Ordem: (a) diagnosticar TAS3 com o
-que já temos; (b) puxar os PHAS do sRNAanno; (c) só então decidir sobre pesos.
+PHAS anotados em várias espécies em vez de seis TAS — seis loci, dos quais dois pouco
+expressos, é base estreita demais para calibrar peso.
 
 ### Multimapeamento — investigado e encerrado (2026-08-06)
 
@@ -172,8 +186,8 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
    **DESCARTADA com evidência** — ver a seção "Multimapeamento" abaixo. O BAM de referência
    agora é `~/dros_k20.sorted.bam` (`-k 20`).
 
-2. **Score do phasiRNA** (seção acima) — checar se o hipergeométrico é conservador demais
-   nos TAS, que vêm com p entre 0,10 e 0,45.
+2. **Puxar os PHAS do sRNAanno** para sair das seis referências de TAS (das quais duas são
+   pouco expressas neste tecido). Só com dezenas de loci faz sentido mexer em `w_phase`.
 3. Rota bimodal do piRNA no `defining_evidence` (seção acima).
 3. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
    (o domínio uni-mainz saiu do ar), 51 espécies, clusters em GTF preditos com proTRAC
