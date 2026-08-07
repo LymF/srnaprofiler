@@ -218,7 +218,7 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 ### O que está aberto (revisado 2026-08-07)
 
-**A0. REGRESSÃO ABERTA — a rota miRNA quebrou (achada 2026-08-07)**
+**A0. Rota miRNA — quebrou e foi CORRIGIDA (2026-08-07)**
 
 Validando contra o **miRBase** (curado, e cujas coordenadas batem com as montagens já
 usadas: `dme` em Release_6, `ath` em TAIR10 — `extras/validate_mirna.py`), apareceu o que
@@ -247,8 +247,43 @@ conhecido deve ser **recortado** do cluster e virar locus próprio, em vez de se
 only the refined MIRNA region is reported" (README do ShortStack). Isso resolve os dois
 lados: o miRNA deixa de ser diluído e a classe phasiRNA deixa de ser contaminada.
 
+**Corrigido com recorte** (`clustering.carve_out`): o `--mirna-loci` passou a entrar
+**antes** do merge, cada intervalo vira locus próprio e os flancos seguem como loci deles.
+Baixar o limiar seria um número que quebra na próxima vez que o tamanho dos loci mudar — e
+ele mudou três vezes só nesta sessão.
+
+**Resultado com anotação curada (miRBase; `dme` em Release_6 e `ath` em TAIR10 batem com as
+montagens em uso):**
+
+| | Arabidopsis antes → depois | Drosophila antes → depois |
+|---|---|---|
+| precursores cobertos rotulados miRNA | 0% → **100%** (244/244) | 0% → **100%** (134/134) |
+| loci de miRNA em review | 42 → **0** | 78 → **0** |
+| classe phasiRNA sobre miRNA anotado | 21,05% → **0,00%** | — |
+| classes piRNA/siRNA sobre miRNA | — | 0,23%/0,99% → **0,00%** |
+| loci conhecidos | TAS 6/6, PHAS 20→19/35 | piC 84 → **85**/90 |
+
+**O insumo importa mais do que antes.** Com `mirdeep_pred.bed` (87 predições de novo) só
+19,7% dos precursores foram rotulados e a contaminação do phasiRNA mal se moveu (20,77%);
+com os 326 do miRBase, foi a zero. E como o recorte cria um locus **por intervalo
+informado**, uma predição falsa agora vira locus falso com rótulo afirmado — antes ela só
+falhava em rotular. Dos 91 loci criados a partir do miRDeep2, apenas 57,1% caem sobre miRNA
+anotado. **Passar anotação curada quando existir; predição de novo só filtrada por score**
+(item 7 do Tier 3 ganhou consequência direta na saída).
+
+**CUIDADO ao ler enriquecimento depois desta mudança.** Os 136 loci de miRNA em Drosophila
+carregam **33,7% da massa de reads da biblioteca**. Tirá-los das classes encolhe o
+denominador, e o enriquecimento "sobe" sozinho: piRNA 3,3×→5,1× e siRNA 2,4×→4,2×. Os dois
+subirem juntos é assinatura de mudança de denominador, não de discriminação melhor — não é
+ganho. O que é ganho limpo: rotulagem 100% correta, review a zero, contaminação a zero e
+piC 84→85. *(Corolário: toda medida de massa feita antes nesta espécie estava distorcida por
+um terço de miRNA contabilizado como siRNA/piRNA.)*
+
 **Lição de método:** validar uma classe por vez esconde regressão em outra. A tarefa 6 foi
-validada contra piC e TAS, que não têm miRNA, e passou.
+validada contra piC e TAS, que não têm miRNA, e passou. Cada referência nova desta sessão
+revelou um defeito que as anteriores não podiam ver — 35 PHAS acharam o viés de janela,
+o miRBase achou esta regressão, e o nulo por permutação dimensionou o estrago (76% de falso
+positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
 
 **A. Pronto para fazer**
 
