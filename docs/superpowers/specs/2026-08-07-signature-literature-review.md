@@ -120,13 +120,36 @@ correção, o nulo por permutação dá 76% de falso positivo em loci de 120 cic
 A concentração de massa no registro dominante dos TAS é ~49% contra 4,8% do acaso — o sinal
 é forte e o teste por posição não o enxerga.
 
-**Divergência não resolvida:** o sRNAminer (que gerou a anotação do sRNAanno) reporta
-`Phas_Ratio` (abundância) e p de 1e-9 a 1e-15 nos mesmos loci. Não temos o código nem o
-método publicado em mãos. **Comparar nossa detecção com a anotação dele mede quão liberal
-ele é, não quem está certo.**
+**sRNAminer — RESOLVIDO (2026-08-07, jar descompilado com CFR).**
+`QuickStatPHASRegion.StatRegion:154`:
 
-**Ação:** obter o método do sRNAminer antes de redesenhar. O conjunto experimental
-(`extras/phas_experimental_at_TAIR10.bed`) é a régua, não a anotação predita.
+```java
+pvalue = HyperGeometric(2*locusLen-1,            // N = população
+                        (2*locusLen-1)/phasLen,  // M = sucessos
+                        posStrandCount.size(),   // n = sorteios
+                        k);                      // observados
+```
+
+- **Também conta posições, não abundância.** `k` vem de `phasSpeciesCount`, que só incrementa
+  quando o par (fita, 5') é novo — deduplicado por `seenStringHits`. A abundância
+  (`inPhasRatio`) é calculada e reportada, mas **fica fora do p-valor**; entra como limiar
+  separado (`minPhasRatio`).
+- **Não varre janelas:** usa o locus inteiro numa tacada, logo não há seleção de máximo e
+  não precisa de correção. É a única diferença estrutural para nós.
+- Soma os registros vizinhos (`maxPhase±1`) ao calcular a razão — tolerância de ±1 nt que
+  não temos.
+
+**A COMPARAÇÃO QUE MOTIVOU TUDO ISTO ERA INVÁLIDA.** Rodando a fórmula dele nos **nossos**
+dados, nos 8 TAS: p de 1,8e-2 a 8,4e-4, **não** os 1e-9–1e-15 da anotação. Detecção a
+p ≤ 0,01: **nós 1/8, ele 2/8**. Ou seja, os p minúsculos da anotação vêm das **bibliotecas
+deles**, não de estatística superior. Eu estava comparando nossos p na nossa biblioteca com
+os p deles nas bibliotecas deles — o que não mede nada sobre as estatísticas.
+
+**Conclusão:** nossa fase está **em pé de igualdade** com a referência, um pouco mais
+conservadora por causa da varredura + Bonferroni. Não há caso para redesenhar a estatística.
+O que se pode reavaliar é a *varredura*: sobre loci bem formados (500–600 bp ≈ 25–30 ciclos,
+tamanho comparável ao das regiões PHAS), calcular sobre o locus inteiro dispensa a correção
+e recupera sensibilidade — mas perde a proteção contra fase local num locus grande.
 
 ---
 
