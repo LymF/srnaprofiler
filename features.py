@@ -3,7 +3,7 @@ import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments, read_region, reference_lengths
-from clustering import call_islands, merge_compatible
+from clustering import call_islands, merge_compatible, carve_out
 from signals import offset_spectrum, pingpong_zscore, phase_test
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
                       strand_bidirectional_score,
@@ -265,7 +265,7 @@ def island_profiles(islands, alns, min_reads=0, size_windows=None,
 
 
 def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
-                       xm_as_nh=False, genome_bp=0, chrom_len=0):
+                       xm_as_nh=False, genome_bp=0, chrom_len=0, carve=()):
     """Cluster and extract features for a single chromosome of an indexed BAM.
 
     Reads only this chromosome's alignments into memory (via fetch), builds its
@@ -280,10 +280,11 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     profiles = island_profiles(islands, alns,
                                min_reads=config.get("profile_min_reads", 0),
                                size_windows=config.get("size_windows"))
-    regions = [(chrom, s, e) for (s, e) in
-               merge_compatible(islands, profiles, pad,
-                                chrom_len=chrom_len or None,
-                                size_windows=config.get("size_windows"))]
+    merged = merge_compatible(islands, profiles, pad,
+                              chrom_len=chrom_len or None,
+                              size_windows=config.get("size_windows"))
+    # Known miRNA loci become loci of their own instead of being swallowed.
+    regions = [(chrom, s, e) for (s, e) in carve_out(merged, carve)]
     if not regions:
         return []
     buckets = _assign_reads(regions, alns)
@@ -297,7 +298,7 @@ def _chrom_job(job):
 
 
 def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
-                     xm_as_nh=False, genome_bp=0):
+                     xm_as_nh=False, genome_bp=0, carve_by_chrom=None):
     """Cluster + extract features across chromosomes, optionally in parallel.
 
     Each chromosome is processed independently by `process_chromosome`. With
@@ -306,8 +307,9 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
     chromosome order.
     """
     lengths = reference_lengths(bam_path)
+    carve_by_chrom = carve_by_chrom or {}
     jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh, genome_bp,
-             lengths.get(c, 0)) for c in chroms]
+             lengths.get(c, 0), tuple(carve_by_chrom.get(c, ()))) for c in chroms]
     if threads > 1 and len(jobs) > 1:
         import multiprocessing as mp
         with mp.Pool(min(threads, len(jobs))) as pool:

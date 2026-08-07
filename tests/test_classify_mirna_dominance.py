@@ -41,3 +41,48 @@ def test_claimed_locus_keeps_the_old_confidence_behaviour():
     mark_mirna([r], {"c": [(1000, 1090)]})
     assert r.confidence == 1.0
     assert r.review is False
+
+
+def test_a_mirna_inside_a_big_cluster_is_carved_into_its_own_locus(tmp_path):
+    """End to end: the carve must reach the clustering, not just exist.
+
+    Without it the hairpin is ~7% of the locus around it, never reaches the
+    dominance threshold, and the cluster keeps a siRNA/piRNA label -- which is
+    how the miRNA route broke when loci grew from ~100 bp to ~1 kb.
+    """
+    import types
+    from samio import Aln
+    import pysam
+
+    # one 1.2 kb cluster of 21-nt reads, with a 90-bp miRNA hairpin inside it
+    sam = tmp_path / "in.sam"
+    with open(sam, "w") as fh:
+        fh.write("@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:c\tLN:5000\n")
+        fh.write("@PG\tID:x\tPN:other\n")
+        n = 0
+        for pos in range(1000, 2200, 12):
+            for _ in range(6):
+                n += 1
+                fh.write(f"r{n}\t0\tc\t{pos}\t255\t21M\t*\t0\t0\t{'A'*21}\t{'I'*21}\tXM:i:1\n")
+        for pos in range(1500, 1590, 3):
+            for _ in range(6):
+                n += 1
+                fh.write(f"m{n}\t0\tc\t{pos}\t255\t21M\t*\t0\t0\t{'T'*21}\t{'I'*21}\tXM:i:1\n")
+
+    bed = tmp_path / "mir.bed"
+    bed.write_text("c\t1499\t1589\tMIR-test\n")
+
+    from classify import run_classify
+    args = types.SimpleNamespace(
+        sam=str(sam), genome=None, prefix="m", outdir=str(tmp_path),
+        mincov=0.0, pad=200, mirna_loci=str(bed), config="rules.yaml",
+        norm=1_000_000, threads=1)
+    run_classify(args)
+
+    import csv
+    rows = list(csv.DictReader(open(tmp_path / "m.clusters.tsv"), delimiter="\t"))
+    mir = [r for r in rows if r["cls"] == "miRNA"]
+    assert len(mir) == 1, [(r["start"], r["end"], r["cls"]) for r in rows]
+    assert int(mir[0]["start"]) == 1499 and int(mir[0]["end"]) == 1589
+    # the flanks survive as their own loci instead of being thrown away
+    assert len(rows) >= 3

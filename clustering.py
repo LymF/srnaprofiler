@@ -114,6 +114,33 @@ def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5
     return out
 
 
+def carve_out(regions, intervals, min_piece=20):
+    """Split regions so each known interval becomes a locus of its own.
+
+    A miRNA hairpin swallowed by a cluster is a small fraction of it, so the
+    cluster's class is decided by everything around the hairpin. Carving keeps
+    the flanks as their own loci instead of discarding them. Pieces shorter
+    than `min_piece` are dropped; the carved interval itself always survives.
+    """
+    if not intervals:
+        return list(regions)
+    cuts = sorted(intervals)
+    out = []
+    for s, e in sorted(regions):
+        pos = s
+        for cs, ce in cuts:
+            cs, ce = max(cs, s), min(ce, e)
+            if cs >= ce or cs < pos:
+                continue
+            if cs > pos and cs - pos >= min_piece:
+                out.append((pos, cs))
+            out.append((cs, ce))
+            pos = ce
+        if pos < e and (e - pos >= min_piece or pos == s):
+            out.append((pos, e))
+    return out
+
+
 def cluster_regions(sam_path, mincov, pad):
     """Builds per-chromosome coverage and calls islands.
 

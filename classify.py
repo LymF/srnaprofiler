@@ -128,6 +128,11 @@ def run_classify(args):
     log(f"--mincov {args.mincov} RPM -> minimum depth {min_depth} "
         f"for a library of {lib_size:.0f} reads", "INFO")
 
+    mirna_intervals = parse_mirna_bed(args.mirna_loci) if args.mirna_loci else {}
+    if mirna_intervals:
+        log(f"--mirna-loci: {sum(len(v) for v in mirna_intervals.values())} intervals "
+            f"will be carved out as loci of their own", "INFO")
+
     chroms = mapped_chromosomes(bam_path)
     safe = safe_thread_count(threads, reference_alignment_counts(bam_path),
                              available_memory_mb())
@@ -139,10 +144,9 @@ def run_classify(args):
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
                                min_depth, pad, threads, xm_as_nh,
-                               mapped_genome_size(bam_path))
+                               mapped_genome_size(bam_path), mirna_intervals)
     log(f"{len(records)} clusters", "INFO")
 
-    mirna_intervals = parse_mirna_bed(args.mirna_loci) if args.mirna_loci else {}
     if mirna_intervals:
         mark_mirna(records, mirna_intervals)
 
