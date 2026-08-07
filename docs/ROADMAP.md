@@ -218,6 +218,38 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 ### O que está aberto (revisado 2026-08-07)
 
+**A0. REGRESSÃO ABERTA — a rota miRNA quebrou (achada 2026-08-07)**
+
+Validando contra o **miRBase** (curado, e cujas coordenadas batem com as montagens já
+usadas: `dme` em Release_6, `ath` em TAIR10 — `extras/validate_mirna.py`), apareceu o que
+as validações de piRNA e PHAS não podiam ver, porque cada uma olha uma classe só:
+
+- **Só 1 locus** do genoma recebeu rótulo miRNA, com `--mirna-loci` passado. Antes da
+  reforma do clustering eram **243 loci, 247/247 corretos** (anotação TAIR10).
+- **21,05% da classe phasiRNA está sobre miRNA anotado** (131 de 627). Em Drosophila a
+  contaminação é pequena (0,23% do piRNA, 0,99% do siRNA), mas **134 precursores cobertos
+  recebem 100% de rótulo errado** (70 siRNA, 64 piRNA; 78 deles em review).
+
+**Causa — interação de duas mudanças desta sessão, ambas minhas:** `mark_mirna` passou a
+exigir que o miRNA cubra **≥50% do locus** (tarefa 6 do plano de clustering), regra
+calibrada quando os loci tinham ~100 bp. Com loci de 600–1.000 bp e precursores de ~91 bp,
+o precursor ocupa **14% do locus (mediana; 6,9% em Drosophila)** e o limiar nunca dispara:
+
+| `min_fraction` | loci que seriam rotulados |
+|---|---|
+| 0,50 (atual) | 28 (9,2%) |
+| 0,25 | 61 (20,1%) |
+| 0,10 | 225 (74,0%) |
+
+**Baixar o limiar é remendo.** O conserto certo é o que o ShortStack faz: um locus de miRNA
+conhecido deve ser **recortado** do cluster e virar locus próprio, em vez de ser engolido —
+"if one or more MIRNA loci overlap the initial cluster, the initial cluster is removed and
+only the refined MIRNA region is reported" (README do ShortStack). Isso resolve os dois
+lados: o miRNA deixa de ser diluído e a classe phasiRNA deixa de ser contaminada.
+
+**Lição de método:** validar uma classe por vez esconde regressão em outra. A tarefa 6 foi
+validada contra piC e TAS, que não têm miRNA, e passou.
+
 **A. Pronto para fazer**
 
 1. ~~Rota bimodal do piRNA no `defining_evidence`~~ **FECHADO sem mudança (2026-08-07).**
