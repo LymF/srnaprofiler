@@ -302,10 +302,25 @@ positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
    aí sim a bimodalidade quebraria um dos dois modos (flamenco 0,90 × 42AB 0,50).
 2. **Decidir as duas populações de tamanho.** 18% dos loci têm `size_purity` < 0,5. Hoje
    são reportadas (`size_purity`, `dicer_call_2`) mas o locus recebe um rótulo só.
-3. **Generalização entre espécies.** sRNAanno serve `PHAS21/<Especie>.PHAS21.gff3` e
-   `PHAS24/` (Oryza: 804 loci) — testa fase em gramínea, mecanismo diferente. Para
-   artrópode, `pirnaclusterdb.org` tem 51 espécies (preditos por proTRAC, não validados:
-   servem para generalização entre clados, não para provar acerto).
+3. **Generalização entre espécies** — agora com base sólida (rota miRNA consertada, fase
+   calibrada). Cada espécie nova deve trazer classe ou mecanismo que as atuais não
+   exercitam, não "mais do mesmo":
+   - **Arroz** (`Oryza_sativa`): PHAS**24** (804 loci no sRNAanno) — fase de 24 nt meiótica,
+     mecanismo distinto do 21 nt de Arabidopsis. O sRNAanno serve o próprio genoma
+     (`http://121.37.229.61:84/sRNAannoDATA/genome/Oryza_sativa.genome.fasta`, 363 MB), então
+     as coordenadas batem por construção. miRBase `osa` tem 595 precursores, **mas em MSU7** —
+     conferir se casa com o genoma do sRNAanno antes de usar.
+   - **Tribolium castaneum**: 148 clusters de piRNA no piRNAclusterDB
+     (`https://www.pirnaclusterdb.org/data/FASTA/Tribolium_castaneum.piRNAclusters.gtf`),
+     genoma ~165 MB (cabe na RAM), nomes `ChLG*`. Ressalva: são predições do proTRAC.
+     miRBase `tca` deu HTTP 500 — verificar.
+   - Falta em ambos: biblioteca de small RNA (SRA/ENA; não há sra-tools no ambiente, baixar
+     fastq direto do ENA por HTTP) e índice bowtie novo. É meio dia de trabalho.
+
+3b. **Controles negativos, ainda não feitos.** tRNA/rRNA/snoRNA (Rfam, tRNAscan) são
+   abundantes em biblioteca de small RNA e **não** deveriam virar siRNA/piRNA. Hoje só
+   medimos recall; especificidade contra RNA estrutural nunca foi testada. Barato nas
+   espécies que já temos.
 
 **B. Features maiores, cada uma com spec própria**
 
