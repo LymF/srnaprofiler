@@ -199,9 +199,19 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 
 **A. Pronto para fazer**
 
-1. **Rota bimodal do piRNA no `defining_evidence`** — flamenco (uni-fita, somático, sem
-   ping-pong) e 42AB (bifita, germinativo, com ping-pong) são as duas formas legítimas de
-   ser piRNA, e hoje só a segunda tem evidência definidora. Slots OR já suportam.
+1. ~~Rota bimodal do piRNA no `defining_evidence`~~ **FECHADO sem mudança (2026-08-07).**
+   A premissa estava errada: `[1u OR pingpong]` **já é** a regra bimodal — 1U é a assinatura
+   do piRNA primário (somático, uni-fita) e ping-pong a do secundário (germinativo, bifita).
+   O que se propôs acrescentar foi exigir coerência de fita em cada rota
+   (`min(s_fractop, s_1u)` OU `min(s_fractop_bid, s_pingpong)`), e isso **mede pior**:
+   `score >= 2` cai de 97,0% para 87,1% e 2.040 loci perdem evidência. O perfil deles é de
+   piRNA legítimo — 25 nt medianos, 1U 0,67, 43 reads — e **36,2% caem dentro de piC
+   conhecido contra 29,4% de fundo**, ou seja, são enriquecidos em cluster real. São
+   clusters bifita pouco abundantes falhando a rota germinativa por não exibir ping-pong,
+   que com 43 reads não tem pares para ser detectado. Mesma armadilha do `s_fractop_bal`:
+   teste sem poder virando evidência de ausência.
+   *O que continua válido:* não dar ao piRNA um **peso** único de fita (`w_fractop`), porque
+   aí sim a bimodalidade quebraria um dos dois modos (flamenco 0,90 × 42AB 0,50).
 2. **Decidir as duas populações de tamanho.** 18% dos loci têm `size_purity` < 0,5. Hoje
    são reportadas (`size_purity`, `dicer_call_2`) mas o locus recebe um rótulo só.
 3. **Generalização entre espécies.** sRNAanno serve `PHAS21/<Especie>.PHAS21.gff3` e
