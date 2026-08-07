@@ -108,6 +108,27 @@ Medido (taxa de p ≤ 0,01 contra o 1% de um nulo calibrado), **nos dois reinos*
 | 30–60 | 13,2× | 15,1× |
 | >120 | 32,7× | 44,6× |
 
+**Teste de permutação (2026-08-07)** — o nulo, onde a verdade é conhecida por construção:
+posições 5' sorteadas uniformemente, nenhum locus fásico, tudo o mais preservado (nº de
+reads, tamanho, nº de janelas). Taxa de p ≤ 0,01, 400 réplicas por ponto:
+
+| ciclos | sem correção | com correção | nominal |
+|---|---|---|---|
+| 12 | 18,8% | 2,75% | 1% |
+| 30 | 40,3% | 0,25% | 1% |
+| 60 | 65,5% | 1,50% | 1% |
+| 120 | **76,3%** | 2,50% | 1% |
+
+Ou seja: **num locus de 120 ciclos sem fase alguma, o teste antigo dizia "fásico, p ≤ 0,01"
+em 76% das vezes.** O dado real subestimava o estrago (~10×) porque a maioria dos loci é
+pequena. A correção elimina a dependência do tamanho — que era o defeito estrutural.
+
+**Limitação residual conhecida:** sobra anticonservação de ~2–3×, que **não** vem da
+varredura e sim do próprio nulo hipergeométrico (population/successes são idealização de
+onde uma read pode começar). É limitada e independente do tamanho do locus. A afirmação
+anterior de que "a calibração caiu em cima do nominal" era otimista: os 0,89% do dado real
+são em parte porque loci reais diferem deste nulo. Fixado em `tests/test_signals_phase_null.py`.
+
 **Ressalvas de escopo** (importantes): as magnitudes são destas duas bibliotecas e não devem
 ser citadas como número geral — dependem da distribuição de tamanho dos loci. A relação
 dose-resposta é *consistente com* o viés mas não é prova isolada (locus maior poderia ser
