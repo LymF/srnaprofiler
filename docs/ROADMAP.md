@@ -317,10 +317,39 @@ positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
    - Falta em ambos: biblioteca de small RNA (SRA/ENA; não há sra-tools no ambiente, baixar
      fastq direto do ENA por HTTP) e índice bowtie novo. É meio dia de trabalho.
 
-3b. **Controles negativos, ainda não feitos.** tRNA/rRNA/snoRNA (Rfam, tRNAscan) são
-   abundantes em biblioteca de small RNA e **não** deveriam virar siRNA/piRNA. Hoje só
-   medimos recall; especificidade contra RNA estrutural nunca foi testada. Barato nas
-   espécies que já temos.
+3b. ~~Controles negativos~~ **MEDIDOS (2026-08-07)** — `extras/validate_structural.py`,
+   contra tRNA/rRNA/snoRNA/snRNA do GFF de cada organismo. **Decidir o que fazer** com o
+   resultado (ver abaixo).
+
+**A1. RNA estrutural contamina as classes (aberto, medido 2026-08-07)**
+
+Primeiro teste de **especificidade** do projeto — todos os outros validadores medem recall.
+
+| | Arabidopsis | Drosophila |
+|---|---|---|
+| loci sobre RNA estrutural | 676 (2,26%) | 413 (1,56%) |
+| **massa de reads deles** | **36,5%** | **25,7%** |
+| contaminação de classe | phasiRNA **16,1%**, siRNA 11,1% | siRNA 3,9%, piRNA 1,1% |
+| padrão dominante | 377 loci de tRNA → hcsiRNA | 153 loci de tRNA → **piRNA** |
+
+Não é ruído aleatório: metades de tRNA (tRFs) têm 30–35 nt e caem dentro ou colado na janela
+24–31 do piRNA; em planta, fragmentos de 24 nt caem no hcsiRNA. **tRF é classe biológica
+real** que a tool não tem onde colocar, então ela cai na classe cujo tamanho bate.
+
+Em planta a contaminação de classe é séria (16% do phasiRNA, logo depois de zerarmos a de
+miRNA); em mosca é pequena (1–4%), mas a massa de reads é grande nos dois — o que distorce
+qualquer estatística de abundância por classe.
+
+**Opções, a decidir:**
+- **Máscara** (`--exclude-loci BED`): remover as regiões do clustering, como o `--mirna-loci`
+  faz o recorte. Simples e reusa `carve_out`. Custo: descarta sinal real que porventura
+  exista ali.
+- **Coluna diagnóstica** (`structural_frac`): reportar sem decidir, deixando o filtro para o
+  usuário. Conservador e barato; não limpa as classes.
+- **Classe tRF própria** no `rules.yaml`. Mais fiel à biologia, mais trabalho, e precisa de
+  referência para validar.
+- Nota: parte do overlap é esperada (esses genes ficam em vizinhança transcrita), então
+  nenhum limiar aqui conta como "passar" — os números servem para comparar corridas.
 
 **B. Features maiores, cada uma com spec própria**
 
