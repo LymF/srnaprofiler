@@ -321,7 +321,31 @@ positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
    contra tRNA/rRNA/snoRNA/snRNA do GFF de cada organismo. **Decidir o que fazer** com o
    resultado (ver abaixo).
 
-**A1. RNA estrutural contamina as classes (aberto, medido 2026-08-07)**
+**A0b. O p-valor de fase é pouco sensível — a formulação, não a correção (2026-08-07)**
+
+Medido sobre os 73 loci que caem em PHAS anotado (verdade conhecida): só **5,5% alcançam
+p ≤ 0,01** e o p mediano é **0,368**. Com ≥200 reads sobe só para 14,8%. Em loci que a
+referência diz serem fásicos, detectamos 1 em 20.
+
+**Não é o Bonferroni.** Duas evidências: (i) ~28 janelas num locus de 600 bp, então p
+corrigido 0,368 implica p **cru** ≈ 0,013 — não passaria em 0,01 nem sem correção; (ii) o
+teste de permutação mostra taxa de falso positivo **no** nominal (0,25–2,75%), não abaixo,
+o que aconteceria se estivéssemos sobre-corrigindo.
+
+**É a formulação.** O hipergeométrico conta *quantas posições* estão em registro e ignora
+**quanta abundância** cada uma tem — uma posição em registro com 500 reads pesa igual a uma
+com 2. O sRNAminer reporta 1e-9 a 1e-15 nos mesmos loci onde reportamos 1e-3 a 5e-2.
+
+**Isto explica a discordância interna da tool:** o classificador usa `w_phase`, sigmoide
+sobre `phase_score`, que **usa** abundância — por isso chama 633 loci. O `score` usa o
+p-valor, que **não** usa — por isso quase nenhum passa. Os dois medem coisas diferentes.
+
+**Consequência para o resto:** enquanto isto não for consertado, não dá para usar `score`
+para negar rótulo (ver A1), porque 4 dos 13 loci em TAS têm score 0 — seriam descartados
+loci reais. Precisa de spec própria: um teste de fase que incorpore abundância mantendo a
+calibração que o nulo por permutação garante hoje.
+
+**A1. RNA estrutural contamina as classes, e falta a categoria "não classificado" (2026-08-07)**
 
 Primeiro teste de **especificidade** do projeto — todos os outros validadores medem recall.
 
@@ -340,7 +364,21 @@ Em planta a contaminação de classe é séria (16% do phasiRNA, logo depois de 
 miRNA); em mosca é pequena (1–4%), mas a massa de reads é grande nos dois — o que distorce
 qualquer estatística de abundância por classe.
 
-**Opções, a decidir:**
+**Falta uma categoria de rejeição.** Hoje a classificação é **fechada**: o `RuleScorer`
+sempre escolhe a classe de maior score, e `review` significa "as classes competem", não
+"nenhuma serve". Um tRF não é ambíguo entre siRNA e piRNA — não é nenhum dos dois, e receber
+rótulo afirmado é dizer algo falso. São conceitos distintos e não devem ser fundidos.
+
+O instrumento existiria (`score` mede se a evidência definidora está presente, e os loci
+estruturais têm score mediano **0,00** contra 7,61/58,38 dos demais), **mas não pode ser
+usado ainda**: com limiar 0,5 o Drosophila perde 3 piC e a Arabidopsis perde **4 dos 6 TAS**;
+com 2, perde os 6. Causa em A0b — 4 dos 13 loci em TAS têm score 0 porque o p-valor de fase
+é insensível. É a mesma armadilha do `min_evidence` (removido em 2026-08-02): limiar global
+sobre métrica que não vale igual para todas as classes derruba a classe pior servida.
+
+**Ordem correta:** consertar A0b → então `unclassified` por score vira viável.
+
+**Opções para o RNA estrutural enquanto isso:**
 - **Máscara** (`--exclude-loci BED`): remover as regiões do clustering, como o `--mirna-loci`
   faz o recorte. Simples e reusa `carve_out`. Custo: descarta sinal real que porventura
   exista ali.
