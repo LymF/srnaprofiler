@@ -92,39 +92,54 @@ bimodal na classe (flamenco 0,90 uni-fita somático; 42AB 0,50 bifita germinativ
 seria `defining_evidence` com duas rotas — bifita COM ping-pong, ou uni-fita SEM — que a
 sintaxe de slots OR já suporta.
 
-### O score do phasiRNA — ENCERRADO, não é defeito (2026-08-06)
+### Fase: viés de seleção de janela — CORRIGIDO (2026-08-07)
 
-Com o clustering corrigido, **4 dos 6 TAS ficam significativos**: TAS1A 5,7e-4, TAS1C
-7,7e-4, TAS2 2,0e-3, TAS1B 8,0e-3 (com os bugs davam 0,08–0,13).
+`phase_test` varre uma janela de 11 ciclos por ciclo do locus e reporta a melhor, mas
+devolvia o **p cru** daquela janela. Reportar o mínimo de W testes como se fosse um teste
+único infla significância — isso é propriedade do algoritmo, não achado empírico, e vale
+para qualquer organismo.
 
-Os dois fracos — TAS3 (0,034) e TAS3B (0,455) — foram diagnosticados lendo o registro de
-fase direto do BAM, e **a hipótese da janela de 11 ciclos foi refutada**:
+Medido (taxa de p ≤ 0,01 contra o 1% de um nulo calibrado), **nos dois reinos**:
 
-| locus | massa 21 nt | massa no registro dominante | ciclos ocupados | composição |
-|---|---|---|---|---|
-| TAS1C | 40.681 | **84,7%** | 12 (em 22) | 69% de 21 nt |
-| TAS2 | 6.620 | 34,8% | 9 (em 13) | — |
-| TAS3B | 1.106 | 35,0% | 4 (em 5) | 43% 21 nt + 42% 22 nt |
-| TAS3 | 793 | **15,1%** | 4 (em 12) | 32% 21 nt, resto 22/24/27 |
+| ciclos | Arabidopsis | Drosophila |
+|---|---|---|
+| <15 | 2,1× | 2,8× |
+| 15–30 | 8,6× | 11,9× |
+| 30–60 | 13,2× | 15,1× |
+| >120 | 32,7× | 44,6× |
 
-No TAS3 os três registros mais fortes têm massa quase igual (120/116/109) — **não há
-registro dominante**, e a massa total do locus é 24× menor que a do TAS1C. Não é a janela
-diluindo: nesta biblioteca o TAS3 tem pouca expressão e seus 21-mers não estão em fase.
-O `phase_test` está certo e o `score` baixo é a leitura correta da evidência — que é
-exatamente o trabalho da coluna: separar locus chamado por peso de locus com evidência.
+**Ressalvas de escopo** (importantes): as magnitudes são destas duas bibliotecas e não devem
+ser citadas como número geral — dependem da distribuição de tamanho dos loci. A relação
+dose-resposta é *consistente com* o viés mas não é prova isolada (locus maior poderia ser
+genuinamente mais fásico); a prova está no código. E o "1% esperado" pressupõe que a maioria
+dos loci não é fásica, hipótese razoável e não verificada.
 
-*Em aberto (menor):* se essa baixa expressão do TAS3 é esperada em botão floral (o tecido
-de SRR30831721) ou indica problema de amostra — precisa de referência de expressão por
-tecido, não verificada.
+Corrigido com **Bonferroni sobre as janelas efetivamente testadas** (conservador, já que
+janelas vizinhas se sobrepõem — direção certa para evidência). Efeito em Arabidopsis:
 
-*Lembrete conceitual:* TAS **não** são miRNA. O miRNA é o gatilho, codificado em outro
-locus (MIR173 para TAS1/TAS2, MIR390 para TAS3); o locus TAS produz tasiRNA pela via
-RDR6/DCL4. A classe `phasiRNA` está certa.
+| | antes | depois | esperado |
+|---|---|---|---|
+| p ≤ 0,05 | 31,7% | 6,35% | 5% |
+| p ≤ 0,01 | 9,8% | 0,89% | 1% |
+| p ≤ 0,01 dentro de PHAS × fora | 19,4% × 9,8% (**2,0×**) | 6,0% × 0,9% (**6,7×**) | — |
 
-**Ampliar o conjunto de referência** (sugestão do usuário): usar o **sRNAanno**
-(Chen et al., 2021, https://doi.org/10.1038/s41438-021-00480-8) para ter dezenas de loci
-PHAS anotados em várias espécies em vez de seis TAS — seis loci, dos quais dois pouco
-expressos, é base estreita demais para calibrar peso.
+Recall de PHAS inalterado (20/35) e TAS 6/6 mantidos: tirou falso positivo, não locus real.
+
+**Como isso corrige uma conclusão anterior desta sessão:** o item "score do phasiRNA fraco"
+tinha sido encerrado como não-defeito, com base nos 6 TAS. Havia defeito — só que do lado
+oposto ao suposto: o teste não era conservador demais nos TAS, era **permissivo demais em
+todo o resto**, o que achatava a discriminação. O diagnóstico do TAS3 em si continua válido
+(pouco expresso, 15,1% da massa no registro dominante contra 84,7% do TAS1C), mas a
+comparação com o fundo estava distorcida. Foram os 35 loci do sRNAanno que tornaram isso
+visível — 6 loci não bastavam.
+
+*Lembrete conceitual:* TAS **não** são miRNA. O miRNA é o gatilho, codificado em outro locus
+(MIR173 para TAS1/TAS2, MIR390 para TAS3); o locus TAS produz tasiRNA via RDR6/DCL4.
+
+*Referência nova:* `extras/validate_phas.py` + `extras/phas21_ref_at_TAIR10.gff3` (35 loci,
+sRNAanno — Chen et al., 2021, https://doi.org/10.1038/s41438-021-00480-8). O servidor serve
+`http://www.plantsrnas.org/PHAS21/<Especie>.PHAS21.gff3` e `PHAS24/` para gramíneas
+(Oryza_sativa tem 804 loci PHAS24), o que permite testar generalização entre espécies.
 
 ### Multimapeamento — investigado e encerrado (2026-08-06)
 
