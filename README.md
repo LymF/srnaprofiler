@@ -140,11 +140,26 @@ ambiguity codes to N. miRDeep2 rejects a genome that has either ("not allowed
 whitespaces in its first identifier", "allowed only to comprise characters
 [ACGTNacgtn]"), and NCBI genomes have both.
 
-`classify` has no miRNA class of its own — miRNA loci come from `--mirna-loci`.
-Skipping it on the Arabidopsis run left 184 annotated miRNAs carrying a
-confidently asserted wrong class; feeding the loci in fixed all 247. Filter the
-miRDeep2 predictions by score first: predictions matching an annotated miRNA
-score a median of 96.3, the rest 10.0.
+`classify` has no miRNA class of its own — miRNA loci come from `--mirna-loci`,
+and each interval given there is **carved out of the cluster around it** before
+the class is decided. A hairpin is ~90 bp and a locus is 600–1000 bp, so without
+carving the miRNA is a seventh of a locus whose class comes from everything else
+in it: every covered precursor was labelled siRNA or piRNA, and 21% of the plant
+phasiRNA class sat on an annotated miRNA. With carving and a curated annotation,
+all 244 covered precursors in Arabidopsis and all 134 in Drosophila come out
+miRNA, none flagged for review, and the contamination of the other classes goes
+to zero. The flanks survive as loci of their own rather than being discarded.
+
+Two consequences worth knowing:
+
+- **Give it curated annotation when one exists.** A carved interval becomes a
+  locus with an asserted label, so a wrong prediction now produces a wrong
+  locus, where before it merely failed to label one. Of the loci carved from raw
+  miRDeep2 predictions only 57% matched an annotated miRNA. Filter by score
+  first: predictions matching an annotation score a median of 96.3, the rest 10.0.
+- **Read abundance figures accordingly.** miRNA loci held 33.7% of the read mass
+  of the Drosophila library. Any per-class share computed without `--mirna-loci`
+  counts that mass as siRNA or piRNA.
 
 ### Plants vs arthropods (`--config`)
 
@@ -185,6 +200,18 @@ for significant phasing over the background.
 clusters (`extras/piC_ref_dm6.bed`, Release 6 coordinates — no liftover needed):
 
     python3 extras/validate_piclusters.py run.clusters.tsv
+
+`extras/validate_mirna.py` checks either kingdom against miRBase, whose GFF3 coordinates
+match the assemblies already in use (`dme` on Release_6, `ath` on TAIR10 — no liftover):
+
+    curl -sSLO https://www.mirbase.org/download/dme.gff3
+    python3 extras/validate_mirna.py run.clusters.tsv dme.gff3
+
+It reports recall and — the part the other validators cannot ask — what the covered
+precursors are called when `--mirna-loci` is *not* given, plus how much of each class sits
+on an annotated miRNA. Validating one class at a time hides a regression in another: the
+miRNA route broke and both the piRNA and the PHAS validator passed clean, because neither
+reference contains a miRNA.
 
 `extras/validate_phas.py` checks a plant run against the PHAS loci annotated by sRNAanno
 (`extras/phas21_ref_at_TAIR10.gff3`, 35 loci for Arabidopsis; the server also has PHAS24
