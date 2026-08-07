@@ -2,7 +2,7 @@
 
 **Autor:** Lucas
 **Data:** 2026-08-07
-**Estado:** parcial — 3 de 5 assinaturas fechadas com fonte primária. Ver "Pendente".
+**Estado:** completo — 5 de 5 assinaturas fechadas contra código de referência lido.
 
 ## Por que este documento existe
 
@@ -14,6 +14,26 @@ contra qual nulo, e o que se sabe da limitação** — com fonte.
 
 Regra adotada: nada entra aqui sem fonte primária ou código de referência lido. Onde não
 houver, fica marcado como pendente, e não como "provavelmente é assim".
+
+## Resumo — o que o campo faz, e o que é nosso
+
+| assinatura | o campo | nós |
+|---|---|---|
+| ping-pong | z contra **fundo empírico** dos outros offsets, estratificado por profundidade (PingPongPro) | z igual ✓ **+** binomial com nulo uniforme 1/20 (**nosso**) |
+| base 5' | **limiar de fração** 0,75 (ou 0,5 em ambos) — sem teste, sem nulo (proTRAC) | binomial contra **0,25** (**nosso**, atribuído falsamente ao proTRAC) |
+| fase | hipergeométrico sobre posições, **sem** correção de varredura (PhasiHunter, PHASIS) | igual **+ correção de Bonferroni** (mais correto que o campo) |
+| viés de fita | **limiar de fração** (proTRAC `-clstrand`, ShortStack `--strand_cutoff`) | limiar igual ✓ **+** binomial vs 0,5 e vs 0,10 (**nossos**) |
+| densidade | percentil **empírico** das janelas da própria biblioteca (proTRAC `-pdens`) | Poisson contra **uniforme** (**nosso**) |
+
+**Padrão que emerge:** o campo usa **limiares de fração e distribuições empíricas**; nós
+trocamos quase tudo por **testes contra nulos teóricos**. Em três das cinco assinaturas o
+nulo teórico é invenção nossa (0,25; 1/20; uniforme para densidade), e em duas delas a
+referência **explicitamente evita** o nulo teórico porque os dados não são uniformes.
+
+Isso não torna nossa escolha errada por si só — testar contra nulo é mais informativo que
+cortar por limiar, quando o nulo está certo. Mas explica por que fomos descobrindo
+miscalibração atrás de miscalibração: **estávamos assumindo uniformidade em dados que o
+campo já sabe não serem uniformes.**
 
 ---
 
@@ -51,10 +71,20 @@ calculamos para o z-score). Verificável contra os landmarks flamenco × 42AB.
 com 10A, consequência do corte (Brennecke et al., 2007). Em planta, a primeira base
 classifica em Argonauta: 5'U → AGO1, 5'A → AGO4 (via RdDM).
 
-**O que o campo usa.** O proTRAC (Rosenkranz & Zischler, 2012) testa a frequência da base
-5' contra composição aleatória. **Não verifiquei no código dele qual valor exato usa** — o
-código não está em `ref_tools/` e a afirmação "nulo 0,25, como o proTRAC" no nosso ROADMAP
-é herdada e **não conferida**.
+**O que o campo usa — VERIFICADO no código** (`proTRAC_2.3.1.pl:201-211`, obtido via
+bioconda; o domínio uni-mainz saiu do ar):
+
+```
+-1Tor10A [0..1]   Fração das contagens (normalizadas) com 1T (1U) OU 10A  (default 0.75)
+-1Tand10A [0..1]  Se ficar abaixo, aceita a janela se AMBOS 1U E 10A      (default 0.5)
+```
+
+**O proTRAC não testa a base 5' contra nulo nenhum.** Ele aplica **limiares de fração
+fixos**. Não há binomial, não há 0,25, não há p-valor para base.
+
+**Portanto a afirmação do nosso ROADMAP — "Nulo da base 5' = 0,25, como o proTRAC" — é
+FALSA.** O 0,25 é invenção nossa, atribuída incorretamente. Isso foi propagado desde a spec
+de 2026-08-02 e repetido por mim nesta sessão sem conferência.
 
 **Nosso estado.** `evidence.base_bias_score` usa `p0 = 0.25`, `n = distinct_seqs` do locus,
 `k = pct_1u × distinct_seqs`. O escopo está certo (só reads do locus — `features.py:48`).
@@ -65,7 +95,10 @@ esse** — as reads são o produto da seleção que se quer detectar, então usa
 delas é circular. Um nulo não-circular seria a composição **genômica local** do locus, que
 não é produto da seleção. Fica como hipótese a testar, não como conserto.
 
-**Ação:** ler o proTRAC (obter o código ou o texto do método) antes de mexer.
+**Ação:** decidir conscientemente qual nulo queremos, já que não há padrão a seguir. As
+opções reais são (a) limiar de fração, como o proTRAC; (b) binomial contra composição
+genômica **local** do locus (não circular, ao contrário da composição das reads); (c) manter
+0,25 assumindo composição uniforme, mas documentando que é escolha nossa e não herança.
 
 ---
 
@@ -97,17 +130,36 @@ ele é, não quem está certo.**
 
 ---
 
-## 4. Viés de fita — PENDENTE
+## 4. Viés de fita
 
-Nosso `s_fractop` (binomial bicaudal vs 0,5) e `s_fractop_bid` (fita minoritária vs nulo
-0,10) não foram conferidos contra fonte. O 0,10 é convenção nossa. Falta levantar o que se
-usa para separar cluster uni-fita (somático, tipo flamenco) de bifita (germinativo, tipo
-42AB).
+**O que o campo usa — VERIFICADO.** Também **limiar de fração**, não teste:
+- proTRAC (`:239`): `-clstrand [0..1]` — fração das contagens normalizadas na fita
+  principal.
+- ShortStack (README:123): `--strand_cutoff`, ponto flutuante entre 0,5 e 1; a
+  "strandedness" do locus é inferida por comparação de `FracTop` com esse corte.
 
-## 5. Densidade — PENDENTE
+Ou seja, **nenhuma das duas faz teste estatístico de fita** — ambas classificam por corte.
 
-`evidence.density_score` (Poisson contra distribuição uniforme no genoma) já está marcada
-diagnostic-only no README. Falta levantar se o campo usa algo equivalente e para quê.
+**Nosso estado.** Temos as duas coisas: o corte (`strand_cutoff: 0.8`, que gera
+`strand_call` e segue o padrão do campo) **e** testes próprios (`s_fractop` binomial
+bicaudal vs 0,5; `s_fractop_bid` fita minoritária vs 0,10). Os testes são nossos; o 0,10 é
+convenção sem respaldo levantado.
+
+**Consequência:** não há padrão do campo a violar aqui, mas também não há respaldo. Se o
+`s_fractop_bid` for mantido, o nulo de 0,10 precisa de justificativa própria — por exemplo,
+medido como a fração minoritária típica de loci reconhecidamente uni-fita (flamenco).
+
+## 5. Densidade
+
+**O que o campo usa — VERIFICADO** (`proTRAC_2.3.1.pl:171-190`): `-pdens 0.01` significa que
+a contagem normalizada da janela deve estar **no top 1% de todas as janelas deslizantes** —
+percentil **empírico** contra a distribuição observada naquela biblioteca, com opção `-est`
+de estimar por amostragem de janelas aleatórias de 1 kb.
+
+**Nosso estado.** `evidence.density_score` usa **Poisson contra distribuição uniforme no
+genoma**. É nulo teórico onde a referência usa distribuição empírica — e reads de small RNA
+são notoriamente não uniformes, que é justamente por que o proTRAC evita o nulo teórico.
+Já está marcada diagnostic-only no README, o que se mostra acertado.
 
 ---
 
@@ -127,8 +179,8 @@ assinaturas e é independente de consertar cada nulo.
 
 ## Ordem de trabalho decorrente
 
-1. Fechar as duas assinaturas pendentes (fita, densidade) e o método do proTRAC e do
-   sRNAminer.
+1. ~~Fechar as assinaturas pendentes~~ **FEITO.** Falta só o método do sRNAminer, que
+   importa apenas para a fase.
 2. Corrigir cada assinatura conforme o levantamento, uma a uma, validando contra as
    referências que já existem: `phas_experimental_at_TAIR10.bed` (8 TAS), `piC_ref_dm6.bed`
    (90 piC), miRBase (`dme`/`ath`), e o nulo por permutação.
@@ -139,6 +191,8 @@ assinaturas e é independente de consertar cada nulo.
 Brennecke, J., Aravin, A. A., Stark, A., Dus, M., Kellis, M., Sachidanandam, R., & Hannon, G. J. (2007). Discrete small RNA-generating loci as master regulators of transposon activity in *Drosophila*. *Cell*, 128(6), 1089–1103. https://doi.org/10.1016/j.cell.2007.01.043
 
 Chen, C., Li, J., Feng, J., Liu, B., Feng, L., Yu, X., Li, G., Zhai, J., Meyers, B. C., & Xia, R. (2021). sRNAanno — a database repository of uniformly annotated small RNAs in plants. *Horticulture Research*, 8, 45. https://doi.org/10.1038/s41438-021-00480-8
+
+Ma, X., Zhang, X., Zhao, K., Li, F., Li, K., Ning, L., He, J., Xin, Z., Yin, D., & Li, K. (2024). sRNAminer: A multifunctional toolkit for next-generation sequencing small RNA data mining in plants. *Science Bulletin*, 69(8), 1017–1021. https://doi.org/10.1016/j.scib.2023.12.049
 
 Rosenkranz, D., & Zischler, H. (2012). proTRAC — a software for probabilistic piRNA cluster detection, visualization and analysis. *BMC Bioinformatics*, 13, 5. https://doi.org/10.1186/1471-2105-13-5
 
