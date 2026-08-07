@@ -195,19 +195,31 @@ Tudo em **`master`** (a branch `evidence-scores` foi mesclada em `811390b` e apa
 2. **Clustering**: reformulado + 3 bugs corrigidos depois (offset do dúplex, loci
    sobrepostos, gate de tamanho). Ver a seção acima, com os números honestos.
 
-### Ordem da próxima sessão
+### O que está aberto (revisado 2026-08-07)
 
-1. ~~Remapear com `-k` maior~~ **FEITO (2026-08-06)** e ~~alocação única de multi-read~~
-   **DESCARTADA com evidência** — ver a seção "Multimapeamento" abaixo. O BAM de referência
-   agora é `~/dros_k20.sorted.bam` (`-k 20`).
+**A. Pronto para fazer**
 
-2. **Puxar os PHAS do sRNAanno** para sair das seis referências de TAS (das quais duas são
-   pouco expressas neste tecido). Só com dezenas de loci faz sentido mexer em `w_phase`.
-3. Rota bimodal do piRNA no `defining_evidence` (seção acima).
-3. Testar o `pad` em mais organismos: `pirnaclusterDB` mudou para **pirnaclusterdb.org**
-   (o domínio uni-mainz saiu do ar), 51 espécies, clusters em GTF preditos com proTRAC
-   2.4.4. Ressalva: são preditos, não validados — servem para testar generalização entre
-   clados, não para provar acerto.
+1. **Rota bimodal do piRNA no `defining_evidence`** — flamenco (uni-fita, somático, sem
+   ping-pong) e 42AB (bifita, germinativo, com ping-pong) são as duas formas legítimas de
+   ser piRNA, e hoje só a segunda tem evidência definidora. Slots OR já suportam.
+2. **Decidir as duas populações de tamanho.** 18% dos loci têm `size_purity` < 0,5. Hoje
+   são reportadas (`size_purity`, `dicer_call_2`) mas o locus recebe um rótulo só.
+3. **Generalização entre espécies.** sRNAanno serve `PHAS21/<Especie>.PHAS21.gff3` e
+   `PHAS24/` (Oryza: 804 loci) — testa fase em gramínea, mecanismo diferente. Para
+   artrópode, `pirnaclusterdb.org` tem 51 espécies (preditos por proTRAC, não validados:
+   servem para generalização entre clados, não para provar acerto).
+
+**B. Features maiores, cada uma com spec própria**
+
+4. **Módulo pós-miRDeep** (item 7 do Tier 3): curar `result_*.csv`, isomiRs, alimentar
+   `--mirna-loci`.
+5. **`MLDecider`** (item 9): RandomForest/XGBoost sobre o `.clusters.tsv`, SHAP. Precisa de
+   loci rotulados.
+
+**C. Encerrados nesta rodada** — alocação única de multi-read (descartada com evidência,
+seção "Multimapeamento"); PHAS do sRNAanno (feito, `extras/validate_phas.py`); DBSCAN
+(item 10) perdeu a motivação: existia para o caso de as ilhas fragmentarem clusters
+grandes, que era o problema resolvido em 2026-08-06.
 
 ### Pendências menores
 
