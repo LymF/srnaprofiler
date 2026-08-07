@@ -7,7 +7,7 @@ from clustering import call_islands, merge_compatible, carve_out
 from signals import offset_spectrum, pingpong_zscore, phase_test
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
                       strand_bidirectional_score,
-                      pingpong_score, density_score, score_from_p)
+                      pingpong_score_empirical, density_score, score_from_p)
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -155,7 +155,7 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
     # 10-nt 5'-5' overlap fraction: bounded [0,1] and comparable across loci (unlike
     # the raw z). Guarded by a minimum number of pairs so noise can't yield a spurious 1.0.
     r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
-    r.s_pingpong = pingpong_score(overlap_counts.get(10, 0), total_pairs)
+    r.s_pingpong = pingpong_score_empirical(overlap_counts)
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)

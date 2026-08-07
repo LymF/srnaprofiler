@@ -71,6 +71,29 @@ def strand_balance_score(frac_top, n, delta=0.15):
     return score_from_p(max(p_hi, p_lo))
 
 
+def pingpong_score_empirical(counts, target=10, lo=1, hi=20):
+    """Excess at the 10-nt offset over the rate of the locus's OWN other offsets.
+
+    counts: {offset: pairs}. The rate is estimated from offsets lo..hi excluding
+    `target`, so a locus whose pairs pile up everywhere is held to its own
+    standard. Assuming a uniform 1/20 instead treats coverage structure as if it
+    were ping-pong -- the reference implementation estimates the background for
+    the same reason.
+    """
+    if not counts:
+        return 0.0
+    bg = [counts.get(o, 0.0) for o in range(lo, hi + 1) if o != target]
+    peak = counts.get(target, 0.0)
+    if peak <= 0 or not bg:
+        return 0.0
+    rate = sum(bg) / len(bg)
+    if rate <= 0:
+        # No background at all: one offset carries everything. Real, but a rate
+        # cannot be estimated, so report nothing rather than infinity.
+        return 0.0
+    return score_from_p(stats.poisson.sf(int(round(peak)) - 1, rate))
+
+
 def pingpong_score(pairs_at_10, total_pairs, n_offsets=20):
     """Excess of 5'-5' pairs at the 10-nt offset over the other offsets."""
     k, n = int(round(pairs_at_10)), int(round(total_pairs))
