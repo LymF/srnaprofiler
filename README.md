@@ -171,12 +171,26 @@ Ping-pong and phasing are both **size-gated**: each only scores the class whose 
 window already fits. That is what lets one phasing implementation serve both kingdoms —
 a phased 21-nt locus reinforces a plant phasiRNA, a phased 27-nt one an arthropod piRNA.
 
+`phase_pvalue` is corrected for the window scan. The test slides a window of 11 phase
+cycles across the locus and reports the most convincing one, so its p-value pays a
+Bonferroni price for the windows actually tried — reporting the best of many as if it were
+a single test made the false-positive rate grow with locus length. On the Arabidopsis
+library the rate at `p <= 0.01` was 9.8% before the correction and 0.89% after, against
+the 1% a calibrated null gives, and annotated PHAS regions went from 2.0x to 6.7x enriched
+for significant phasing over the background.
+
 ### Validating the calls (Drosophila)
 
 `extras/validate_piclusters.py` cross-checks a run against 90 conserved ovary piRNA
 clusters (`extras/piC_ref_dm6.bed`, Release 6 coordinates — no liftover needed):
 
     python3 extras/validate_piclusters.py run.clusters.tsv
+
+`extras/validate_phas.py` checks a plant run against the PHAS loci annotated by sRNAanno
+(`extras/phas21_ref_at_TAIR10.gff3`, 35 loci for Arabidopsis; the server also has PHAS24
+sets for the grasses). It reports recall, how well our phasing test separates annotated
+PHAS regions from the background, and the agreement with the reference's own p-value,
+locus by locus. Six TAS genes were too narrow a base to calibrate phasing on.
 
 For a plant run, `extras/validate_plant_tas.py` does the equivalent against the
 canonical Arabidopsis TAS loci (21-nt phased tasiRNA sources), reading their
