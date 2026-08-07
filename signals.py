@@ -108,17 +108,24 @@ def phase_test(positions, region_start, phase_length, cycles=11):
     coords = [p for p, _ in ordered]
     lo, hi = coords[0], coords[-1]
     best = None
+    tried = 0
     for start in range(lo, hi + 1, phase_length):
         i = bisect.bisect_left(coords, start)
         j = bisect.bisect_left(coords, start + window_len)
         if i == j:
             continue
+        tried += 1
         res = _phase_window(ordered[i:j], region_start, phase_length, cycles)
         # Rank by evidence, never by p-value: the hypergeometric rewards
         # near-empty windows, so ranking by p picked the emptiest one.
         if best is None or (res.number, res.score) > (best.number, best.score):
             best = res
-    return best or PhaseResult(0.0, 0, 0.0, 1.0)
+    if best is None:
+        return PhaseResult(0.0, 0, 0.0, 1.0)
+    # The reported window was the best of `tried`, so its p must pay for the
+    # selection. Bonferroni is conservative here (the windows overlap and are
+    # correlated), which is the right direction for evidence.
+    return best._replace(pvalue=min(1.0, best.pvalue * tried))
 
 
 def _phase_window(positions, region_start, phase_length, cycles):
