@@ -144,7 +144,15 @@ janelas vizinhas se sobrepõem — direção certa para evidência). Efeito em A
 | p ≤ 0,01 | 9,8% | 0,89% | 1% |
 | p ≤ 0,01 dentro de PHAS × fora | 19,4% × 9,8% (**2,0×**) | 6,0% × 0,9% (**6,7×**) | — |
 
-Recall de PHAS inalterado (20/35) e TAS 6/6 mantidos: tirou falso positivo, não locus real.
+Recall de PHAS inalterado (20/35) e TAS 6/6 chamados: tirou falso positivo, não locus real.
+
+**MAS o custo em sensibilidade é grande, e foi medido só depois (2026-08-07).** "TAS 6/6"
+significa *chamados phasiRNA*, não *fase significativa*. Contra o conjunto experimental de 8
+TAS (`extras/phas_experimental_at_TAIR10.bed` — clonados, verificados por mutante, com
+gatilho conhecido), a detecção a p ≤ 0,01 é de **1 em 8** (só TAS3c, 2,3e-4); TAS4 não é
+sequer chamado. Números por locus citados antes nesta seção (TAS1A 5,7e-4, TAS1C 7,7e-4)
+vieram da corrida `at_wd`, **anterior** ao Bonferroni — registrei valores pré-correção numa
+seção que descreve a correção.
 
 **Como isso corrige uma conclusão anterior desta sessão:** o item "score do phasiRNA fraco"
 tinha sido encerrado como não-defeito, com base nos 6 TAS. Havia defeito — só que do lado
@@ -332,7 +340,20 @@ corrigido 0,368 implica p **cru** ≈ 0,013 — não passaria em 0,01 nem sem co
 teste de permutação mostra taxa de falso positivo **no** nominal (0,25–2,75%), não abaixo,
 o que aconteceria se estivéssemos sobre-corrigindo.
 
-**É a formulação.** O hipergeométrico conta *quantas posições* estão em registro e ignora
+**O campo faz igual a nós — e sem corrigir.** Lido o código: o PhasiHunter
+(`phaseFunction.py:472`) é hipergeométrico sobre **posições** (`total_n` = posições
+ocupadas, `total_k` = em registro); a abundância só entra depois como filtro
+`min_read_num`. O PHASIS guarda a mesma estrutura `n`/`k`. E **nenhum dos dois corrige a
+varredura de janelas**, então os p deles são inflados do mesmo modo que os nossos eram.
+Conclusão desconfortável mas honesta: **hoje somos mais corretos que o campo e menos
+sensíveis.** Afrouxar a correção seria voltar ao erro deles; o ganho legítimo tem de vir de
+estatística mais potente.
+
+*(O sRNAminer, que gerou a anotação do sRNAanno, reporta `Phas_Ratio` — abundância — e p de
+1e-9 a 1e-15. Não temos o código. Comparar nossa detecção com a anotação dele mede quão
+liberal ele é, não quem está certo: por isso o conjunto experimental acima.)*
+
+**A formulação ignora onde está o sinal.** O hipergeométrico conta *quantas posições* estão em registro e ignora
 **quanta abundância** cada uma tem — uma posição em registro com 500 reads pesa igual a uma
 com 2. O sRNAminer reporta 1e-9 a 1e-15 nos mesmos loci onde reportamos 1e-3 a 5e-2.
 
