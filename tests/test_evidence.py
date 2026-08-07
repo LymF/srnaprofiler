@@ -102,3 +102,20 @@ def test_density_handles_degenerate_input():
     from evidence import density_score
     assert density_score(100, 0, 10_000_000, 100_000_000) == 0.0
     assert density_score(100, 500, 0, 100_000_000) == 0.0
+
+
+def test_tiny_p_does_not_overflow():
+    """1/p overflows for a subnormal numpy p-value, which is what scipy returns."""
+    import warnings
+    import numpy as np
+    from evidence import score_from_p, _MAX_SCORE
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")          # any RuntimeWarning fails the test
+        assert score_from_p(np.float64(5e-324)) == _MAX_SCORE
+        assert score_from_p(np.float64(1e-300)) > 290
+
+
+def test_score_from_p_is_still_log10_of_the_reciprocal():
+    from evidence import score_from_p
+    assert score_from_p(0.01) == 2.0
+    assert score_from_p(0.001) == 3.0

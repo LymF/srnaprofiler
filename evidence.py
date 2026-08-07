@@ -15,7 +15,8 @@ def score_from_p(p):
         return 0.0
     if p <= 0.0:
         return _MAX_SCORE
-    return round(min(math.log10(1.0 / p), _MAX_SCORE), 3)
+    # -log10(p), not log10(1/p): the reciprocal overflows for subnormal p.
+    return round(min(-math.log10(p), _MAX_SCORE), 3)
 
 
 def base_bias_score(k, n, p0=BASE_P0):
