@@ -145,11 +145,27 @@ p ≤ 0,01: **nós 1/8, ele 2/8**. Ou seja, os p minúsculos da anotação vêm 
 deles**, não de estatística superior. Eu estava comparando nossos p na nossa biblioteca com
 os p deles nas bibliotecas deles — o que não mede nada sobre as estatísticas.
 
-**Conclusão:** nossa fase está **em pé de igualdade** com a referência, um pouco mais
-conservadora por causa da varredura + Bonferroni. Não há caso para redesenhar a estatística.
-O que se pode reavaliar é a *varredura*: sobre loci bem formados (500–600 bp ≈ 25–30 ciclos,
-tamanho comparável ao das regiões PHAS), calcular sobre o locus inteiro dispensa a correção
-e recupera sensibilidade — mas perde a proteção contra fase local num locus grande.
+**Conclusão — MEDIDA (2026-08-07), três variantes, nos dois reinos:**
+
+| variante | calibração no nulo (p ≤ 0,01; esperado 1%) | TAS detectados |
+|---|---|---|
+| **A — nossa** (varredura de janelas + Bonferroni) | 0,7–3,7% | **1/8** |
+| B — sRNAminer (locus inteiro, sem correção) | **9,3–13,0%** | 2/8 |
+| C — locus inteiro + correção de registro (×L) | 0–0,7% | 0/8 |
+
+Trade-off monotônico, sem almoço grátis. A variante B é ~10× anticonservadora e o valor é
+**plano no tamanho do locus** — logo a causa não é a varredura, é a **seleção do registro
+dominante entre L**, que o sRNAminer não corrige. A sensibilidade extra dele (2/8) é comprada
+com 10× mais falso positivo.
+
+**Decisão: manter a nossa.** Está no melhor ponto dos três.
+
+Detalhe que valida o desenho original da varredura: **TAS1c dá 2,0e-2 em A e 1,0 em C** — a
+varredura acha uma janela localmente fásica que o cálculo sobre o locus inteiro dilui. A
+proteção contra "fase local em locus grande" não é hipotética; ela opera num TAS real.
+
+Padrão idêntico em 21 nt (planta) e 26 nt (Drosophila), então a escolha serve os dois reinos
+com um só código — que é o requisito da tool.
 
 ---
 
