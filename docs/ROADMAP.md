@@ -593,8 +593,27 @@ como a referência, entrada FASTA, SAM descartado.
 **Falta, nesta ordem:**
 1. **Fiação em `run_mapping`**: inserir o filtro entre as reads limpas e o alinhamento ao
    genoma, com flag `--ncrna-db`, e logar quanta read saiu.
-2. **Construir o FASTA de ncRNA** dos dois organismos a partir do GFF que já temos
-   (features tRNA/rRNA/snoRNA/snRNA → sequências) e `bowtie-build` do índice.
+2. **Obter o FASTA de ncRNA.** Três origens, e o usuário escolhe conforme o organismo —
+   **a terceira é a que atende não-modelo, que é o alvo da tool**:
+
+   | origem | quando serve | custo |
+   |---|---|---|
+   | GFF do próprio genoma | só onde há anotação estrutural (nossos dois testes têm) | zero, extrai local |
+   | **Rfam, FASTA por família** | **qualquer organismo**, inclusive sem anotação | RF00005 (tRNA) 101 MB, RF00001 (5S) 15 MB, RF01960 (SSU euc.) 13 MB, RF00004 (U2) 5 MB |
+   | RNAcentral | agregador, por espécie ou completo | maior; avaliar se acrescenta sobre o Rfam |
+
+   **Por que o Rfam resolve o caso não-modelo:** as sequências são de **todas** as espécies, e
+   tRNA/rRNA são conservados o bastante para uma read de 20–30 nt casar entre espécies a uma
+   mismatch. Não depende de anotação do genoma alvo — que é exatamente o que falta lá.
+
+   *Nota sobre `cmscan` vs sequência:* para filtrar **read** precisamos de sequências, não de
+   modelos de covariância. O Rfam entrega as duas, e a via de sequência é ordens de magnitude
+   mais barata (um `bowtie` contra índice pronto, contra horas de `cmscan` sobre o genoma).
+   Isso reduz muito a motivação do item A2b abaixo.
+
+   Falta: um utilitário em `extras/` que baixe as famílias escolhidas e rode `bowtie-build`,
+   e a decisão de quais famílias entram por padrão (tRNA e rRNA são consenso; snoRNA e snRNA
+   são menos conservados entre clados e podem não transferir).
 3. **Medir**, que é o que decide: (a) quanta massa de reads sai; (b) o efeito nas classes —
    esperado que a contaminação de 16,1% do phasiRNA e 11,1% do siRNA em planta caia; (c) o
    critério que **não pode ceder**: piC 85/90, TAS 6/6, miRBase 134/134 e 244/244 intactos.
