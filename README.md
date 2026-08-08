@@ -207,9 +207,11 @@ Two things worth knowing before reading any score:
   carries T. Without the genome the null falls back to a uniform 0.25, which no genome has —
   measured, it is 0.272 in Drosophila and 0.332 in Arabidopsis — and a T-rich transposon then
   looks 1U-biased with no selection at all.
-- **`score` is not a reliability ranking.** It is `-log10(p)`, and a p-value mixes effect size
-  with sample size, so a large locus with a weak bias outscores a small one with a strong bias.
-  It says whether the defining evidence is present, not how strong the biology is.
+- **`score` ranks by evidence strength, in `[0,1]`.** It is the weakest of the class's
+  defining evidences, each read as a normalised Wilson lower bound: 0.61 means that evidence
+  is at least 61% of the way from its null to certainty. It grows with the strength of the
+  signal, not with the size of the locus. The `s_*` columns still hold `-log10(p)` and answer
+  the different question of whether the observation would be surprising under the null.
 
 ### Validating the calls (Drosophila)
 

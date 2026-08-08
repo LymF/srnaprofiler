@@ -137,10 +137,21 @@ estourar.
 
 ## Critério de aceite
 
-**Obrigatório — ordenação monotônica.** Contra os 90 piC de referência, a fração de loci de
-piRNA dentro de piC conhecido tem que **subir** a cada faixa de `score`, ou pelo menos não
-cair na faixa mais alta. É o teste que o score atual falha (50+ cai para 24,9%, abaixo do
-fundo de 28,3%). Se a nova versão também falhar, o desenho está errado e não entra.
+**Obrigatório — ordenação monotônica.** A assinatura de piRNA (`pct_1u`) tem que **subir**
+a cada faixa de `score`.
+
+**CRITÉRIO CORRIGIDO (2026-08-08).** A primeira versão deste critério media a fração de loci
+dentro dos 90 piC de referência, e estava **errada**. Ela pergunta *"os loci de score alto
+estão nos clusters conservados?"* quando a pergunta é *"os loci de score alto têm assinatura
+de piRNA?"*. Os piC de referência cobrem 5,66% do genoma e só os clusters conservados entre
+cepas — exigir concentração ali **penaliza a tool por encontrar piRNA legítimo em outro
+lugar**, que é justamente o trabalho dela.
+
+Medido: os **4.542** loci de score ≥ 0,6 **fora** dos piC são indistinguíveis dos 1.689 de
+dentro — 1U de 0,82 nos dois, tamanho 24–31 nt em ~85% nos dois, ping-pong 0,068 × 0,079. O
+controle de score < 0,2 fora tem 1U de 0,38 e ping-pong **zero**. Ou seja, o score separa
+piRNA de não-piRNA dentro e fora da referência; a fração dentro do piC caía nas faixas altas
+apenas por diluição, porque há milhares de loci genuínos espalhados pelo genoma.
 
 **Obrigatório — piso intacto.** piC 85/90, TAS 6/6, miRBase 134/134 e 244/244. Como o
 classificador não usa `s_*` nem `e_*` (usa `pct_1u` cru, `decider.py:63`), **nenhum locus

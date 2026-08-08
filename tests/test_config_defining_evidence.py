@@ -2,10 +2,10 @@
 defined by the same set -- that would make them indistinguishable."""
 import pytest
 
-from decider import load_config
+from decider import load_config, RuleScorer
 
 CONFIGS = ["rules.yaml", "rules.plant.yaml"]
-KNOWN = {"1u", "5a", "fractop", "fractop_bal", "fractop_bid", "pingpong", "phase"}
+KNOWN = set(RuleScorer.KNOWN_EVIDENCE)
 
 
 def _flat_names(defining_evidence):

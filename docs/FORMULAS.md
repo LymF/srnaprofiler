@@ -1,7 +1,7 @@
 # Fórmulas do `classify` — referência
 
 **Autor:** Lucas
-**Atualizado:** 2026-08-07
+**Atualizado:** 2026-08-08
 
 Toda quantidade que o `classify` reporta, com a fórmula, o nulo e onde ela é usada.
 Comparação com o que o campo faz: `docs/superpowers/specs/2026-08-07-signature-literature-review.md`.
@@ -116,6 +116,25 @@ A janela vencedora é escolhida por **evidência** (`number`, depois `score`), n
 p-valor — o hipergeométrico premia janela vazia. A correção é obrigatória: sem ela, no nulo
 por permutação, **76%** dos loci sem fase alguma passavam a p ≤ 0,01 num locus de 120 ciclos.
 
+**Forças de efeito (`e_*`)** — o que o `score` usa. Mesmos `k`, `n` e `p₀` das `s_*`
+correspondentes, lidos como tamanho de efeito em vez de significância:
+
+```
+e_X = max(0, (L95(p̂, n) − p₀) / (1 − p₀))
+```
+
+onde `L95` é o limite inferior de Wilson a 95%. Fica em `[0,1]`: **0,61 significa que o
+efeito está a 61% do caminho entre o nulo e o máximo, com 95% de confiança**. Não são
+colunas do TSV — vivem no `ClusterRecord` e alimentam o `score`.
+
+| força | p̂ | n | p₀ |
+|---|---|---|---|
+| `e_1u` | `pct_1u` | `distinct_seqs` | composição do DNA (T) |
+| `e_5a` | `pct_5a` | `distinct_seqs` | composição do DNA (A) |
+| `e_fractop_bid` | fita minoritária | `distinct_seqs` | 0,10 |
+| `e_pingpong` | `counts[10] / Σcounts` | `Σcounts` | taxa de fundo / `Σcounts` |
+| `e_phase` | `observados / sorteios` | `sorteios` | `sucessos / população` |
+
 ---
 
 ## 4. Classificação (`decider.RuleScorer`)
@@ -144,7 +163,8 @@ confidence = softmax(S)[cls]
 margin     = S(1º) − S(2º)
 review     = confidence < review_confidence  OU  margin < min_margin
              OU  reads < min_reads  OU  dicer_call == "N"
-score      = min( s_* das evidências em defining_evidence )     ← 0 se dicer_call == "N"
+score      = min( e_* das evidências em defining_evidence )     ← 0 se dicer_call == "N"
+e_X        = max(0, (L95(p̂, n) − p₀) / (1 − p₀))              ← L95 = limite inferior de Wilson
 ```
 Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas no topo são
 **E** (usa o mínimo). Ex.: `[[1u, pingpong]]` = "1U **ou** ping-pong".
@@ -153,11 +173,16 @@ Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas n
 
 ## 5. Limitações conhecidas de cada fórmula
 
-- **`score` não ordena confiabilidade.** É `−log10(p)`, e p mistura **tamanho de efeito** com
-  **tamanho amostral**. Medido no piRNA: correlação 0,598 com `distinct_seqs` contra 0,398
-  com o efeito (`pct_1u`). Consequência: loci com score 50+ estão no nível do fundo quanto a
-  cair dentro de piC conhecido (25,5% contra 28,3% de fundo). Para "maior = mais confiável"
-  seria preciso **tamanho de efeito com incerteza**, não significância.
+- **O `score` ordena confiabilidade desde 2026-08-08**, porque deixou de ser `−log10(p)`.
+  Medido: correlação com o efeito 0,323 → **0,883**, com `distinct_seqs` 0,629 → **0,137**, e
+  a evidência definidora sobe monotonicamente com a faixa de score nos dois reinos (1U
+  0,38→0,82 em Drosophila; 5'A 0,43→0,86 em Arabidopsis).
+  *Escalas diferem por classe e isso é honesto:* mediana 0,47 em Drosophila e **0,127** em
+  Arabidopsis, porque o `hcsiRNA` é definido só por `5a` (0,43 contra um nulo de 0,332 deixa
+  pouco espaço) enquanto o piRNA tem a rota `1u OU pingpong`. O score está dizendo que a
+  evidência de hc-siRNA é mais fraca — o que é verdade, e a escala de p-valor escondia.
+- **As `s_*` seguem sendo p-valores** e respondem outra pergunta ("isto surpreenderia sob o
+  nulo?"). Não são o que o `score` usa.
 - **`s_fractop_bal` está obsoleto.** Media simetria (50/50) quando a assinatura é
   bidirecionalidade, e não tinha poder: um locus perfeitamente equilibrado com n=50 tirava
   1,68, abaixo do 2 que deveria passar. Substituído por `s_fractop_bid` na
@@ -178,3 +203,11 @@ Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas n
 - **`s_density` foi removido** (2026-08-07): correlacionava 0,72 com `log(reads)` e era alto
   por construção, já que o locus só existe depois de passar no `mincov`, que é um corte de
   densidade. `evidence.density_score` continua no código, sem estar ligado.
+- **A escala mudou**: um `score` de 50 na escala antiga vira ~0,7 na escala de effect strength,
+  então corridas anteriores a 2026-08-08 não comparam com as novas.
+- **`e_phase` é otimista**: a janela é escolhida por maximizar evidência, e o Bonferroni corrige
+  significância, não tamanho de efeito.
+- **`e_pingpong` é otimista**: o `n` são pares, que escalam com o quadrado da cobertura e não
+  são ensaios independentes.
+- **`e_fractop_bid` herda o ruído do `s_fractop_bid`**: a fração minoritária separa uni-fita de
+  bifita por apenas 1,5–1,7× no nível do locus.
