@@ -596,11 +596,27 @@ de outra fonte não garante descrição nenhuma. Funcionaria nos nossos dois gen
 **Decisão: flag explícita** (`--organelle-contigs NC_000932.1,NC_037304.1`), sem adivinhação.
 O log diz quais contigs foram excluídos e quanta massa saiu.
 
-**FEITO (2026-08-08, `eb793b1`).** No `classify`, antes da extração; contig que não está no BAM
-**aborta** em vez de virar no-op silencioso (o erro que se quer evitar é um typo analisando a
+**FEITO E MEDIDO (2026-08-08, `eb793b1`).** No `classify`, antes da extração; contig que não
+está no BAM **aborta** em vez de virar no-op silencioso (o erro a evitar é um typo analisando a
 organela e reportando corrida limpa). O `lib_size` continua contando as reads excluídas, para
-o RPM seguir comparável com corridas que as mantiveram. Falta rodar com a flag ligada e
-registrar o efeito nas classes de planta.
+o RPM seguir comparável com corridas que as mantiveram.
+
+**Os dois filtros são complementares, e a medição mostra por quê** (Arabidopsis, denominador
+casado):
+
+| | loci de organela | massa deles |
+|---|---|---|
+| sem filtro nenhum | 336 (1,12%) | **7,91%** |
+| só `--ncrna-db` | 290 (1,00%) | **3,08%** |
+| `--ncrna-db` + `--organelle-contigs` | **0** | **0%** |
+
+O filtro de ncRNA sozinho tira **61% da massa** de organela — é rRNA de plastídio, que está no
+Rfam — mas deixa **290 loci** de pé, porque o resto é degradação de mRNA do plastídio, que
+banco de ncRNA nenhum contém. Só o corte por contig zera. Nada mais muda: a corrida perde
+exatamente esses 290 loci (29.044 → 28.754) e o piso fica intacto (TAS 6/6, miRBase 242/242).
+
+*Corolário para quem for ler massa por classe em planta:* rodar só o `--ncrna-db` ainda deixa
+3,1% da massa em organela, quase toda chamada `hcsiRNA`.
 
 **A2b-pre. O campo filtra RNA estrutural NA READ, não no locus (lido 2026-08-08)**
 
