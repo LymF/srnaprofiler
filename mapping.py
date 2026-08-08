@@ -5,6 +5,7 @@ Handles read alignment using Bowtie1
 """
 import os
 import sys
+import gzip
 import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
@@ -15,6 +16,18 @@ from utils import (
     validate_file_exists, get_read_stats, check_disk_space,
     DEFAULT_THREADS, DEFAULT_MISMATCHES, DEFAULT_MAX_ALIGNMENTS
 )
+
+
+def count_reads(path: str) -> int:
+    """Number of reads in a FASTA/FASTQ, gzipped or not."""
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt") as fh:
+        first = fh.readline()
+        if not first:
+            return 0
+        if first.startswith("@"):
+            return 1 + sum(1 for i, _ in enumerate(fh) if i % 4 == 3)
+        return 1 + sum(1 for line in fh if line.startswith(">"))
 
 
 def build_ncrna_filter_cmd(db_prefix: str, reads_in: str, reads_out: str,

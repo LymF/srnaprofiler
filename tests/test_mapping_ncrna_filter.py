@@ -41,3 +41,30 @@ def test_the_alignments_themselves_are_discarded():
     """We want the reads that did NOT match; the SAM of matches is waste."""
     cmd = build_ncrna_filter_cmd("db", "in.fa", "out.fa", threads=1)
     assert "/dev/null" in cmd
+
+
+def test_counts_reads_in_fasta(tmp_path):
+    """The filter has to report how much it removed: 3% and 90% are not the same."""
+    from mapping import count_reads
+
+    fa = tmp_path / "in.fa"
+    fa.write_text("".join(f">r{i}\nACGTACGTACGTACGTACGTAC\n" for i in range(10)))
+    assert count_reads(str(fa)) == 10
+
+
+def test_counts_reads_in_fastq(tmp_path):
+    from mapping import count_reads
+
+    fq = tmp_path / "in.fq"
+    fq.write_text("".join(f"@r{i}\nACGTACGTAC\n+\nIIIIIIIIII\n" for i in range(7)))
+    assert count_reads(str(fq)) == 7
+
+
+def test_counts_reads_in_gzipped_fastq(tmp_path):
+    import gzip
+    from mapping import count_reads
+
+    fq = tmp_path / "in.fq.gz"
+    with gzip.open(fq, "wt") as fh:
+        fh.write("".join(f"@r{i}\nACGTACGTAC\n+\nIIIIIIIIII\n" for i in range(5)))
+    assert count_reads(str(fq)) == 5

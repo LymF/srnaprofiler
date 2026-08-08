@@ -559,6 +559,39 @@ um `--exclude-loci` com tRNA/rRNA/snoRNA, análogo ao `--mirna-loci`. Pega o alv
 estrutural) sem tocar em locus de verdade conhecida. Menos elegante, mas mensurável e sem
 falso negativo.
 
+**A2c. Organela — filtro por CONTIG, com flag explícita (desenhado 2026-08-08)**
+
+Medido nas corridas finais: a organela dá **336 loci e 7,9% da massa de reads** em Arabidopsis
+(cloroplasto 6,46%, mitocôndria 1,45%), quase toda chamada `hcsiRNA`; em Drosophila são 27
+loci e 0,60%. Não é problema só de planta — mitocôndria existe em todo eucarioto — mas em
+planta é dez vezes maior, porque o plastídio tem genoma grande e muito transcrito e a planta
+não tem via de siRNA de organela: aquilo é degradação sendo rotulada.
+
+*Corrige uma leitura anterior:* o ROADMAP registrava que a organela em planta tem score
+mediano 0,95 contra 3,155 do nuclear, como evidência de que o score funcionava. Continua
+verdade, mas **score baixo não é ausência** — os 336 loci estão lá, e quem somar massa por
+classe em planta está incluindo 8% de organela.
+
+**Natureza diferente do filtro de ncRNA, e por isso é outro mecanismo:**
+
+| | ncRNA estrutural | organela |
+|---|---|---|
+| origem | Rfam, 829 famílias, 316 MB | o próprio genoma |
+| filtra por | **sequência** (`bowtie --un`) | **contig** |
+| onde | antes do mapeamento | pode ser no `classify`, o BAM já traz o nome |
+| impacto medido | 36,5% / 25,7% da massa | 7,9% (planta) / 0,6% (mosca) |
+
+**Descoberta automática foi considerada e DESCARTADA.** Os cabeçalhos do RefSeq trazem a
+palavra (`>NC_000932.1 ... chloroplast, complete genome`), e daria para detectar por
+palavra-chave. Mas: (a) o miRDeep2 recusa espaço no identificador, então qualquer preparo de
+genoma para ele trunca no primeiro espaço e a palavra some; (b) genoma de montagem própria ou
+de outra fonte não garante descrição nenhuma. Funcionaria nos nossos dois genomas e falharia
+**em silêncio** no primeiro caso fora disso — o mesmo padrão do `-g` que não fazia nada e do
+`dicer_call_2` que dispara sempre.
+
+**Decisão: flag explícita** (`--organelle-contigs NC_000932.1,NC_037304.1`), sem adivinhação.
+O log diz quais contigs foram excluídos e quanta massa saiu.
+
 **A2b-pre. O campo filtra RNA estrutural NA READ, não no locus (lido 2026-08-08)**
 
 O sRNAminer **exige** um banco de ncRNA (`--nd`, marcado `[Required]`: rRNA, tRNA, snoRNA,
