@@ -51,9 +51,16 @@ multimap_frac= nº de linhas com NH>1 / nº de linhas          (diagnóstico bru
 seq_lens[L]   = Σ 1/NH das reads de comprimento L, para dicermin ≤ L ≤ dicermax
 frac_in_window= (reads − short − long) / reads
 dicer_call    = argmax_L seq_lens[L]   se frac_in_window ≥ 0,8   senão "N"
-size_purity   = seq_lens[dicer_call] / Σ seq_lens
-dicer_call_2  = 2º maior L, reportado só se size_purity < 0,8
+L1            = argmax_L seq_lens[L]
+banda(L)      = seq_lens[L−1] + seq_lens[L] + seq_lens[L+1]
+size_purity   = banda(L1) / Σ seq_lens
+L2            = argmax seq_lens[L] entre os L com |L − L1| ≥ 2
+dicer_call_2  = L2, reportado só se banda(L2) / Σ seq_lens ≥ 0,2
 ```
+**Por que banda e não comprimento único:** o produto de Dicer se espalha ±1 nt, então a
+pureza sobre um comprimento só chamava de impuro um locus 21 nt limpo — mediana 0,196 em
+Drosophila — e o `dicer_call_2` disparava em 98,7% dos loci, metade deles nomeando um
+comprimento **vizinho**, que é a dispersão da mesma população e não uma segunda via.
 
 **Base 5'** (`pct_1u`, `pct_5a`) e `pct_10a`: fração ponderada de reads cuja base 1 (ou 10)
 é a indicada, lidas na orientação da read.

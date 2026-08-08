@@ -16,6 +16,35 @@ def revcomp(seq: str) -> str:
     return seq.translate(_COMP)[::-1]
 
 
+SECOND_POPULATION_MIN_FRAC = 0.2
+
+
+def summarize_sizes(r, seq_lens):
+    """Size purity and the second population, both read as +/-1 nt bands.
+
+    A Dicer product spreads over the neighbouring length, so purity on a single
+    length called a clean 21-nt locus impure (median 0.196 in Drosophila) and
+    the second call fired on 98.7% of the loci, half of them naming a
+    neighbour.
+    """
+    by_len = {int(k): v for k, v in seq_lens.items() if k.isdigit()}
+    total = sum(by_len.values())
+    if not total:
+        return
+
+    def band(center):
+        return sum(by_len.get(L, 0.0) for L in (center - 1, center, center + 1))
+
+    first = max(by_len, key=lambda L: by_len[L])
+    r.size_purity = round(band(first) / total, 4)
+
+    apart = {L: c for L, c in by_len.items() if abs(L - first) >= 2}
+    if apart:
+        second = max(apart, key=lambda L: apart[L])
+        if band(second) / total >= SECOND_POPULATION_MIN_FRAC:
+            r.dicer_call_2 = str(second)
+
+
 def build_record(region, region_alns, lib_size, config, locus_seq=None):
     """Builds a ClusterRecord from the reads ALREADY assigned to the region.
 
@@ -93,14 +122,7 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     in_window = r.reads - r.short - r.long
     r.frac_in_window = round(in_window / r.reads, 4)
     r.dicer_call = str(predom_len) if r.frac_in_window >= 0.8 else "N"
-    in_window_by_len = {int(k): v for k, v in seq_lens.items() if k.isdigit()}
-    win_total = sum(in_window_by_len.values())
-    if win_total:
-        ranked = sorted(in_window_by_len.items(), key=lambda kv: kv[1], reverse=True)
-        r.size_purity = round(ranked[0][1] / win_total, 4)
-        # A second size is only worth reporting when no single population dominates.
-        if len(ranked) > 1 and r.size_purity < 0.8:
-            r.dicer_call_2 = str(ranked[1][0])
+    summarize_sizes(r, seq_lens)
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)
