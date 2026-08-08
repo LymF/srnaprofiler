@@ -38,6 +38,12 @@ class ClusterRecord:
     s_fractop_bid: float = 0.0
     s_pingpong: float = 0.0
     s_phase: float = 0.0
+    # Effect strengths, in [0,1] -- what `score` is built from. Not TSV columns.
+    e_1u: float = 0.0
+    e_5a: float = 0.0
+    e_fractop_bid: float = 0.0
+    e_pingpong: float = 0.0
+    e_phase: float = 0.0
     score: float = 0.0
     gc: float = 0.0
     # biogenesis

@@ -6,7 +6,7 @@ from samio import read_alignments, read_region, reference_lengths, base_null
 from clustering import call_islands, merge_compatible, carve_out
 from signals import offset_spectrum, pingpong_zscore, phase_test
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
-                      strand_bidirectional_score,
+                      strand_bidirectional_score, effect_strength,
                       pingpong_score_empirical, score_from_p)
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
@@ -117,6 +117,11 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     r.s_fractop = strand_bias_score(r.frac_top, r.distinct_seqs)
     r.s_fractop_bal = strand_balance_score(r.frac_top, r.distinct_seqs)
     r.s_fractop_bid = strand_bidirectional_score(r.frac_top, r.distinct_seqs)
+    # Same k, n and null as the p-values above, read as an effect size instead.
+    n = r.distinct_seqs
+    r.e_1u = effect_strength(r.pct_1u * n, n, null_u)
+    r.e_5a = effect_strength(r.pct_5a * n, n, null_a)
+    r.e_fractop_bid = effect_strength(min(r.frac_top, 1 - r.frac_top) * n, n, 0.10)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
     r.multimap_frac = round(multimap / raw_n, 4)
@@ -159,6 +164,10 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     # the raw z). Guarded by a minimum number of pairs so noise can't yield a spurious 1.0.
     r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
     r.s_pingpong = pingpong_score_empirical(overlap_counts)
+    bg = [overlap_counts.get(o, 0.0) for o in range(1, 21) if o != 10]
+    if total_pairs > 0 and bg and sum(bg) > 0:
+        r.e_pingpong = effect_strength(overlap_counts.get(10, 0), total_pairs,
+                                       (sum(bg) / len(bg)) / total_pairs)
 
     if r.dicer_call != "N":
         pl = int(r.dicer_call)
@@ -168,6 +177,7 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
         r.phase_score, r.phase_number = res.score, res.number
         r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
         r.s_phase = score_from_p(r.phase_pvalue)
+        r.e_phase = effect_strength(res.observed, res.draws, res.null_frac)
     return r
 
 
