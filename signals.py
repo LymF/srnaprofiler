@@ -73,7 +73,11 @@ def phase_metrics(positions, region_start, phase_length):
     return round(score, 3), phase_number, round(phase_ratio, 3)
 
 
-PhaseResult = namedtuple("PhaseResult", ["score", "number", "ratio", "pvalue"])
+PhaseResult = namedtuple(
+    "PhaseResult",
+    ["score", "number", "ratio", "pvalue", "draws", "observed", "null_frac"],
+    defaults=(0, 0, 0.0),
+)
 
 
 def phase_test(positions, region_start, phase_length, cycles=11):
@@ -132,12 +136,15 @@ def _phase_window(positions, region_start, phase_length, cycles):
     """Phasing metrics and p-value for a single window."""
     score, number, ratio = phase_metrics(positions, region_start, phase_length)
     window_len = cycles * phase_length
+    population = max(2 * window_len - 1, 1)
+    successes = max(2 * cycles - 1, 1)
+    draws = len({p for p, _ in positions})
+    observed = min(number, successes)
     pvalue = hypergeometric_phase_pvalue(
-        population=max(2 * window_len - 1, 1),
-        phased_positions=max(2 * cycles - 1, 1),
-        draws=len({p for p, _ in positions}),
-        observed=min(number, max(2 * cycles - 1, 1)))
-    return PhaseResult(score, number, ratio, pvalue)
+        population=population, phased_positions=successes,
+        draws=draws, observed=observed)
+    return PhaseResult(score, number, ratio, pvalue,
+                       draws, observed, successes / population)
 
 
 def hypergeometric_phase_pvalue(population, phased_positions, draws, observed):

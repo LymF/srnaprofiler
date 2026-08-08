@@ -99,3 +99,19 @@ def test_corrected_p_is_capped_at_one():
 def _raw_pvalue(positions, start, phase, cycles):
     from signals import _phase_window
     return _phase_window(sorted(positions), start, phase, cycles).pvalue
+
+
+def test_result_carries_what_the_effect_size_needs():
+    """The hypergeometric inputs are discarded today, and e_phase needs them."""
+    pos = [(1000 + c * 21, 4.0) for c in range(8)]
+    r = phase_test(pos, region_start=1000, phase_length=21, cycles=11)
+    assert r.draws > 0
+    assert 0 < r.observed <= r.draws
+    assert 0.0 < r.null_frac < 1.0
+    # the null is the chance a random position lands in register, ~1/phase_length
+    assert abs(r.null_frac - 1 / 21) < 0.02
+
+
+def test_an_empty_locus_carries_neutral_components():
+    r = phase_test([], region_start=0, phase_length=21, cycles=11)
+    assert r.draws == 0 and r.observed == 0 and r.null_frac == 0.0
