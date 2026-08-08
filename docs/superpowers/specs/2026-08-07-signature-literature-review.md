@@ -184,9 +184,21 @@ Ou seja, **nenhuma das duas faz teste estatístico de fita** — ambas classific
 bicaudal vs 0,5; `s_fractop_bid` fita minoritária vs 0,10). Os testes são nossos; o 0,10 é
 convenção sem respaldo levantado.
 
-**Consequência:** não há padrão do campo a violar aqui, mas também não há respaldo. Se o
-`s_fractop_bid` for mantido, o nulo de 0,10 precisa de justificativa própria — por exemplo,
-medido como a fração minoritária típica de loci reconhecidamente uni-fita (flamenco).
+**Nulo de 0,10 — MEDIDO (2026-08-07), e valida-se a posteriori.** A fração minoritária
+mediana nos loci de **flamenco** (uni-fita por biologia conhecida, `reads > 20`, n=397) é
+**0,099**. O 0,10 escolhido sem base é exatamente o que um locus genuinamente uni-fita vaza
+para a outra fita. Agora tem justificativa empírica, e não herdada.
+
+**Limitação medida, e é séria:** a quantidade é **ruidosa no nível do locus**. Metade dos
+loci de flamenco passa de 0,10, e a separação uni-fita × bifita fica em **1,5–1,7× em
+qualquer limiar** (0,05 / 0,10 / 0,20 / 0,25). A região é uni-fita no agregado (frac_top
+0,88) mas os loci individuais variam muito — 42AB tem minoritária mediana 0,240 contra 0,099
+de flamenco, faixas que se sobrepõem largamente.
+
+*Ressalva de escopo:* o `s_fractop_bid` não existe para separar flamenco de 42AB (ambos são
+piRNA), e sim para atestar "as duas fitas produzem", que define o siRNA. Ainda assim o ruído
+medido significa que **essa evidência é fraca por natureza**, não por implementação — o que
+limita quanto o `score` do siRNA pode valer, independente de qualquer conserto.
 
 ## 5. Densidade
 
