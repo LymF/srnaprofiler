@@ -17,6 +17,19 @@ from utils import (
 )
 
 
+def build_ncrna_filter_cmd(db_prefix: str, reads_in: str, reads_out: str,
+                           threads: int = 1) -> list:
+    """bowtie command that keeps only the reads NOT matching the ncRNA database.
+
+    tRNA, rRNA, snoRNA and snRNA fragments are abundant in a small RNA library
+    and are not siRNA or piRNA. Removing them here, before clustering, means no
+    locus is built from them -- filtering afterwards leaves the locus in place
+    with its abundance already wrong.
+    """
+    return ["bowtie", "-v", "1", "-f", "-p", str(threads),
+            db_prefix, reads_in, "--un", reads_out, "-S", "/dev/null"]
+
+
 def bowtie_build(genome_fa: str, out_prefix: str, threads: int = 1) -> None:
     """Build Bowtie1 index from genome FASTA."""
     if not which("bowtie-build"):
