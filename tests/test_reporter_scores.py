@@ -3,7 +3,7 @@ from records import ClusterRecord
 from reporter import write_tsv, _COLS
 
 SCORE_COLS = ["s_1u", "s_5a", "s_fractop", "s_pingpong", "s_phase",
-              "s_density", "score"]
+              "score"]
 
 
 def test_score_columns_present_and_after_confidence():

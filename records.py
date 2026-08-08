@@ -38,7 +38,6 @@ class ClusterRecord:
     s_fractop_bid: float = 0.0
     s_pingpong: float = 0.0
     s_phase: float = 0.0
-    s_density: float = 0.0
     score: float = 0.0
     gc: float = 0.0
     # biogenesis

@@ -7,7 +7,7 @@ _COLS = [
     "pct_1u", "pct_10a", "pct_5a", "gc", "pingpong_z", "pingpong_pairs10", "pingpong_frac", "overlap_dup_frac",
     "phase_score", "phase_pvalue", "phase_number", "phase_ratio", "multimap_frac", "unique_frac",
     "cls", "confidence", "score",
-    "s_1u", "s_5a", "s_fractop", "s_fractop_bal", "s_fractop_bid", "s_pingpong", "s_phase", "s_density",
+    "s_1u", "s_5a", "s_fractop", "s_fractop_bal", "s_fractop_bid", "s_pingpong", "s_phase",
     "review", "evidence",
 ]
 

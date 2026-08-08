@@ -68,10 +68,8 @@ def test_phase_score_mirrors_the_pvalue():
     assert r.s_phase == score_from_p(r.phase_pvalue)
 
 
-def test_density_scored_only_when_genome_size_given():
-    reads = _reads("A" + "C" * 23, 200)
-    without = build_record(("c", 100, 300), reads, 1_000_000, CFG)
-    with_genome = build_record(("c", 100, 300), reads, 1_000_000, CFG,
-                               genome_bp=10_000_000)
-    assert without.s_density == 0.0
-    assert with_genome.s_density > 0
+def test_density_is_no_longer_reported():
+    """It restated the read count (r=0.72 with log reads) and was high by
+    construction, since a locus only exists after clearing a depth cut."""
+    r = build_record(("c", 100, 300), _reads("A" + "C" * 23, 200), 1_000_000, CFG)
+    assert not hasattr(r, "s_density")

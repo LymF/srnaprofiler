@@ -104,6 +104,11 @@ def pingpong_score(pairs_at_10, total_pairs, n_offsets=20):
 
 
 def density_score(reads, span_bp, lib_reads, genome_bp):
+    # NOT wired into the pipeline. It restated the read count (r = 0.72 with
+    # log reads) and was high by construction, since a locus only exists after
+    # clearing a depth cut -- the same criterion proTRAC uses to CALL loci and
+    # we use as --mincov. Kept because a local-background version, asking
+    # whether a locus stands out from its neighbourhood, would be real evidence.
     """Read pile-up over what a uniform distribution would put in this span."""
     if span_bp <= 0 or lib_reads <= 0 or genome_bp <= 0 or reads <= 0:
         return 0.0

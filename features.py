@@ -7,7 +7,7 @@ from clustering import call_islands, merge_compatible, carve_out
 from signals import offset_spectrum, pingpong_zscore, phase_test
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
                       strand_bidirectional_score,
-                      pingpong_score_empirical, density_score, score_from_p)
+                      pingpong_score_empirical, score_from_p)
 
 _COMP = str.maketrans("ACGTUacgtu", "TGCAAtgcaa")
 
@@ -16,7 +16,7 @@ def revcomp(seq: str) -> str:
     return seq.translate(_COMP)[::-1]
 
 
-def build_record(region, region_alns, lib_size, config, genome_bp=0):
+def build_record(region, region_alns, lib_size, config):
     """Builds a ClusterRecord from the reads ALREADY assigned to the region.
 
     `region_alns` must contain all reads that overlap the region by span
@@ -112,8 +112,6 @@ def build_record(region, region_alns, lib_size, config, genome_bp=0):
     r.s_fractop = strand_bias_score(r.frac_top, r.distinct_seqs)
     r.s_fractop_bal = strand_balance_score(r.frac_top, r.distinct_seqs)
     r.s_fractop_bid = strand_bidirectional_score(r.frac_top, r.distinct_seqs)
-    if genome_bp > 0:
-        r.s_density = density_score(r.reads, end - start, lib_size, genome_bp)
     r.gc = round(gc_bases / total_bases, 4) if total_bases else 0.0
     # multimap_frac is a RAW diagnostic: fraction of alignment lines with NH>1.
     r.multimap_frac = round(multimap / raw_n, 4)
@@ -265,7 +263,7 @@ def island_profiles(islands, alns, min_reads=0, size_windows=None,
 
 
 def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
-                       xm_as_nh=False, genome_bp=0, chrom_len=0, carve=()):
+                       xm_as_nh=False, chrom_len=0, carve=()):
     """Cluster and extract features for a single chromosome of an indexed BAM.
 
     Reads only this chromosome's alignments into memory (via fetch), builds its
@@ -288,7 +286,7 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     if not regions:
         return []
     buckets = _assign_reads(regions, alns)
-    return [build_record(regions[i], buckets[i], lib_size, config, genome_bp=genome_bp)
+    return [build_record(regions[i], buckets[i], lib_size, config)
             for i in range(len(regions))]
 
 
@@ -298,7 +296,7 @@ def _chrom_job(job):
 
 
 def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
-                     xm_as_nh=False, genome_bp=0, carve_by_chrom=None):
+                     xm_as_nh=False, carve_by_chrom=None):
     """Cluster + extract features across chromosomes, optionally in parallel.
 
     Each chromosome is processed independently by `process_chromosome`. With
@@ -308,7 +306,7 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
     """
     lengths = reference_lengths(bam_path)
     carve_by_chrom = carve_by_chrom or {}
-    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh, genome_bp,
+    jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh,
              lengths.get(c, 0), tuple(carve_by_chrom.get(c, ()))) for c in chroms]
     if threads > 1 and len(jobs) > 1:
         import multiprocessing as mp

@@ -11,7 +11,7 @@ CFG = {
     "decision": {"review_confidence": 0.4, "min_margin": 0.0, "min_reads": 10},
     "classes": {
         "hcsiRNA": {"size": {"lo": 23, "hi": 24}, "w_size": 1.0, "w_5a": 1.0,
-                    "defining_evidence": ["5a", "density"]},
+                    "defining_evidence": ["5a", "fractop"]},
         "phasiRNA": {"size": {"lo": 21, "hi": 22}, "w_size": 1.0, "w_phase": 3.0,
                      "defining_evidence": ["phase"]},
     },
@@ -27,22 +27,22 @@ def _rec(**kw):
 
 
 def test_score_is_the_minimum_of_defining_evidence():
-    r = _rec(dicer_call="24", s_5a=14.0, s_density=9.0)
+    r = _rec(dicer_call="24", s_5a=14.0, s_fractop=9.0)
     RuleScorer(CFG).decide(r)
     assert r.cls == "hcsiRNA"
     assert r.score == 9.0
 
 
 def test_one_missing_evidence_sinks_the_score():
-    # spectacular density cannot cover for absent base bias
-    r = _rec(dicer_call="24", s_5a=0.0, s_density=40.0)
+    # spectacular strand bias cannot cover for absent base bias
+    r = _rec(dicer_call="24", s_5a=0.0, s_fractop=40.0)
     RuleScorer(CFG).decide(r)
     assert r.cls == "hcsiRNA"
     assert r.score == 0.0
 
 
 def test_non_defining_evidence_is_ignored_by_the_score():
-    r = _rec(dicer_call="24", s_5a=14.0, s_density=9.0, s_pingpong=99.0)
+    r = _rec(dicer_call="24", s_5a=14.0, s_fractop=9.0, s_pingpong=99.0)
     RuleScorer(CFG).decide(r)
     assert r.score == 9.0
 
@@ -56,7 +56,7 @@ def test_class_without_defining_evidence_scores_zero():
 
 
 def test_score_belongs_to_the_winning_class():
-    r = _rec(dicer_call="21", s_phase=7.0, s_5a=30.0, s_density=30.0)
+    r = _rec(dicer_call="21", s_phase=7.0, s_5a=30.0, s_fractop=30.0)
     RuleScorer(CFG).decide(r)
     assert r.cls == "phasiRNA"
     assert r.score == 7.0
