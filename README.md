@@ -194,6 +194,23 @@ library the rate at `p <= 0.01` was 9.8% before the correction and 0.89% after, 
 the 1% a calibrated null gives, and annotated PHAS regions went from 2.0x to 6.7x enriched
 for significant phasing over the background.
 
+### Formulas
+
+Every quantity the pipeline reports, with its formula, its null and its known limitations,
+is in [`docs/FORMULAS.md`](docs/FORMULAS.md). How each one compares to what the reference
+tools do is in `docs/superpowers/specs/2026-08-07-signature-literature-review.md`.
+
+Two things worth knowing before reading any score:
+
+- **Pass `-g/--genome`.** The 5' base scores (`s_1u`, `s_5a`) are tested against the locus's
+  own DNA composition: a cut placed at random in a locus yields a 5'U as often as that locus
+  carries T. Without the genome the null falls back to a uniform 0.25, which no genome has —
+  measured, it is 0.272 in Drosophila and 0.332 in Arabidopsis — and a T-rich transposon then
+  looks 1U-biased with no selection at all.
+- **`score` is not a reliability ranking.** It is `-log10(p)`, and a p-value mixes effect size
+  with sample size, so a large locus with a weak bias outscores a small one with a strong bias.
+  It says whether the defining evidence is present, not how strong the biology is.
+
 ### Validating the calls (Drosophila)
 
 `extras/validate_piclusters.py` cross-checks a run against 90 conserved ovary piRNA

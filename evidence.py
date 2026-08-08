@@ -5,7 +5,9 @@ from scipy import stats
 
 # log10(1/p) of the smallest p we report; below this the test is saturated.
 _MAX_SCORE = 300.0
-# proTRAC tests the 5' base against random base composition.
+# Fallback null for the 5' base when no genome is given. NOT a standard: proTRAC
+# applies fraction thresholds (-1Tor10A 0.75) and runs no such test. With -g the
+# null is the locus's own DNA composition instead (samio.base_null).
 BASE_P0 = 0.25
 
 
