@@ -1,7 +1,7 @@
 # srnaprofiler — Roadmap / Próximos passos
 
 **Autor:** Lucas
-**Atualizado:** 2026-08-05
+**Atualizado:** 2026-08-08
 
 Documento vivo para alinhar sessões. Estado atual + backlog priorizado. Detalhes de COMO a
 pipeline funciona (todas as fórmulas) estão na memória `srnaprofiler-pipeline-reference`.
@@ -617,44 +617,59 @@ para organela (`:47`). O filtro acontece **antes** de qualquer clusterização.
 O `--nd` ser obrigatório lá diz algo sobre a expectativa do campo: rodar sem filtrar ncRNA
 não é tratado como opção.
 
-**Estado (2026-08-08): peça pura FEITA, resto pendente.**
+**FEITO E MEDIDO (2026-08-08).** `--ncrna-db` no `mapping` (`553cf28`, `bfa3a9e`), índice do
+Rfam por `extras/fetch_ncrna_db.sh` (`d717a2b`), e as duas corridas refeitas ponta a ponta.
 
-Pronto: `mapping.build_ncrna_filter_cmd(db_prefix, reads_in, reads_out, threads)` (`28d51af`),
-com testes fixando o essencial — só reads que **não** alinharam (`--un`), uma mismatch (`-v 1`)
-como a referência, entrada FASTA, SAM descartado.
+**O índice:** 829 famílias tipadas rRNA/tRNA/snRNA/snoRNA no `family.txt` do Rfam, 7,3 M
+sequências, 1,8 GB de FASTA, `bowtie-build` de ~1h45 em 8 threads — cabe em 8 GB de RAM sem
+deduplicar (37,7% são cópias exatas; a dedup encolheria, não foi necessária).
 
-**Falta, nesta ordem:**
-1. **Fiação em `run_mapping`**: inserir o filtro entre as reads limpas e o alinhamento ao
-   genoma, com flag `--ncrna-db`, e logar quanta read saiu.
-2. **Obter o FASTA de ncRNA.** Três origens, e o usuário escolhe conforme o organismo —
-   **a terceira é a que atende não-modelo, que é o alvo da tool**:
+*A seleção estava errada e foi consertada antes de medir:* casar as palavras na **linha
+inteira** do `family.txt` trazia 63 famílias que só as mencionam na descrição (RNase P,
+tmRNA, telomerase, íntrons de grupo I/II, `Histone3`, `Tymo_tRNA-like`) e derrubava 5
+snoRNAs de Giardia chamados `GlsR*_miR*`, pelo filtro anti-miRNA. Selecionar pelo campo de
+tipo dá exatamente os 829 já registrados aqui.
 
-   | origem | quando serve | custo |
-   |---|---|---|
-   | GFF do próprio genoma | só onde há anotação estrutural (nossos dois testes têm) | zero, extrai local |
-   | **Rfam, FASTA por família** | **qualquer organismo**, inclusive sem anotação | RF00005 (tRNA) 101 MB, RF00001 (5S) 15 MB, RF01960 (SSU euc.) 13 MB, RF00004 (U2) 5 MB |
-   | RNAcentral | agregador, por espécie ou completo | maior; avaliar se acrescenta sobre o Rfam |
+**Reads removidas:** 41,5% em Arabidopsis (9,99 M de 24,1 M) e 31,0% em Drosophila
+(3,41 M de 11,0 M). Da massa **mapeada**, saíram 39,2% e 32,9%.
 
-   **Por que o Rfam resolve o caso não-modelo:** as sequências são de **todas** as espécies, e
-   tRNA/rRNA são conservados o bastante para uma read de 20–30 nt casar entre espécies a uma
-   mismatch. Não depende de anotação do genoma alvo — que é exatamente o que falta lá.
+**Denominador casado é obrigatório para ler isto.** `--mincov` é RPM, e a biblioteca encolhe
+~35%, então a corrida nativa cai de profundidade 20→12 (planta) e 10→6 (mosca): 42.106 loci
+contra 29.872, span mediano 594→556, reads/locus 121→76. **Nada disso é o filtro** — com
+`--norm` na biblioteca original os loci voltam ao que eram (span 594→589, reads/locus
+121→120, cobertura 6,13×→6,06×, 2,8% menos loci). O que muda é o que sobrou dentro deles.
 
-   *Nota sobre `cmscan` vs sequência:* para filtrar **read** precisamos de sequências, não de
-   modelos de covariância. O Rfam entrega as duas, e a via de sequência é ordens de magnitude
-   mais barata (um `bowtie` contra índice pronto, contra horas de `cmscan` sobre o genoma).
-   Isso reduz muito a motivação do item A2b abaixo.
+| (denominador casado) | Arabidopsis antes → depois | Drosophila antes → depois |
+|---|---|---|
+| massa de reads em loci estruturais | 36,49% → **3,48%** | 25,73% → **4,39%** |
+| loci sobre RNA estrutural | 676 (2,26%) → **332 (1,14%)** | 413 (1,56%) → **321 (1,25%)** |
+| contaminação do phasiRNA | 16,11% → **8,96%** | — |
+| contaminação do siRNA | 11,13% → **6,67%** | 3,88% → **3,27%** |
+| review | 4,5% → **3,4%** | 13,9% → **12,9%** |
+| **piso** | TAS 6/6, miRBase 244/244 → **6/6, 242/242** | piC 85/90, miRBase 134/134 → **85/90, 134/134** |
 
-   Falta: um utilitário em `extras/` que baixe as famílias escolhidas e rode `bowtie-build`,
-   e a decisão de quais famílias entram por padrão (tRNA e rRNA são consenso; snoRNA e snRNA
-   são menos conservados entre clados e podem não transferir).
-3. **Medir**, que é o que decide: (a) quanta massa de reads sai; (b) o efeito nas classes —
-   esperado que a contaminação de 16,1% do phasiRNA e 11,1% do siRNA em planta caia; (c) o
-   critério que **não pode ceder**: piC 85/90, TAS 6/6, miRBase 134/134 e 244/244 intactos.
+**A massa cai 10× mas a contaminação de classe só cai pela metade**, e isso é informativo: o
+que sobrepõe RNA estrutural depois do filtro são 332 loci de massa pequena. Ou são reads que
+não casam no Rfam a uma mismatch (variante específica da espécie), ou são a vizinhança
+transcrita desses genes — que o próprio validador avisa não ser erro. O alvo declarado era a
+massa, e essa foi.
 
-Só depois disso decidir se a predição de estrutura (A2b) chega a ser necessária — ela só faz
-sentido para organismo sem GFF anotado.
+**CUIDADO com o enriquecimento, de novo.** Nos piC de Drosophila ele sobe piRNA 5,1×→7,2× e
+siRNA 4,2×→6,3×. **Os dois subindo juntos é assinatura de denominador**, exatamente como
+quando tiramos o miRNA das classes: saiu um quarto da massa das classes, não melhorou a
+discriminação. Ganho limpo é a linha do piso e a da massa estrutural.
 
-**A2b. Predição de RNA estrutural quando não há GFF anotado — A TESTAR**
+**Nota operacional:** o índice em `/mnt/d` (drvfs) faz `bowtie-inspect` travar; copiado para
+disco local o filtro leva ~6 min em 24 M de reads com 8 threads, das quais ~30 s são carga do
+índice.
+
+Com isso a predição de estrutura (A2b) perde a motivação: ela existia para o organismo sem
+GFF, e o Rfam já atende esse caso sem depender de anotação nenhuma.
+
+**A2b. Predição de RNA estrutural quando não há GFF anotado — ENCERRADO sem fazer (2026-08-08)**
+
+O filtro de read pelo Rfam atende o organismo sem anotação, que era a única motivação. O que
+segue fica como registro do que se avaliaria, caso a via de sequência falhe em algum clado.
 
 O `--exclude-loci` precisa de um BED. Nos dois organismos de teste ele sai de graça do GFF do
 RefSeq (Arabidopsis: 684 tRNA, 287 snoRNA, 82 snRNA, 14 rRNA), mas o alvo da tool inclui
