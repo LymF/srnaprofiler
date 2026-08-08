@@ -202,6 +202,38 @@ Já está marcada diagnostic-only no README, o que se mostra acertado.
 
 ---
 
+## 6. Chamada de loci e definição de classe — como cada ferramenta faz
+
+Descompilado do `sRNAminer.jar` (CFR) e lido do código das demais:
+
+| | chamada de locus | classe |
+|---|---|---|
+| **sRNAminer** | encadeia reads por vão (`minRegionGap` 300 bp) e **filtra por abundância TOTAL da região** (`minReadDepth` 1000) | fração de abundância na janela de tamanho (`--targetLens 23,24`, `minRepeatRatio`), ≥10 reads |
+| **ShortStack** | profundidade ≥ `mincov` (1 RPM) → `pad` 200 bilateral → merge | `DicerCall` por tamanho dominante, `strand_cutoff` 0,8 |
+| **proTRAC** | janela deslizante, densidade no **top 1%** (`-pdens`) | limiares de fração: `-pisize` 0,75, `-1Tor10A` 0,75, `-clstrand` |
+| **nós** | profundidade ≥ `mincov` (RPM) → `pad` 500 bilateral → **merge condicionado por perfil** | pesos + janelas de tamanho no `rules.yaml` |
+
+**O que aprendemos de útil aqui:**
+
+1. **Massa total mínima por locus** — o sRNAminer exige `totalAbundance ≥ 1000` **na etapa de
+   clustering**. Nós só temos profundidade por posição (`mincov`) e depois `min_reads: 10`
+   como *flag de review*, o que não impede o locus de existir. Um mínimo de massa na
+   clusterização garante poder estatístico por locus **por construção** — que foi o problema
+   que perseguimos a sessão inteira.
+   *Adaptação:* o valor tem de ser em RPM (o 1000 deles é absoluto e não transfere) e
+   **por reino**: hc-siRNA de planta é difuso por natureza (espalhado por TEs, já medimos que
+   subir corte perde sinal), enquanto cluster de piRNA em Drosophila é denso. Provavelmente
+   um valor no `rules.yaml`, como já fizemos com `clustering.pad`.
+
+2. **Definir classe por fração de tamanho é o padrão universal** — as três referências fazem
+   isso, e nós também (`frac_in_window`, janelas no config). Aqui estamos alinhados.
+
+3. **O merge condicionado por perfil é nosso** — ninguém mais faz. E foi medido: fundiu 26%
+   dos loci sem perder cluster conhecido. Vale manter e documentar como diferencial, não como
+   desvio.
+
+---
+
 ## Problema transversal, independente de assinatura
 
 Todas as pontuações são `log10(1/p)`, e **p confunde tamanho de efeito com tamanho
