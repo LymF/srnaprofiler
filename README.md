@@ -194,6 +194,32 @@ library the rate at `p <= 0.01` was 9.8% before the correction and 0.89% after, 
 the 1% a calibrated null gives, and annotated PHAS regions went from 2.0x to 6.7x enriched
 for significant phasing over the background.
 
+### Filtering structural RNA (`--ncrna-db`)
+
+tRNA, rRNA, snoRNA and snRNA fragments are abundant in any small RNA library and none of them
+is siRNA or piRNA. Measured here, loci overlapping them are 2.26% of the Arabidopsis run and
+1.56% of the Drosophila one, but carry **36.5%** and **25.7%** of the read mass, and in plants
+they account for 16.1% of the phasiRNA class.
+
+Rejecting those loci after the fact was measured and failed — the best threshold still lost a
+quarter of the experimentally characterised TAS loci. Removing the *reads* instead means the
+locus never exists and its abundance is never wrong, which is what the reference tools do.
+
+Build the index once:
+
+    bash extras/fetch_ncrna_db.sh ~/ncrna_db
+
+The script pulls seven Rfam families — tRNA, the four rRNA classes, U1 and U2 — and runs
+`bowtie-build`. **Sequences come from Rfam rather than from your genome's annotation on
+purpose:** a non-model organism has no structural RNA annotated to extract, while tRNA and
+rRNA are conserved enough for a 20-30 nt read to match across species at one mismatch. There
+is no single FASTA of all of Rfam; it ships 4227 per-family files, and the rest are
+riboswitches, viral RNA and clade-specific snoRNA that would only add weight.
+
+Caveat worth knowing: the two snRNA families are less conserved across clades than tRNA and
+rRNA, so in a distant organism they will catch less. That is a silent false negative, not an
+error you will see in the log.
+
 ### Formulas
 
 Every quantity the pipeline reports, with its formula, its null and its known limitations,
