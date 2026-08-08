@@ -494,6 +494,44 @@ para negar rótulo (ver A1), porque 4 dos 13 loci em TAS têm score 0 — seriam
 loci reais. Precisa de spec própria: um teste de fase que incorpore abundância mantendo a
 calibração que o nulo por permutação garante hoje.
 
+**A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
+
+`overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
+em regra nenhuma. Medido nas corridas finais:
+
+| | Drosophila | Arabidopsis |
+|---|---|---|
+| `overlap_dup_frac` | piRNA 0,0175 × siRNA 0,0168 — **não discrimina** | hcsiRNA 0,0286 × phasiRNA 0,0176 |
+| `size_purity` | miRNA **0,598** × piRNA 0,190 | hcsiRNA 0,647 × phasiRNA 0,429 |
+| `unique_frac` | miRNA **1,000** × piRNA **0,000** | hcsiRNA 0,845 × phasiRNA **0,093** |
+| `dicer_call_2` | presente em **100%** | presente em **100%** |
+
+**Destino de cada uma:**
+
+1. **`dicer_call_2` está quebrada como projetada.** Só deveria aparecer com `size_purity <
+   0,8`, mas a pureza mediana é 0,19–0,65, então dispara em **todo** locus e não carrega
+   informação como flag. Consertar o limiar ou assumi-la como "qual é o segundo tamanho",
+   sem pretensão de sinalizar nada.
+2. **`overlap_dup_frac` não separa o que se esperava.** A ideia era distinguir siRNA (dúplex
+   de Dicer) de piRNA (ping-pong) em artrópode; dá 0,0175 × 0,0168. Coerente com o já medido:
+   não há pico de dúplex em Drosophila. Documentar como medida que não discrimina aqui.
+3. **`size_purity` e `unique_frac` discriminam forte, mas NÃO devem virar peso de classe.**
+   Elas são **consequência** da classe, não evidência dela: piRNA vive em transpóson, logo
+   `unique_frac` ≈ 0. Usar como peso ensinaria "repetitivo ⇒ piRNA", que é propriedade de
+   **onde** o piRNA mora, não prova de que o locus **é** piRNA — a mesma armadilha da
+   alocação guiada que foi descartada, e que penalizaria locus real por estar exatamente onde
+   deveria estar.
+4. **Onde elas servem é na REJEIÇÃO, não na decisão.** Um locus com `size_purity` 0,19 tem
+   duas populações misturadas: o rótulo único já está errado, seja qual for a classe. Isso é
+   evidência direta e não-circular para a categoria "não classificado" (A1) — não diz *qual*
+   classe, diz que *nenhuma* descrição única serve. `unique_frac` fica como diagnóstico
+   declarado: útil para o leitor saber que a evidência é emprestada de repetição.
+
+**Desenho decorrente para A1:** rejeitar quando `score` baixo **OU** `size_purity` baixa. O
+primeiro termo agora é utilizável, porque o `score` mede força de efeito (ver A-score); o
+segundo cobre o caso em que a evidência é forte mas o locus é heterogêneo demais para um
+rótulo só. Falta medir o limiar de `size_purity` contra os loci experimentais antes de fixar.
+
 **A1. RNA estrutural contamina as classes, e falta a categoria "não classificado" (2026-08-07)**
 
 Primeiro teste de **especificidade** do projeto — todos os outros validadores medem recall.
