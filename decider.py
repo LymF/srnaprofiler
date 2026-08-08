@@ -28,8 +28,8 @@ def _mid(frac_top, sigma=0.15):
 
 
 class RuleScorer:
-    KNOWN_EVIDENCE = ("1u", "5a", "fractop", "fractop_bal", "fractop_bid",
-                      "pingpong", "phase")
+    # Only names with an e_* attribute on ClusterRecord; others silently score 0.0.
+    KNOWN_EVIDENCE = ("1u", "5a", "fractop_bid", "pingpong", "phase")
 
     def __init__(self, config):
         self.cfg = config

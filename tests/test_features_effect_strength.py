@@ -78,7 +78,7 @@ def test_a_strong_10nt_overlap_gets_a_high_pingpong_strength():
              + _at(84, "-", 3)      # overlap 5, background
              + _at(94, "-", 3))     # overlap 15, background
     r = build_record(("c", 0, 400), reads, 1_000_000, CFG)
-    assert r.e_pingpong > 0
+    assert r.e_pingpong > 0.3
 
 
 def test_a_clean_phase_register_gets_a_high_phase_strength():
@@ -87,4 +87,11 @@ def test_a_clean_phase_register_gets_a_high_phase_strength():
              for i, seq in enumerate(_distinct_seqs(11, 21))]
     r = build_record(("c", 0, 400), reads, 1_000_000, CFG)
     assert r.dicer_call == "21"
-    assert r.e_phase > 0
+    assert r.e_phase > 0.3
+
+
+def test_a_pure_10nt_overlap_with_no_background_gets_a_positive_strength():
+    """Only offset 10 is populated -- the exact case the zero-background guard broke."""
+    reads = _at(100, "+", 10) + _at(89, "-", 10)   # overlap 10 only, no other offsets
+    r = build_record(("c", 0, 400), reads, 1_000_000, CFG)
+    assert r.e_pingpong > 0

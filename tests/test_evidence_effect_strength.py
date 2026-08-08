@@ -48,6 +48,13 @@ def test_the_null_rescales_the_range():
     assert effect_strength(600, 1000, 0.10) > effect_strength(600, 1000, 0.50)
 
 
+def test_zero_null_gives_the_plain_wilson_bound():
+    """p0=0.0 is valid: a zero background can be a real signal, not a broken Poisson rate."""
+    strength = effect_strength(90, 100, 0.0)
+    assert 0.82 < strength < 0.83
+    assert strength < 0.90
+
+
 def test_guards():
     assert effect_strength(10, 0, 0.25) == 0.0
     assert effect_strength(-1, 100, 0.25) == 0.0

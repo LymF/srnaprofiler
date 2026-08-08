@@ -165,7 +165,9 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     r.pingpong_frac = round(overlap_counts.get(10, 0) / total_pairs, 4) if total_pairs >= 10 else 0.0
     r.s_pingpong = pingpong_score_empirical(overlap_counts)
     bg = [overlap_counts.get(o, 0.0) for o in range(1, 21) if o != 10]
-    if total_pairs > 0 and bg and sum(bg) > 0:
+    # A zero background is a real signal here (all pairs at offset 10), unlike
+    # in the Poisson rate used by pingpong_score_empirical.
+    if total_pairs > 0:
         r.e_pingpong = effect_strength(overlap_counts.get(10, 0), total_pairs,
                                        (sum(bg) / len(bg)) / total_pairs)
 

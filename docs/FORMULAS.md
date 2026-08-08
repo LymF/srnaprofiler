@@ -203,3 +203,11 @@ Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas n
 - **`s_density` foi removido** (2026-08-07): correlacionava 0,72 com `log(reads)` e era alto
   por construção, já que o locus só existe depois de passar no `mincov`, que é um corte de
   densidade. `evidence.density_score` continua no código, sem estar ligado.
+- **A escala mudou**: um `score` de 50 na escala antiga vira ~0,7 na escala de effect strength,
+  então corridas anteriores a 2026-08-08 não comparam com as novas.
+- **`e_phase` é otimista**: a janela é escolhida por maximizar evidência, e o Bonferroni corrige
+  significância, não tamanho de efeito.
+- **`e_pingpong` é otimista**: o `n` são pares, que escalam com o quadrado da cobertura e não
+  são ensaios independentes.
+- **`e_fractop_bid` herda o ruído do `s_fractop_bid`**: a fração minoritária separa uni-fita de
+  bifita por apenas 1,5–1,7× no nível do locus.
