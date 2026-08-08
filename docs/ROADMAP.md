@@ -310,6 +310,21 @@ Onde importa: nos **682 loci que divergem >10, o empírico é maior em 100%**, e
 evidência ali porque o `n` incluía o próprio pico. Ou seja, a mudança é neutra na massa e
 melhora na cauda que interessa.
 
+**Por que NÃO seguimos o campo até o fim (medido).** O PingPongPro usa z-score (média **e
+desvio**) e estratifica por profundidade. Testando essa forma exata sobre o nosso
+`pingpong_z` já calculado, ela **discrimina pior** nos landmarks: flamenco 4,53 × 42AB 13,80
+(**3,0×**) contra 8,18 × 79,29 do Poisson (**9,7×**).
+
+O motivo é de contexto, não de qualidade: o z e a estratificação existem porque **ele compara
+sítios entre loci no genoma inteiro**, onde a profundidade varia e precisa ser controlada.
+**Nós comparamos dentro do próprio locus**, onde ela já é constante por construção. Importar
+o método deles traz robustez desnecessária e custa poder.
+
+**Ressalva conhecida:** o Poisson pressupõe variância = média. Medido no fundo de offsets:
+mediana **1,3** (aceitável), mas **22,5% dos loci acima de 5** e 2,9% acima de 50 — nesses
+ele é anticonservador. A síntese correta seria **binomial negativa**, que absorve
+superdispersão sem perder poder. Refinamento, não conserto.
+
 **A0-srna. Ideias do sRNAminer que valem implementar (lidas do jar descompilado)**
 
 Ver `docs/superpowers/specs/2026-08-07-signature-literature-review.md` seção 6 para a
