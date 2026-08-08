@@ -214,6 +214,14 @@ The script selects every Rfam family typed rRNA, tRNA, snRNA or snoRNA — 829 f
 selects by type from Rfam's metadata rather than from a fixed list, so families added in later
 releases are picked up.
 
+Then filter while mapping:
+
+    srnaprofiler mapping -p sample -o out --reads clean.fastq.gz \
+        --index-prefix genome --ncrna-db ~/ncrna_db/ncrna
+
+The log reports how many reads left, which is the number to check: 3% and 90% removed are
+not the same run. Single-end only — `--un` splits pairs into separate files.
+
 **Sequences come from Rfam rather than from your genome's annotation on purpose:** a non-model
 organism has no structural RNA annotated to extract, while tRNA and rRNA are conserved enough
 for a 20-30 nt read to match across species at one mismatch.
@@ -237,6 +245,25 @@ Two caveats worth knowing:
   the script is written to fail loudly if it does — it checks that each family arrives with
   at least 100 sequences, so a truncated download aborts instead of quietly building a thinner
   index.
+
+### Leaving out the organelle (`--organelle-contigs`)
+
+Chloroplast and mitochondrion give 336 loci and **7.9%** of the read mass in the Arabidopsis
+run (27 loci and 0.6% in Drosophila), almost all called `hcsiRNA`. Plants have no organellar
+siRNA pathway, so that is degradation being labelled. Those loci score low, but low score is
+not absence: they are in the table, and in any abundance summed per class.
+
+    srnaprofiler classify --sam sample.bam -g genome.fa -o out -p sample \
+        --organelle-contigs NC_000932.1,NC_037304.1
+
+Contigs are named, never guessed from the FASTA description. RefSeq headers do carry the word
+(`>NC_000932.1 ... chloroplast, complete genome`), but miRDeep2 refuses spaces in the
+identifier, so a genome prepared for it has already lost it, and an assembly from elsewhere
+may carry no description at all — the guess would work here and fail silently on the next
+genome. A name that is not in the BAM aborts the run instead of being ignored.
+
+The library size still counts the excluded reads, so RPM stays comparable with runs that
+kept them.
 
 ### Formulas
 
