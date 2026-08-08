@@ -216,9 +216,16 @@ rRNA are conserved enough for a 20-30 nt read to match across species at one mis
 is no single FASTA of all of Rfam; it ships 4227 per-family files, and the rest are
 riboswitches, viral RNA and clade-specific snoRNA that would only add weight.
 
-Caveat worth knowing: the two snRNA families are less conserved across clades than tRNA and
-rRNA, so in a distant organism they will catch less. That is a silent false negative, not an
-error you will see in the log.
+Two caveats worth knowing:
+
+- The two snRNA families are less conserved across clades than tRNA and rRNA, so in a distant
+  organism they will catch less. That is a silent false negative, not an error you will see in
+  the log.
+- The script does not pin an Rfam release: accessions are permanent (RF00005 is tRNA in every
+  release) and the path follows `CURRENT`. What can still break is EBI moving the path, and
+  the script is written to fail loudly if it does — it checks that each family arrives with
+  at least 100 sequences, so a truncated download aborts instead of quietly building a thinner
+  index.
 
 ### Formulas
 

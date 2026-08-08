@@ -12,6 +12,10 @@
 # one mismatch. There is no single FASTA of all of Rfam -- it ships 4227
 # per-family files -- and we do not want all of them anyway.
 #
+# Rfam accessions are permanent -- RF00005 is tRNA in every release -- and the
+# path uses CURRENT, so no version is pinned here. What can still break is the
+# EBI path itself; the script fails loudly rather than building a partial index.
+#
 # Usage:  bash extras/fetch_ncrna_db.sh <outdir>
 # Then:   srnaprofiler mapping ... --ncrna-db <outdir>/ncrna
 
@@ -39,9 +43,23 @@ command -v bowtie-build >/dev/null || { echo "bowtie-build not in PATH" >&2; exi
 mkdir -p "$OUT"
 : > "$OUT/ncrna.fa"
 
+# Every family must arrive with sequences in it. A truncated download would
+# otherwise build a thinner index in silence, which is the same silent false
+# negative this filter exists to avoid.
 for rf in "${FAMILIES[@]}"; do
   echo "fetching $rf" >&2
-  curl -sSL --fail -m 600 "$BASE/$rf.fa.gz" | gunzip -c >> "$OUT/ncrna.fa"
+  curl -sSL --fail -m 600 "$BASE/$rf.fa.gz" | gunzip -c > "$OUT/.$rf.fa"
+  n=$(grep -c '^>' "$OUT/.$rf.fa" || true)
+  if [ "$n" -lt 100 ]; then
+    echo "ERROR: $rf returned $n sequences, expected hundreds or more." >&2
+    echo "  Either the download was truncated, or Rfam moved the path." >&2
+    echo "  Check $BASE/$rf.fa.gz by hand before trusting this index." >&2
+    rm -f "$OUT/.$rf.fa"
+    exit 1
+  fi
+  echo "  $rf: $n sequences" >&2
+  cat "$OUT/.$rf.fa" >> "$OUT/ncrna.fa"
+  rm -f "$OUT/.$rf.fa"
 done
 
 echo "building bowtie index" >&2
