@@ -15,13 +15,16 @@ command -v bowtie-build >/dev/null || { echo "bowtie-build not in PATH" >&2; exi
 
 mkdir -p "$OUT"
 
-# Select by type from Rfam's metadata, so a family added later is picked up.
+# Select on Rfam's own type field, so a family added later is picked up. Matching
+# the whole line instead would take in whatever merely mentions the words in its
+# description -- RNase P, tmRNA, telomerase, group I/II introns, viral tRNA-like
+# 3' UTR elements (63 families) -- and would drop the five Giardia snoRNAs whose
+# names contain "miR".
 echo "selecting families" >&2
 curl -sSL --fail -m 300 "$BASE/database_files/family.txt.gz" | gunzip -c \
-  | awk -F'\t' '
-      { low = tolower($0) }
-      low ~ /mirna/ { next }
-      low ~ /rrna|trna|snrna|snorna/ && $1 ~ /^RF[0-9]+$/ { print $1 }
+  | LC_ALL=C awk -F'\t' '
+      { type = "" ; for (i = 1; i <= NF; i++) if ($i ~ /^Gene;/) { type = $i; break } }
+      type ~ /rRNA|tRNA|snRNA|snoRNA/ && $1 ~ /^RF[0-9]+$/ { print $1 }
     ' | sort -u > "$OUT/families.txt"
 
 n_fam=$(wc -l < "$OUT/families.txt")
