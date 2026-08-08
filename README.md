@@ -222,6 +222,16 @@ Then filter while mapping:
 The log reports how many reads left, which is the number to check: 3% and 90% removed are
 not the same run. Single-end only — `--un` splits pairs into separate files.
 
+Measured on the two test libraries: **41.5%** of the Arabidopsis reads and **31.0%** of the
+Drosophila ones are structural RNA. The read mass sitting on annotated structural loci drops
+from 36.5% to 3.5% and from 25.7% to 4.4%, phasiRNA contamination from 16.1% to 9.0%, with
+the reference loci untouched (TAS 6/6, piC 85/90, miRBase 242/242 and 134/134).
+
+**Compare runs at the same denominator.** `--mincov` is RPM, so a library that lost a third
+of its reads gets a lower absolute depth threshold and reports more, smaller, shallower loci.
+That is the threshold, not the filter: with `--norm` set to the unfiltered library size the
+loci come back to what they were (median span 594 vs 589 bp).
+
 **Sequences come from Rfam rather than from your genome's annotation on purpose:** a non-model
 organism has no structural RNA annotated to extract, while tRNA and rRNA are conserved enough
 for a 20-30 nt read to match across species at one mismatch.
