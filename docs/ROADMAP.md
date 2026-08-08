@@ -559,6 +559,36 @@ um `--exclude-loci` com tRNA/rRNA/snoRNA, análogo ao `--mirna-loci`. Pega o alv
 estrutural) sem tocar em locus de verdade conhecida. Menos elegante, mas mensurável e sem
 falso negativo.
 
+**A2b-pre. O campo filtra RNA estrutural NA READ, não no locus (lido 2026-08-08)**
+
+O sRNAminer **exige** um banco de ncRNA (`--nd`, marcado `[Required]`: rRNA, tRNA, snoRNA,
+snRNA) e o usa em `Data_Preprocessing/Quality_control.py:19`:
+
+```
+bowtie -v 1 -f -p N <ncRNA_db> <reads> --un <saida>
+```
+
+Ou seja: alinha as reads contra o banco e **segue só com as que NÃO alinharam**. Mesma coisa
+para organela (`:47`). O filtro acontece **antes** de qualquer clusterização.
+
+**Isto é melhor que o `--exclude-loci` proposto acima**, por três motivos:
+1. **Remove a causa, não o efeito** — não existe locus contaminado para depois rejeitar. E
+   como medimos que RNA estrutural carrega **36,5% da massa de reads** em Arabidopsis e 25,7%
+   em Drosophila, isso conserta junto toda estatística de abundância por classe.
+2. **Não precisa de anotação do genoma**, só de um FASTA de sequências de ncRNA — que existe
+   para muito mais espécie do que GFF com tRNA/rRNA anotado. Resolve o caso não-modelo que
+   motivou este item, sem depender de predizer estrutura.
+3. **Não tem falso negativo em locus real**, que foi o custo que reprovou a rejeição por score
+   (perdia 26,7% dos TAS experimentais).
+
+O `--nd` ser obrigatório lá diz algo sobre a expectativa do campo: rodar sem filtrar ncRNA
+não é tratado como opção.
+
+**A fazer:** avaliar um `--ncrna-db` no `qc`/`mapping`, com `bowtie --un`, medindo (a) quanto
+da massa de reads sai, (b) o efeito nas classes, (c) se algum locus de verdade conhecida
+(TAS, piC, miRBase) é perdido. Fontes de FASTA: Rfam por espécie, ou o próprio GFF quando
+houver. Só então decidir se a predição de estrutura (abaixo) chega a ser necessária.
+
 **A2b. Predição de RNA estrutural quando não há GFF anotado — A TESTAR**
 
 O `--exclude-loci` precisa de um BED. Nos dois organismos de teste ele sai de graça do GFF do
