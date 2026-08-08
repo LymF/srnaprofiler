@@ -527,10 +527,33 @@ em regra nenhuma. Medido nas corridas finais:
    classe, diz que *nenhuma* descrição única serve. `unique_frac` fica como diagnóstico
    declarado: útil para o leitor saber que a evidência é emprestada de repetição.
 
-**Desenho decorrente para A1:** rejeitar quando `score` baixo **OU** `size_purity` baixa. O
-primeiro termo agora é utilizável, porque o `score` mede força de efeito (ver A-score); o
-segundo cobre o caso em que a evidência é forte mas o locus é heterogêneo demais para um
-rótulo só. Falta medir o limiar de `size_purity` contra os loci experimentais antes de fixar.
+**Desenho para A1 — TESTADO E REPROVADO (2026-08-08).** A proposta era rejeitar por `score`
+baixo ou `size_purity` baixa. Medido em Arabidopsis, contra os 8 TAS experimentais (que a
+rejeição deve **poupar**) e o RNA estrutural (que deve **pegar**):
+
+| critério | perde dos TAS | pega do estrutural |
+|---|---|---|
+| `size_purity < 0,2` | 6,7% | 33,3% |
+| `size_purity < 0,3` | 26,7% | 55,5% |
+| `score < 0,05` | **80,0%** | 86,2% |
+| `score < 0,2` | **93,3%** | 94,5% |
+| `score < 0,2` **E** `pureza < 0,4` | 26,7% | 67,8% |
+
+**Nenhum ponto é aceitável.** O melhor da combinação perde um quarto dos loci de verdade
+conhecida. As distribuições se sobrepõem porque em planta o score mediano é 0,127 e os TAS,
+sendo `phasiRNA` definido por `phase` — a evidência mais fraca da tool (1/8 a p ≤ 0,01) —
+caem na mesma faixa do RNA estrutural.
+
+**Conclusão:** consertar o `score` era necessário mas **não suficiente**. A rejeição por score
+só fica viável quando a evidência de fase for forte o bastante para separar phasiRNA real de
+ruído — e o levantamento já mostrou que nossa fase está em pé de igualdade com o campo, então
+esse ganho não sai de ajuste, teria de vir de dado (biblioteca mais profunda, tecido onde os
+PHAS são expressos) ou de uma evidência definidora adicional para a classe.
+
+*Caminho alternativo que não depende disso:* rejeitar por **anotação** em vez de por score —
+um `--exclude-loci` com tRNA/rRNA/snoRNA do GFF, análogo ao `--mirna-loci`. Pega o alvo real
+(RNA estrutural) sem tocar em locus de verdade conhecida. Menos elegante, mas mensurável e
+sem falso negativo.
 
 **A1. RNA estrutural contamina as classes, e falta a categoria "não classificado" (2026-08-07)**
 
