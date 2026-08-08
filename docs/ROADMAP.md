@@ -584,10 +584,23 @@ para organela (`:47`). O filtro acontece **antes** de qualquer clusterização.
 O `--nd` ser obrigatório lá diz algo sobre a expectativa do campo: rodar sem filtrar ncRNA
 não é tratado como opção.
 
-**A fazer:** avaliar um `--ncrna-db` no `qc`/`mapping`, com `bowtie --un`, medindo (a) quanto
-da massa de reads sai, (b) o efeito nas classes, (c) se algum locus de verdade conhecida
-(TAS, piC, miRBase) é perdido. Fontes de FASTA: Rfam por espécie, ou o próprio GFF quando
-houver. Só então decidir se a predição de estrutura (abaixo) chega a ser necessária.
+**Estado (2026-08-08): peça pura FEITA, resto pendente.**
+
+Pronto: `mapping.build_ncrna_filter_cmd(db_prefix, reads_in, reads_out, threads)` (`28d51af`),
+com testes fixando o essencial — só reads que **não** alinharam (`--un`), uma mismatch (`-v 1`)
+como a referência, entrada FASTA, SAM descartado.
+
+**Falta, nesta ordem:**
+1. **Fiação em `run_mapping`**: inserir o filtro entre as reads limpas e o alinhamento ao
+   genoma, com flag `--ncrna-db`, e logar quanta read saiu.
+2. **Construir o FASTA de ncRNA** dos dois organismos a partir do GFF que já temos
+   (features tRNA/rRNA/snoRNA/snRNA → sequências) e `bowtie-build` do índice.
+3. **Medir**, que é o que decide: (a) quanta massa de reads sai; (b) o efeito nas classes —
+   esperado que a contaminação de 16,1% do phasiRNA e 11,1% do siRNA em planta caia; (c) o
+   critério que **não pode ceder**: piC 85/90, TAS 6/6, miRBase 134/134 e 244/244 intactos.
+
+Só depois disso decidir se a predição de estrutura (A2b) chega a ser necessária — ela só faz
+sentido para organismo sem GFF anotado.
 
 **A2b. Predição de RNA estrutural quando não há GFF anotado — A TESTAR**
 
