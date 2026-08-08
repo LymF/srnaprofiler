@@ -48,3 +48,42 @@ def test_lowercase_counts_and_N_is_excluded():
 
 def test_empty_sequence_falls_back_to_uniform():
     assert base_null("", "T", frac_top=1.0) == 0.25
+
+
+def test_the_genome_actually_reaches_the_score(tmp_path):
+    """Wiring test: -g must change s_1u end to end.
+
+    It did not, once: the call in run_classify was left without genome_path and
+    a whole validation run came back byte-identical before anyone noticed.
+    """
+    import types
+    import pysam
+    from classify import run_classify
+
+    fa = tmp_path / "g.fa"
+    # a T-rich locus: under a 0.25 null it looks 1U-biased with no selection
+    fa.write_text(">c\n" + ("TTTTTTTTAC" * 60) + "\n")
+    pysam.faidx(str(fa))
+
+    sam = tmp_path / "in.sam"
+    with open(sam, "w") as fh:
+        fh.write("@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:c\tLN:600\n@PG\tID:x\tPN:other\n")
+        for i in range(120):
+            p = 10 + (i % 60) * 3
+            fh.write(f"r{i}\t0\tc\t{p}\t255\t24M\t*\t0\t0\t{'T' + 'ACGT' * 5 + 'ACG'}\t"
+                     f"{'I' * 24}\tXM:i:1\n")
+
+    def run(genome):
+        args = types.SimpleNamespace(
+            sam=str(sam), genome=genome, prefix="g" if genome else "n",
+            outdir=str(tmp_path), mincov=0.0, pad=50, mirna_loci=None,
+            config="rules.yaml", norm=1_000_000, threads=1)
+        run_classify(args)
+        import csv
+        rows = list(csv.DictReader(
+            open(tmp_path / f"{'g' if genome else 'n'}.clusters.tsv"), delimiter="\t"))
+        return max(float(r["s_1u"]) for r in rows)
+
+    without = run(None)
+    with_genome = run(str(fa))
+    assert with_genome < without, (with_genome, without)

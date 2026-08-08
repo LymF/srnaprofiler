@@ -148,7 +148,8 @@ def run_classify(args):
         threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
     records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
-                               min_depth, pad, threads, xm_as_nh, mirna_intervals)
+                               min_depth, pad, threads, xm_as_nh, mirna_intervals,
+                               genome_path=args.genome)
     log(f"{len(records)} clusters", "INFO")
 
     if mirna_intervals:
