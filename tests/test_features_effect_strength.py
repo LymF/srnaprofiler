@@ -4,6 +4,7 @@ They are not TSV columns: the decider reads them to build `score`.
 """
 from itertools import product
 
+from evidence import effect_strength
 from features import build_record
 from samio import Aln
 
@@ -83,11 +84,15 @@ def test_a_strong_10nt_overlap_gets_a_high_pingpong_strength():
 
 def test_a_clean_phase_register_gets_a_high_phase_strength():
     # 11 reads of 21 nt, one per cycle, in perfect register -> dicer_call "21".
+    from signals import PHASE_WINDOW_CYCLES
+
     reads = [Aln("c", i * 21, "+", seq, 1)
              for i, seq in enumerate(_distinct_seqs(11, 21))]
     r = build_record(("c", 0, 400), reads, 1_000_000, CFG)
     assert r.dicer_call == "21"
-    assert r.e_phase > 0.3
+    # A full window in register is as much phase evidence as there is.
+    assert r.e_phase == effect_strength(PHASE_WINDOW_CYCLES,
+                                        PHASE_WINDOW_CYCLES, 1 / 21)
 
 
 def test_a_pure_10nt_overlap_with_no_background_gets_a_positive_strength():
