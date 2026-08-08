@@ -41,7 +41,7 @@ def build_ncrna_filter_cmd(db_prefix: str, reads_in: str, reads_out: str,
     """
     fmt_flag = "-f" if fmt == "fasta" else "-q"
     return ["bowtie", "-v", "1", fmt_flag, "-p", str(threads),
-            db_prefix, reads_in, "--un", reads_out, "-S", "/dev/null"]
+            "-x", db_prefix, reads_in, "--un", reads_out, "-S", "/dev/null"]
 
 
 def filter_ncrna_reads(db_prefix: str, reads_in: str, reads_out, threads: int = 1,

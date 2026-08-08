@@ -146,3 +146,9 @@ def test_filter_keeps_the_input_format(tmp_path, monkeypatch):
 
     mapping.filter_ncrna_reads("db", reads_in, tmp_path / "clean.fq", fmt="fastq")
     assert "-q" in seen["cmd"]
+
+
+def test_the_index_is_passed_with_x():
+    """bowtie 1.3 deprecates the positional index."""
+    cmd = build_ncrna_filter_cmd("db", "in.fa", "out.fa", threads=1)
+    assert cmd[cmd.index("-x") + 1] == "db"
