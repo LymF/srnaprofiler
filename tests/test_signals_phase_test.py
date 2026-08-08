@@ -115,3 +115,14 @@ def test_result_carries_what_the_effect_size_needs():
 def test_an_empty_locus_carries_neutral_components():
     r = phase_test([], region_start=0, phase_length=21, cycles=11)
     assert r.draws == 0 and r.observed == 0 and r.null_frac == 0.0
+
+
+def test_the_window_size_is_a_named_constant():
+    """e_phase divides by it, so it cannot be a literal in two files."""
+    import inspect
+
+    from signals import PHASE_WINDOW_CYCLES, phase_test
+
+    assert PHASE_WINDOW_CYCLES == 11
+    default = inspect.signature(phase_test).parameters["cycles"].default
+    assert default == PHASE_WINDOW_CYCLES

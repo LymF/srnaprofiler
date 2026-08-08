@@ -49,6 +49,11 @@ def pingpong_zscore(counts, target=10, lo=1, hi=20, min_bg=3, cap=100.0):
     return round(z, 3), peak
 
 
+# Windows of this many phase cycles. e_phase divides by it: "of the cycles the
+# test can see, how many are in register".
+PHASE_WINDOW_CYCLES = 11
+
+
 def phase_metrics(positions, region_start, phase_length):
     """PhasiHunter-style phase score: ratio * number * log(abun) at the dominant register.
 
@@ -80,7 +85,7 @@ PhaseResult = namedtuple(
 )
 
 
-def phase_test(positions, region_start, phase_length, cycles=11):
+def phase_test(positions, region_start, phase_length, cycles=PHASE_WINDOW_CYCLES):
     """Phasing over the best window of `cycles` phase cycles.
 
     positions: [(pos5, abundance)], 5' ends already pooled across strands.
