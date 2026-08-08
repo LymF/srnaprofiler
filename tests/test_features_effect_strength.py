@@ -57,3 +57,34 @@ def test_an_empty_locus_has_zero_strengths():
     r = build_record(("c", 0, 400), [], 1_000_000, CFG)
     for attr in ("e_1u", "e_5a", "e_fractop_bid", "e_pingpong", "e_phase"):
         assert getattr(r, attr) == 0.0
+
+
+def _distinct_seqs(n, length=21):
+    """n distinct sequences of `length` nt, built from the 4-nt tail pool."""
+    return [(_TAILS[i % len(_TAILS)] * ((length // 4) + 1))[:length] for i in range(n)]
+
+
+def _at(position, strand, n, length=21):
+    """n reads of `length` nt at a fixed genomic position, distinct sequences."""
+    return [Aln("c", position, strand, seq, 1) for seq in _distinct_seqs(n, length)]
+
+
+def test_a_strong_10nt_overlap_gets_a_high_pingpong_strength():
+    # minus 5' end = pos + length - 1, so overlap d needs minus.pos = plus.pos + d - length.
+    # 10 plus reads at 100 pair with 10 minus reads at 89 (5'-5' overlap = 10),
+    # plus a few off-peak pairs so the background is not all zero.
+    reads = (_at(100, "+", 10)
+             + _at(89, "-", 10)     # overlap 10, the peak
+             + _at(84, "-", 3)      # overlap 5, background
+             + _at(94, "-", 3))     # overlap 15, background
+    r = build_record(("c", 0, 400), reads, 1_000_000, CFG)
+    assert r.e_pingpong > 0
+
+
+def test_a_clean_phase_register_gets_a_high_phase_strength():
+    # 11 reads of 21 nt, one per cycle, in perfect register -> dicer_call "21".
+    reads = [Aln("c", i * 21, "+", seq, 1)
+             for i, seq in enumerate(_distinct_seqs(11, 21))]
+    r = build_record(("c", 0, 400), reads, 1_000_000, CFG)
+    assert r.dicer_call == "21"
+    assert r.e_phase > 0

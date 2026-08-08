@@ -28,10 +28,20 @@ def _mid(frac_top, sigma=0.15):
 
 
 class RuleScorer:
+    KNOWN_EVIDENCE = ("1u", "5a", "fractop", "fractop_bal", "fractop_bid",
+                      "pingpong", "phase")
+
     def __init__(self, config):
         self.cfg = config
         # Configurable shape parameters (defaults = previous behavior).
         self.shape = (config.get("decision", {}) or {}).get("shape", {}) or {}
+        for name, spec in (config.get("classes") or {}).items():
+            for entry in spec.get("defining_evidence", []):
+                for ev in (entry if isinstance(entry, list) else [entry]):
+                    if ev not in self.KNOWN_EVIDENCE:
+                        raise KeyError(
+                            f"{name}: unknown evidence {ev!r} in "
+                            f"defining_evidence; known: {', '.join(self.KNOWN_EVIDENCE)}")
 
     def _size(self, record):
         return int(record.dicer_call) if record.dicer_call != "N" else None
@@ -89,13 +99,17 @@ class RuleScorer:
 
         A nested list is an OR slot: score it as the max over its members
         (e.g. piRNA is size + (5'U OR ping-pong)). A plain string is AND, as before.
+
+        Reads the `e_*` effect strengths (in [0,1]), not the `s_*` p-value
+        scores. A record without the strength attribute (e.g. the raw-feature
+        stand-ins built by extras/simulate_rules.py) defaults to 0.0.
         """
         scores = []
         for name in spec.get("defining_evidence", []):
             if isinstance(name, list):
-                scores.append(max(getattr(record, f"s_{n}", 0.0) for n in name))
+                scores.append(max(getattr(record, f"e_{n}", 0.0) for n in name))
             else:
-                scores.append(getattr(record, f"s_{name}", 0.0))
+                scores.append(getattr(record, f"e_{name}", 0.0))
         return scores
 
     def decide(self, record):
