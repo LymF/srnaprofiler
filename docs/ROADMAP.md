@@ -409,8 +409,12 @@ comparação completa. O que vale considerar, em ordem de valor:
    *Adaptação:* em **RPM** (o 1000 absoluto não transfere entre bibliotecas) e **por reino**
    no `rules.yaml`, como o `clustering.pad` — planta tem hc-siRNA difuso onde subir corte
    PERDE sinal (medido em 2026-08-01), Drosophila tem cluster denso que tolera corte alto.
-2. **Tolerância de ±1 nt no registro de fase** (`maxPhasAbundance` soma `maxPhase-1`,
-   `maxPhase`, `maxPhase+1`). Nós exigimos registro exato. Barato de testar contra os TAS.
+2. ~~Tolerância de ±1 nt no registro de fase~~ **TESTADA E REPROVADA (2026-08-08).**
+   Aplicada ao p-valor, a detecção nos 8 TAS experimentais cai de **1/8 para 0/8**: somar os
+   registros vizinhos triplica os sucessos (`3M`), então o nulo fica três vezes mais fácil de
+   acertar por acaso e o ganho em `k` não compensa. No sRNAminer ela entra só na **razão de
+   abundância reportada** (`inPhasRatio`), não no p-valor — eu a apliquei onde ela não
+   pertence. Se for reaproveitada, é como métrica descritiva, não como teste.
 3. **Deduplicação por (fita, 5') antes de contar** — eles fazem via `seenStringHits`; nós
    contamos posições distintas, que é equivalente. **Já alinhados**, sem ação.
 4. **Encadeamento por vão em vez de ilha de cobertura** — filosofia diferente da nossa e da
@@ -644,7 +648,11 @@ grandes, que era o problema resolvido em 2026-08-06.
 - `git push` (chave `~/.ssh/id_ed25519` tem passphrase; precisa de `ssh-add` num terminal seu).
 - Minors diferidos no ledger: guarda de `evidence.density_score` (ordem dos checks com
   `lib_size=None`), e o teste de threads não empurra `genome_bp` não-zero pelo pool.
-- **18% dos loci têm duas populações de tamanho** (pureza < 0,5), já em `pad=75`. A tarefa 7
+- **A maioria dos loci tem duas populações de tamanho.** O número "18%" registrado aqui era
+  de `pad=75` e está obsoleto: com os loci atuais a `size_purity` mediana é **0,190** em
+  Drosophila e **0,647** em Arabidopsis, ou seja, em mosca a maioria fica abaixo de 0,5. Isso
+  não é degradação — loci maiores agregam mais populações — mas invalida qualquer limiar
+  calibrado sobre o 18%. A tarefa 7
   do plano passa a reportar (`size_purity`, `dicer_call_2`); decidir depois se vale
   classificar as duas.
 
