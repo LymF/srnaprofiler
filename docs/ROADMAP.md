@@ -296,6 +296,41 @@ positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
 > **Fórmulas:** `docs/FORMULAS.md` tem todas, com nulo e limitação de cada uma.
 > **Comparação com o campo:** `docs/superpowers/specs/2026-08-07-signature-literature-review.md`.
 
+**A-score. Score por tamanho de efeito — FEITO (2026-08-08)**
+
+O `score` era `−log10(p)` e **não ordenava confiabilidade**: p mistura efeito com tamanho
+amostral, então correlacionava 0,629 com `distinct_seqs` e só 0,323 com o efeito. Agora é o
+mínimo das **forças** das evidências definidoras, cada uma o limite inferior de Wilson
+normalizado pelo nulo, em `[0,1]`. As `s_*` seguem como p-valores.
+
+| | antes | depois |
+|---|---|---|
+| corr. com o efeito (`pct_1u`) | 0,323 | **0,883** |
+| corr. com `distinct_seqs` | 0,629 | **0,137** |
+| 1U por faixa de score (Dros.) | não-monotônico | 0,38 → 0,56 → 0,70 → **0,82** |
+| 5'A por faixa de score (Arab.) | — | 0,43 → 0,61 → 0,74 → **0,86** |
+| piso | — | piC 85/90, TAS 6/6, miRBase 134/134 e 244/244, **0,00% de mudança de classe** |
+
+**O critério de aceite original estava errado, e isso quase passou batido.** Ele media a
+fração de loci de score alto dentro dos 90 piC de referência, e o desenho **reprovou**
+(23,5/32,0/30,5/27,0% contra 28,3% de fundo). Investigando em vez de aceitar: os **4.542**
+loci de score alto **fora** dos piC são indistinguíveis dos 1.689 de dentro (1U 0,82 nos
+dois; ping-pong 0,068 × 0,079), e o controle de score baixo tem 1U 0,38 e ping-pong **zero**.
+Os piC cobrem 5,66% do genoma e só os clusters conservados entre cepas — exigir concentração
+ali **penaliza a tool por achar piRNA legítimo em outro lugar**, que é o trabalho dela.
+Critério substituído por "a evidência definidora sobe com a faixa de score", que passa nos
+dois reinos.
+
+**Escalas diferem por reino, e é honesto:** mediana 0,47 em Drosophila contra **0,127** em
+Arabidopsis. O `hcsiRNA` é definido só por `5a`, e 0,43 contra um nulo genômico de 0,332
+deixa pouco espaço; o piRNA tem a rota `1u OU pingpong`. O score está dizendo que a evidência
+de hc-siRNA é mais fraca — verdade que a escala de p-valor escondia.
+
+**Também endurecido:** `defining_scores` devolvia 0,0 em silêncio para nome de evidência
+desconhecido; agora `RuleScorer` recusa o config na construção. *Pendência:* `KNOWN_EVIDENCE`
+ainda aceita `fractop` e `fractop_bal`, que não têm `e_*` — um config com esses nomes passa
+e pontua 0,0, exatamente o furo que a guarda queria fechar.
+
 **A-5p. Base 5' com nulo genômico — FEITO (2026-08-07)**
 
 O nulo era 0,25 fixo, atribuído aqui ao proTRAC. **A atribuição era falsa** — o proTRAC usa

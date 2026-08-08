@@ -1,7 +1,7 @@
 # Fórmulas do `classify` — referência
 
 **Autor:** Lucas
-**Atualizado:** 2026-08-07
+**Atualizado:** 2026-08-08
 
 Toda quantidade que o `classify` reporta, com a fórmula, o nulo e onde ela é usada.
 Comparação com o que o campo faz: `docs/superpowers/specs/2026-08-07-signature-literature-review.md`.
