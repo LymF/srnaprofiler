@@ -208,9 +208,24 @@ percentil **empírico** contra a distribuição observada naquela biblioteca, co
 de estimar por amostragem de janelas aleatórias de 1 kb.
 
 **Nosso estado.** `evidence.density_score` usa **Poisson contra distribuição uniforme no
-genoma**. É nulo teórico onde a referência usa distribuição empírica — e reads de small RNA
-são notoriamente não uniformes, que é justamente por que o proTRAC evita o nulo teórico.
-Já está marcada diagnostic-only no README, o que se mostra acertado.
+genoma** — nulo teórico onde a referência usa distribuição empírica.
+
+**Mas o problema maior é que ela é REDUNDANTE (medido 2026-08-07), não mal calibrada.**
+Correlação com `log(reads)`: **0,718** (Drosophila) e **0,729** (Arabidopsis). Ela reafirma
+a contagem de reads, que já está no TSV. E é alta por construção — 71,1% e 57,7% dos loci
+acima de 2 — porque o locus só existe se passou no `mincov`, que **é** um corte de densidade.
+Medir depois "este locus é mais denso que o uniforme" re-mede o critério de seleção.
+
+**Isto também esclarece a comparação com o campo:** no proTRAC a densidade é o **critério de
+chamada de locus** (`-pdens`, top 1% das janelas), não uma evidência de classe. Nós usamos o
+`mincov` para o mesmo fim. Já usamos densidade, no lugar certo; o `s_density` é a mesma
+informação contada duas vezes.
+
+**Não vale consertar o nulo.** O único jeito de a densidade virar informação independente é
+medi-la contra o fundo **local** (a vizinhança do locus) em vez do genoma inteiro — "este
+locus se destaca do entorno?". Isso não é circular com o `mincov` e distinguiria cluster real
+de região amplamente transcrita. É feature nova, não conserto, e de baixa prioridade
+enquanto a densidade não decidir nada em regra alguma.
 
 ---
 
