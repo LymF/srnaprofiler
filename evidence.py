@@ -21,6 +21,32 @@ def score_from_p(p):
     return round(min(-math.log10(p), _MAX_SCORE), 3)
 
 
+def effect_strength(k, n, p0, conf=0.95):
+    """How far the effect clears its null, conservatively, in [0, 1].
+
+    Wilson lower bound of k/n at `conf`, rescaled by the room the null leaves:
+    (L - p0) / (1 - p0). Unlike -log10(p) this does not grow with n -- it grows
+    with precision and saturates at the observed effect -- so the same biology
+    scores the same in a small locus and a large one.
+
+    Wilson rather than the normal approximation: our proportions run extreme and
+    our samples are often small, where the normal interval leaves [0, 1].
+    """
+    if p0 is None or n is None:
+        return 0.0
+    n = int(round(n))
+    k = int(round(k))
+    if n <= 0 or k <= 0 or k > n or not (0.0 <= p0 < 1.0):
+        return 0.0
+    z = stats.norm.isf((1.0 - conf) / 2.0)
+    phat = k / n
+    denom = 1.0 + z * z / n
+    centre = (phat + z * z / (2 * n)) / denom
+    half = z * math.sqrt(phat * (1 - phat) / n + z * z / (4 * n * n)) / denom
+    lower = centre - half
+    return round(max(0.0, (lower - p0) / (1.0 - p0)), 4)
+
+
 def base_bias_score(k, n, p0=BASE_P0):
     """Enrichment of a 5' base over chance (one-sided binomial)."""
     k, n = int(round(k)), int(round(n))
