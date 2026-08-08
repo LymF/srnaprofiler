@@ -263,9 +263,9 @@ For more information on each module:
     )
     map_align.add_argument(
         "--ncrna-db",
-        help="Bowtie1 index of structural RNA (tRNA/rRNA/snoRNA/snRNA); reads "
-             "matching it are dropped before the genome alignment "
-             "(build one with extras/fetch_ncrna_db.sh)"
+        help="Bowtie1 index of structural RNA (build with "
+             "extras/fetch_ncrna_db.sh); matching reads are dropped before the "
+             "genome alignment"
     )
     map_align.add_argument(
         "--keep-unmapped",
@@ -620,6 +620,9 @@ Examples:
                          "merging (default: from the config; 500 in both shipped "
                          "configs)")
     cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
+    cl.add_argument("--organelle-contigs", dest="organelle_contigs",
+                    help="Comma-separated contigs to leave out, e.g. chloroplast "
+                         "and mitochondrion (NC_000932.1,NC_037304.1 in TAIR10.1)")
     cl.add_argument("--config", default="rules.yaml",
                     help="Scoring config (default: %(default)s, calibrated for "
                          "arthropods). Use rules.plant.yaml for plants.")

@@ -95,6 +95,29 @@ def mark_mirna(records, mirna_intervals, min_fraction=0.5):
             r.review = False
 
 
+def parse_contig_list(value):
+    """Comma-separated contig names, as typed on the command line."""
+    if not value:
+        return []
+    return [name.strip() for name in value.split(",") if name.strip()]
+
+
+def select_contigs(chroms, exclude):
+    """Split the references into the ones to analyse and the ones to drop.
+
+    A name that is not in the BAM is an error: a typo would analyse the
+    organelle and report a clean run.
+    """
+    missing = [name for name in exclude if name not in chroms]
+    if missing:
+        raise ValueError(
+            f"contig(s) not in the BAM: {', '.join(missing)}. "
+            f"References with reads: {', '.join(chroms)}")
+    dropped = [name for name in chroms if name in set(exclude)]
+    kept = [name for name in chroms if name not in set(exclude)]
+    return kept, dropped
+
+
 def run_classify(args):
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
@@ -139,7 +162,18 @@ def run_classify(args):
             f"will be carved out as loci of their own", "INFO")
 
     chroms = mapped_chromosomes(bam_path)
-    safe = safe_thread_count(threads, reference_alignment_counts(bam_path),
+    counts = dict(zip(chroms, reference_alignment_counts(bam_path)))
+    exclude = parse_contig_list(getattr(args, "organelle_contigs", None))
+    if exclude:
+        chroms, dropped = select_contigs(chroms, exclude)
+        out = sum(counts[name] for name in dropped)
+        total = sum(counts.values())
+        pct = 100.0 * out / total if total else 0.0
+        log(f"--organelle-contigs: dropping {', '.join(dropped)} "
+            f"({out:,} of {total:,} alignments, {pct:.2f}%); the library size "
+            f"still counts them", "INFO")
+
+    safe = safe_thread_count(threads, [counts[c] for c in chroms],
                              available_memory_mb())
     if safe < threads:
         log(f"Capping {threads} -> {safe} thread(s): each holds one whole "
