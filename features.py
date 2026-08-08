@@ -4,7 +4,8 @@ from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments, read_region, reference_lengths, base_null
 from clustering import call_islands, merge_compatible, carve_out
-from signals import offset_spectrum, pingpong_zscore, phase_test
+from signals import (offset_spectrum, pingpong_zscore, phase_test,
+                     PHASE_WINDOW_CYCLES)
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
                       strand_bidirectional_score, effect_strength,
                       pingpong_score_empirical, score_from_p)
@@ -201,7 +202,12 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
         r.phase_score, r.phase_number = res.score, res.number
         r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
         r.s_phase = score_from_p(r.phase_pvalue)
-        r.e_phase = effect_strength(res.observed, res.draws, res.null_frac)
+        # Cycles in register, out of the cycles the window can hold. The run's
+        # length is the processive cut's signature; the p-value of the same
+        # count is at chance against size-matched controls, and the abundance
+        # in the register is worse than that.
+        r.e_phase = effect_strength(min(res.number, PHASE_WINDOW_CYCLES),
+                                    PHASE_WINDOW_CYCLES, 1 / pl)
     return r
 
 
