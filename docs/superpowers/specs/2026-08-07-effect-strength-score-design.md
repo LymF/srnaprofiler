@@ -101,6 +101,40 @@ Três peças, cada uma testável sozinha:
 O `reporter` não ganha colunas: `score` já existe e só muda de significado. As `s_*` seguem
 como estão.
 
+## Consumidores verificados (o que NÃO muda)
+
+Conferido no código antes de escrever isto:
+
+| | muda? | por quê |
+|---|---|---|
+| classe atribuída | **não** | `_score_class` soma pesos sobre features cruas (`pct_1u`, `frac_top`, `pingpong_frac`, `phase_score`); nunca lê `s_*` nem `score` |
+| flag `review` | **não** | `decider.py:123-128` usa `confidence`, `margin`, `reads`, `dicer_call` — o `score` não entra |
+| recall de piC / TAS / miRBase | **não** | dependem de classe e review |
+| `extras/simulate_rules.py` | **não** | reconstrói o registro com 7 features cruas; `defining_scores` já usa `getattr(..., 0.0)` e o comportamento é idêntico com `e_*` |
+| coluna `score` do TSV e `score=` do GFF3 | **sim** | é o objetivo |
+
+Os únicos consumidores do `score` são o `reporter` (coluna do TSV, atributo do GFF3) e os
+testes. Nada decide com ele.
+
+## Endurecer `defining_scores` (entra no mesmo trabalho)
+
+`defining_scores` faz `getattr(record, f"s_{name}", 0.0)` — **atributo ausente vira 0,0 em
+silêncio**. Um erro de digitação em `defining_evidence` produz score zero sem avisar
+ninguém, e a classe inteira passa a parecer sem evidência.
+
+É o mesmo padrão que já custou caro aqui: o `extras/simulate_rules.py` **aborta** quando
+falta coluna, com o comentário "defaultar em silêncio faz a simulação discordar da corrida
+por motivos que não têm nada a ver com a mudança de regra" — porque isso de fato aconteceu
+(`pct_5a` faltando inventou 3.080 mudanças de classe). O `decider` não tem essa guarda.
+
+**Mudança:** nome de evidência desconhecido vira `KeyError` com a lista dos nomes válidos,
+na construção do `RuleScorer` (falha no carregamento do config, não a cada locus).
+
+**Exceção deliberada:** o registro reduzido do `simulate_rules.py` não tem as `e_*`, e isso
+é legítimo. A validação é sobre o **nome estar no vocabulário**, não sobre o atributo existir
+no objeto — então o simulador segue funcionando e um `defining_evidence: [fractopp]` passa a
+estourar.
+
 ## Critério de aceite
 
 **Obrigatório — ordenação monotônica.** Contra os 90 piC de referência, a fração de loci de
