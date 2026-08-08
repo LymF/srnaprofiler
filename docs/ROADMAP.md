@@ -551,9 +551,37 @@ esse ganho não sai de ajuste, teria de vir de dado (biblioteca mais profunda, t
 PHAS são expressos) ou de uma evidência definidora adicional para a classe.
 
 *Caminho alternativo que não depende disso:* rejeitar por **anotação** em vez de por score —
-um `--exclude-loci` com tRNA/rRNA/snoRNA do GFF, análogo ao `--mirna-loci`. Pega o alvo real
-(RNA estrutural) sem tocar em locus de verdade conhecida. Menos elegante, mas mensurável e
-sem falso negativo.
+um `--exclude-loci` com tRNA/rRNA/snoRNA, análogo ao `--mirna-loci`. Pega o alvo real (RNA
+estrutural) sem tocar em locus de verdade conhecida. Menos elegante, mas mensurável e sem
+falso negativo.
+
+**A2b. Predição de RNA estrutural quando não há GFF anotado — A TESTAR**
+
+O `--exclude-loci` precisa de um BED. Nos dois organismos de teste ele sai de graça do GFF do
+RefSeq (Arabidopsis: 684 tRNA, 287 snoRNA, 82 snRNA, 14 rRNA), mas o alvo da tool inclui
+**organismo não-modelo sem anotação** — arroz, Tribolium, as 51 espécies do pirnaclusterdb.
+
+**Desenho pretendido:** o GFF é **opcional**; quando presente, a predição fica **desativada**
+(não faz sentido predizer o que já está anotado). Só quando falta é que a ferramenta externa
+roda. Mesmo padrão do `--mirna-loci`, que aceita anotação curada ou predição.
+
+**Candidatas a avaliar** (nenhuma instalada no env hoje):
+
+| ferramenta | cobre | nota |
+|---|---|---|
+| **Infernal `cmscan` + Rfam** | tRNA, rRNA, snoRNA, snRNA, miRNA, riboswitch — **tudo num passo** | modelos de covariância (sequência + estrutura); Rfam completo tem alguns GB e num genoma de planta leva horas |
+| **tRNAscan-SE** | tRNA | padrão de fato; rápido |
+| **barrnap** | rRNA | HMM, muito rápido |
+| **ARAGORN** | tRNA, tmRNA | alternativa leve |
+
+**O que medir antes de adotar qualquer uma:** (a) quanto do RNA estrutural anotado no GFF de
+Arabidopsis/Drosophila cada ferramenta recupera — se não recuperar o que já sabemos estar lá,
+não serve para onde não sabemos; (b) o custo em tempo e disco num genoma de planta; (c) se a
+união tRNAscan+barrnap cobre o suficiente sem o peso do Rfam completo.
+
+**Só adicionar dependência se o teste justificar.** O `--exclude-loci` funciona com BED de
+qualquer origem, então a tool não precisa saber quem o produziu — e um extrator de GFF→BED em
+`extras/` (três linhas de awk, sem dependência) atende todo caso anotado.
 
 **A1. RNA estrutural contamina as classes, e falta a categoria "não classificado" (2026-08-07)**
 
