@@ -209,15 +209,23 @@ Build the index once:
 
     bash extras/fetch_ncrna_db.sh ~/ncrna_db
 
-The script pulls seven Rfam families — tRNA, the four rRNA classes, U1 and U2 — and runs
-`bowtie-build`. **Sequences come from Rfam rather than from your genome's annotation on
-purpose:** a non-model organism has no structural RNA annotated to extract, while tRNA and
-rRNA are conserved enough for a 20-30 nt read to match across species at one mismatch. Rfam ships no
-single FASTA of its sequences: the whole-database files at the top of its FTP (`Rfam.cm.gz`,
-`Rfam.tar.gz`, both 44 MB) are *covariance models*, which serve `cmscan` searching a genome
-for structure — hours on a plant genome. Sequences live one file per family, 4227 of them,
-and the rest are riboswitches, viral RNA and clade-specific snoRNA that would only add weight
-to a read filter.
+The script selects every Rfam family typed rRNA, tRNA, snRNA or snoRNA — 829 families,
+316 MB compressed at the release this was written against — and runs `bowtie-build`. It
+selects by type from Rfam's metadata rather than from a fixed list, so families added in later
+releases are picked up.
+
+**Sequences come from Rfam rather than from your genome's annotation on purpose:** a non-model
+organism has no structural RNA annotated to extract, while tRNA and rRNA are conserved enough
+for a 20-30 nt read to match across species at one mismatch.
+
+**miRNA families are excluded.** Rfam holds 1598 of them, 38% of the database, and miRNA is a
+class this tool calls — filtering them out would destroy it. sRNAminer names its equivalent
+parameter the same way: *ncRNA [rRNA, tRNA, snoRNA and snRNA] without miRNA database*.
+
+Rfam ships no single FASTA of its sequences: the whole-database files at the top of its FTP
+(`Rfam.cm.gz`, `Rfam.tar.gz`, both 44 MB) are *covariance models*, which serve `cmscan`
+searching a genome for structure — hours on a plant genome. Sequences live one file per
+family.
 
 Two caveats worth knowing:
 
