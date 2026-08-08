@@ -9,8 +9,10 @@
 # Sequences come from Rfam, which covers every species. That is the point: a
 # non-model genome has no structural RNA annotation to extract from, while tRNA
 # and rRNA are conserved enough for a 20-30 nt read to match across species at
-# one mismatch. There is no single FASTA of all of Rfam -- it ships 4227
-# per-family files -- and we do not want all of them anyway.
+# one mismatch. Rfam has no single FASTA of sequences: its whole-database files
+# (Rfam.cm.gz, Rfam.tar.gz, 44 MB each) are covariance models for cmscan, which
+# searches a genome for structure and costs hours. Sequences are one file per
+# family, 4227 of them, and we want seven.
 #
 # Rfam accessions are permanent -- RF00005 is tRNA in every release -- and the
 # path uses CURRENT, so no version is pinned here. What can still break is the

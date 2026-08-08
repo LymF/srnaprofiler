@@ -212,9 +212,12 @@ Build the index once:
 The script pulls seven Rfam families — tRNA, the four rRNA classes, U1 and U2 — and runs
 `bowtie-build`. **Sequences come from Rfam rather than from your genome's annotation on
 purpose:** a non-model organism has no structural RNA annotated to extract, while tRNA and
-rRNA are conserved enough for a 20-30 nt read to match across species at one mismatch. There
-is no single FASTA of all of Rfam; it ships 4227 per-family files, and the rest are
-riboswitches, viral RNA and clade-specific snoRNA that would only add weight.
+rRNA are conserved enough for a 20-30 nt read to match across species at one mismatch. Rfam ships no
+single FASTA of its sequences: the whole-database files at the top of its FTP (`Rfam.cm.gz`,
+`Rfam.tar.gz`, both 44 MB) are *covariance models*, which serve `cmscan` searching a genome
+for structure — hours on a plant genome. Sequences live one file per family, 4227 of them,
+and the rest are riboswitches, viral RNA and clade-specific snoRNA that would only add weight
+to a read filter.
 
 Two caveats worth knowing:
 
