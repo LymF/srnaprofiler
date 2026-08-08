@@ -293,6 +293,47 @@ revelou um defeito que as anteriores não podiam ver — 35 PHAS acharam o viés
 o miRBase achou esta regressão, e o nulo por permutação dimensionou o estrago (76% de falso
 positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
 
+**A-pp. Ping-pong com nulo empírico — FEITO (2026-08-07)**
+
+`s_pingpong` deixou de usar `binomtest(k, n, 1/20)` (nulo uniforme, invenção nossa) e passa a
+estimar a taxa dos **próprios offsets do locus**, 1–20 exceto o 10 — o fundo que já
+calculávamos para o z-score e descartávamos. É o que o PingPongPro faz
+(`pingpongpro.cpp:695`), e pelo mesmo motivo: offsets não são uniformes.
+
+**Efeito medido (Drosophila):** correlação 0,995 com o anterior; 88,9% dos loci mudam menos
+de 1. Landmarks preservados (flamenco 7,6→8,2; 42AB 77,7→79,3), piC 85/90 e enriquecimento
+inalterados. **Não é ganho agregado** — quando o espectro é plano, Poisson(média) e
+binomial(1/20) coincidem.
+
+Onde importa: nos **682 loci que divergem >10, o empírico é maior em 100%**, e são os de
+`pingpong_frac` mediano **0,560** — os de ping-pong mais forte. O binomial diluía a
+evidência ali porque o `n` incluía o próprio pico. Ou seja, a mudança é neutra na massa e
+melhora na cauda que interessa.
+
+**A0-srna. Ideias do sRNAminer que valem implementar (lidas do jar descompilado)**
+
+Ver `docs/superpowers/specs/2026-08-07-signature-literature-review.md` seção 6 para a
+comparação completa. O que vale considerar, em ordem de valor:
+
+1. **Massa total mínima por locus na clusterização** (`sRNAlociMinerCLI`: `totalAbundance >=
+   minReadDepth`, default 1000). Nós só temos profundidade por posição e `min_reads` como
+   *flag de review* — o locus raso existe do mesmo jeito e depois falta `n` para os testes.
+   Um mínimo de massa **na formação do locus** garante poder por construção.
+   *Adaptação:* em **RPM** (o 1000 absoluto não transfere entre bibliotecas) e **por reino**
+   no `rules.yaml`, como o `clustering.pad` — planta tem hc-siRNA difuso onde subir corte
+   PERDE sinal (medido em 2026-08-01), Drosophila tem cluster denso que tolera corte alto.
+2. **Tolerância de ±1 nt no registro de fase** (`maxPhasAbundance` soma `maxPhase-1`,
+   `maxPhase`, `maxPhase+1`). Nós exigimos registro exato. Barato de testar contra os TAS.
+3. **Deduplicação por (fita, 5') antes de contar** — eles fazem via `seenStringHits`; nós
+   contamos posições distintas, que é equivalente. **Já alinhados**, sem ação.
+4. **Encadeamento por vão em vez de ilha de cobertura** — filosofia diferente da nossa e da
+   do ShortStack. **Não** adotar: nosso merge condicionado por perfil já resolve o mesmo
+   problema com mais informação, e foi medido (fundiu 26% sem perder cluster conhecido).
+
+*Nota de método:* a chamada de classe por **fração de tamanho** é padrão universal (proTRAC
+`-pisize`, ShortStack `DicerCall`, sRNAminer `minRepeatRatio`, nosso `frac_in_window`).
+Nisso não há divergência a resolver.
+
 **A. Pronto para fazer**
 
 1. ~~Rota bimodal do piRNA no `defining_evidence`~~ **FECHADO sem mudança (2026-08-07).**
