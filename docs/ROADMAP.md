@@ -293,6 +293,43 @@ revelou um defeito que as anteriores não podiam ver — 35 PHAS acharam o viés
 o miRBase achou esta regressão, e o nulo por permutação dimensionou o estrago (76% de falso
 positivo em locus de 120 ciclos). Nenhuma delas era "mais dados da mesma coisa".
 
+> **Fórmulas:** `docs/FORMULAS.md` tem todas, com nulo e limitação de cada uma.
+> **Comparação com o campo:** `docs/superpowers/specs/2026-08-07-signature-literature-review.md`.
+
+**A-5p. Base 5' com nulo genômico — FEITO (2026-08-07)**
+
+O nulo era 0,25 fixo, atribuído aqui ao proTRAC. **A atribuição era falsa** — o proTRAC usa
+limiares de fração (`-1Tor10A 0.75`) e não faz teste nenhum de base. O 0,25 era nosso, e
+pressupõe uma composição que nenhum genoma tem: o real é **0,272** (Drosophila) e **0,332**
+(Arabidopsis).
+
+Agora o nulo é a composição do DNA do próprio locus, ponderada por `frac_top`
+(`samio.base_null`) — *"se o corte caísse em qualquer posição daqui, com que frequência o
+produto começaria com esta base?"*. É o que faz o `-g/--genome` deixar de ser ignorado: ele
+era declarado "optional in v1" e nunca lido.
+
+| | Drosophila | Arabidopsis |
+|---|---|---|
+| loci conhecidos | piC 85/90, miRBase 134/134 | TAS 6/6, miRBase 244/244 |
+| **classe mudou** | **0,00%** | **0,00%** |
+| evidência | `s_1u` 61,4 → 52,0 | `s_5a` 7,5 → 4,0 |
+| `score` mediano | 57,5 → 50,8 | 7,38 → 3,93 |
+
+Nenhum locus troca de classe porque o classificador usa `pct_1u` cru (`decider.py:63`), nunca
+`s_1u` — a mudança é de **honestidade da medida**, não de acurácia da chamada. Em Drosophila a
+queda tem dose-resposta com a composição do DNA (0,0 em loci com T/A < 0,28; 24,1 em
+0,32–0,36), ou seja, remove falso positivo específico em vez de apertar tudo.
+
+*Atalho rejeitado por medição:* usar as posições 3–5 das próprias reads como controle interno
+concorda com o DNA em Drosophila (0,269 × 0,272) mas **falha em Arabidopsis** (0,255 × 0,332,
+r = 0,13). Sem o genoma para conferir, eu teria implementado o atalho.
+
+*Erro de processo registrado:* a primeira tentativa passou o genoma por todo o caminho **menos**
+a chamada em `run_classify`; o `replace` mirou texto que outro commit já tinha mudado e falhou
+em silêncio. As duas validações voltaram byte a byte idênticas e só por isso o bug apareceu —
+se eu tivesse olhado apenas o piso (piC/TAS/miRBase, que não mudam mesmo), teria dado por boa
+uma feature desligada. Agora há teste de fiação ponta a ponta.
+
 **A-pp. Ping-pong com nulo empírico — FEITO (2026-08-07)**
 
 `s_pingpong` deixou de usar `binomtest(k, n, 1/20)` (nulo uniforme, invenção nossa) e passa a
