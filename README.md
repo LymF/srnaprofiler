@@ -205,14 +205,41 @@ Rejecting those loci after the fact was measured and failed — the best thresho
 quarter of the experimentally characterised TAS loci. Removing the *reads* instead means the
 locus never exists and its abundance is never wrong, which is what the reference tools do.
 
-Build the index once:
+#### Building the Rfam index (once per machine)
 
-    bash extras/fetch_ncrna_db.sh ~/ncrna_db
+    THREADS=8 bash extras/fetch_ncrna_db.sh ~/ncrna_db
 
-The script selects every Rfam family typed rRNA, tRNA, snRNA or snoRNA — 829 families,
-316 MB compressed at the release this was written against — and runs `bowtie-build`. It
-selects by type from Rfam's metadata rather than from a fixed list, so families added in later
-releases are picked up.
+That is the whole tutorial; what follows is what it does and what to expect, so a run that
+goes wrong is recognisable.
+
+1. **Selects the families.** Downloads Rfam's `family.txt` and keeps every accession whose
+   *type* field is rRNA, tRNA, snRNA or snoRNA — **829 families** at the release this was
+   written against. Selection is by type, not by a fixed list, so families added later are
+   picked up, and not by matching the words anywhere in the line, which would drag in RNase P,
+   tmRNA, telomerase and group I/II introns because their descriptions mention the words.
+   Fewer than 200 families aborts the run.
+2. **Downloads one FASTA per family** from `fasta_files/`. Rfam publishes no single FASTA of
+   its sequences — the whole-database files at the top of the FTP are covariance models.
+   Roughly 1 h on a home connection; a family that 404s is reported and skipped, and fewer
+   than 100,000 sequences in total aborts, so a truncated download cannot become a thin index.
+3. **Runs `bowtie-build`.** About 1 h 45 with 8 threads.
+
+What it costs, measured:
+
+| | |
+|---|---|
+| `ncrna.fa` | 1.8 GB, 7.3 M sequences |
+| index (6 files) | 2.9 GB |
+| peak RAM to build | fits in 8 GB, no deduplication needed |
+| filtering 24 M reads | ~6 min with 8 threads, ~30 s of it loading the index |
+
+**Put the index on a local disk.** On a Windows drive mounted through WSL (`/mnt/...`) the
+index is slow enough that `bowtie-inspect` appears to hang. Copying the six `.ebwt` files to
+the Linux filesystem takes 20 s and removes the problem.
+
+**The index is not deduplicated,** on purpose: 37.7% of the Rfam sequences are exact copies of
+another, so it could be a third smaller, but it builds within the memory available as it is,
+and a deduplication step is one more thing that can go wrong quietly.
 
 Then filter while mapping:
 

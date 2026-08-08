@@ -512,10 +512,14 @@ em regra nenhuma. Medido nas corridas finais:
 
 **Destino de cada uma:**
 
-1. **`dicer_call_2` está quebrada como projetada.** Só deveria aparecer com `size_purity <
-   0,8`, mas a pureza mediana é 0,19–0,65, então dispara em **todo** locus e não carrega
-   informação como flag. Consertar o limiar ou assumi-la como "qual é o segundo tamanho",
-   sem pretensão de sinalizar nada.
+1. ~~**`dicer_call_2` está quebrada como projetada.**~~ **CONSERTADO (2026-08-08, `c02c6e6`).**
+   Disparava em **98,7%** dos loci em Drosophila e 94,0% em Arabidopsis, e metade desses
+   segundos tamanhos (48,5% e 69,5%) era um comprimento **vizinho** do dominante — a
+   dispersão da mesma população, não uma segunda via. A causa não era o limiar 0,8: era medir
+   pureza sobre **um comprimento só**, quando o produto de Dicer se espalha ±1 nt, o que
+   chamava de impuro um locus 21 nt limpo. Agora `size_purity` é a banda do pico ±1 nt e
+   `dicer_call_2` só sai para um pico a ≥2 nt com ≥20% da massa na janela. Colunas
+   diagnósticas; nenhuma regra as lê.
 2. **`overlap_dup_frac` não separa o que se esperava.** A ideia era distinguir siRNA (dúplex
    de Dicer) de piRNA (ping-pong) em artrópode; dá 0,0175 × 0,0168. Coerente com o já medido:
    não há pico de dúplex em Drosophila. Documentar como medida que não discrimina aqui.
@@ -591,6 +595,12 @@ de outra fonte não garante descrição nenhuma. Funcionaria nos nossos dois gen
 
 **Decisão: flag explícita** (`--organelle-contigs NC_000932.1,NC_037304.1`), sem adivinhação.
 O log diz quais contigs foram excluídos e quanta massa saiu.
+
+**FEITO (2026-08-08, `eb793b1`).** No `classify`, antes da extração; contig que não está no BAM
+**aborta** em vez de virar no-op silencioso (o erro que se quer evitar é um typo analisando a
+organela e reportando corrida limpa). O `lib_size` continua contando as reads excluídas, para
+o RPM seguir comparável com corridas que as mantiveram. Falta rodar com a flag ligada e
+registrar o efeito nas classes de planta.
 
 **A2b-pre. O campo filtra RNA estrutural NA READ, não no locus (lido 2026-08-08)**
 
