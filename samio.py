@@ -97,6 +97,27 @@ def mapped_chromosomes(bam_path):
         return [s.contig for s in fh.get_index_statistics() if s.mapped > 0]
 
 
+_PAIR = {"A": "T", "T": "A", "C": "G", "G": "C"}
+
+
+def base_null(seq, base, frac_top):
+    """Chance a randomly placed cut in `seq` yields a read starting with `base`.
+
+    The 5' base of a plus-strand read is the plus-strand base; of a minus-strand
+    read, its complement. `pct_1u` pools both, so the null is weighted by
+    `frac_top`. Falls back to 0.25 when there is no usable sequence.
+    """
+    if not seq:
+        return 0.25
+    s = seq.upper()
+    n = sum(s.count(b) for b in "ACGT")
+    if not n:
+        return 0.25
+    on_plus = s.count(base) / n
+    on_minus = s.count(_PAIR[base]) / n
+    return frac_top * on_plus + (1.0 - frac_top) * on_minus
+
+
 def reference_lengths(bam_path):
     """Reference name -> length, from the BAM header."""
     with pysam.AlignmentFile(bam_path, "rb") as fh:

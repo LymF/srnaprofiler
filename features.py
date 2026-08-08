@@ -2,7 +2,7 @@
 import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
-from samio import read_alignments, read_region, reference_lengths
+from samio import read_alignments, read_region, reference_lengths, base_null
 from clustering import call_islands, merge_compatible, carve_out
 from signals import offset_spectrum, pingpong_zscore, phase_test
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
@@ -16,7 +16,7 @@ def revcomp(seq: str) -> str:
     return seq.translate(_COMP)[::-1]
 
 
-def build_record(region, region_alns, lib_size, config):
+def build_record(region, region_alns, lib_size, config, locus_seq=None):
     """Builds a ClusterRecord from the reads ALREADY assigned to the region.
 
     `region_alns` must contain all reads that overlap the region by span
@@ -107,8 +107,13 @@ def build_record(region, region_alns, lib_size, config):
     # n = distinct_seqs, not the 1/NH read count: PCR duplicates and stacked
     # identical reads are not independent trials, so the read count
     # pseudoreplicates the binomial n. k is scaled to the same denominator.
-    r.s_1u = base_bias_score(r.pct_1u * r.distinct_seqs, r.distinct_seqs)
-    r.s_5a = base_bias_score(r.pct_5a * r.distinct_seqs, r.distinct_seqs)
+    # Null = the locus's own DNA composition: a cut placed at random yields a
+    # 5'U as often as the locus carries T on the read's strand. A fixed 0.25
+    # would call a T-rich transposon 1U-biased with no selection at all.
+    null_u = base_null(locus_seq, "T", r.frac_top) if locus_seq else 0.25
+    null_a = base_null(locus_seq, "A", r.frac_top) if locus_seq else 0.25
+    r.s_1u = base_bias_score(r.pct_1u * r.distinct_seqs, r.distinct_seqs, null_u)
+    r.s_5a = base_bias_score(r.pct_5a * r.distinct_seqs, r.distinct_seqs, null_a)
     r.s_fractop = strand_bias_score(r.frac_top, r.distinct_seqs)
     r.s_fractop_bal = strand_balance_score(r.frac_top, r.distinct_seqs)
     r.s_fractop_bid = strand_bidirectional_score(r.frac_top, r.distinct_seqs)
@@ -263,7 +268,7 @@ def island_profiles(islands, alns, min_reads=0, size_windows=None,
 
 
 def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
-                       xm_as_nh=False, chrom_len=0, carve=()):
+                       xm_as_nh=False, chrom_len=0, carve=(), genome_path=None):
     """Cluster and extract features for a single chromosome of an indexed BAM.
 
     Reads only this chromosome's alignments into memory (via fetch), builds its
@@ -286,7 +291,16 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     if not regions:
         return []
     buckets = _assign_reads(regions, alns)
-    return [build_record(regions[i], buckets[i], lib_size, config)
+    seqs = [None] * len(regions)
+    if genome_path:
+        import pysam
+        with pysam.FastaFile(genome_path) as fa:
+            for i, (c, s, e) in enumerate(regions):
+                try:
+                    seqs[i] = fa.fetch(c, s, e)
+                except (KeyError, ValueError):
+                    pass
+    return [build_record(regions[i], buckets[i], lib_size, config, locus_seq=seqs[i])
             for i in range(len(regions))]
 
 
@@ -296,7 +310,7 @@ def _chrom_job(job):
 
 
 def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
-                     xm_as_nh=False, carve_by_chrom=None):
+                     xm_as_nh=False, carve_by_chrom=None, genome_path=None):
     """Cluster + extract features across chromosomes, optionally in parallel.
 
     Each chromosome is processed independently by `process_chromosome`. With
@@ -307,7 +321,8 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
     lengths = reference_lengths(bam_path)
     carve_by_chrom = carve_by_chrom or {}
     jobs = [(bam_path, c, mincov, pad, lib_size, config, xm_as_nh,
-             lengths.get(c, 0), tuple(carve_by_chrom.get(c, ()))) for c in chroms]
+             lengths.get(c, 0), tuple(carve_by_chrom.get(c, ())), genome_path)
+            for c in chroms]
     if threads > 1 and len(jobs) > 1:
         import multiprocessing as mp
         with mp.Pool(min(threads, len(jobs))) as pool:

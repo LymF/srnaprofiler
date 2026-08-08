@@ -124,6 +124,11 @@ def run_classify(args):
         log(f"Weighted library size: {lib_size:.1f} reads "
             f"({total_mapped(bam_path)} alignment lines)", "INFO")
 
+    if not args.genome:
+        log("no -g/--genome: the 5' base null falls back to 0.25 (uniform "
+            "composition). Pass the genome so s_1u and s_5a are tested against "
+            "each locus's own DNA composition", "WARN")
+
     min_depth = mincov_to_depth(args.mincov, lib_size)
     log(f"--mincov {args.mincov} RPM -> minimum depth {min_depth} "
         f"for a library of {lib_size:.0f} reads", "INFO")

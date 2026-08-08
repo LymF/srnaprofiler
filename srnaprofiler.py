@@ -600,7 +600,11 @@ Examples:
     cl.add_argument("-p", "--prefix", required=True)
     cl.add_argument("-o", "--outdir", required=True)
     cl.add_argument("--sam", required=True, help="SAM/BAM mapped to the whole genome")
-    cl.add_argument("-g", "--genome", help="Genome FASTA (optional in v1)")
+    cl.add_argument("-g", "--genome",
+                    help="Genome FASTA (indexed, .fai). Used as the null for the "
+                         "5' base scores: a random cut in a locus yields a 5'U as "
+                         "often as that locus carries T. Without it the null falls "
+                         "back to a uniform 0.25 and s_1u/s_5a are inflated.")
     cl.add_argument("--mincov", type=float, default=1.0,
                     help="Minimum coverage to seed a locus, in READS PER MILLION "
                          "(default: %(default)s). Converted to an absolute depth "
