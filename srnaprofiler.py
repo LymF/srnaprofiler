@@ -262,6 +262,12 @@ For more information on each module:
         help="Maximum alignments to report per read (default: %(default)s)"
     )
     map_align.add_argument(
+        "--ncrna-db",
+        help="Bowtie1 index of structural RNA (tRNA/rRNA/snoRNA/snRNA); reads "
+             "matching it are dropped before the genome alignment "
+             "(build one with extras/fetch_ncrna_db.sh)"
+    )
+    map_align.add_argument(
         "--keep-unmapped",
         action="store_true",
         help="Keep unmapped reads in output SAM file"

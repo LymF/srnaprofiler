@@ -31,7 +31,7 @@ def count_reads(path: str) -> int:
 
 
 def build_ncrna_filter_cmd(db_prefix: str, reads_in: str, reads_out: str,
-                           threads: int = 1) -> list:
+                           threads: int = 1, fmt: str = "fasta") -> list:
     """bowtie command that keeps only the reads NOT matching the ncRNA database.
 
     tRNA, rRNA, snoRNA and snRNA fragments are abundant in a small RNA library
@@ -39,8 +39,32 @@ def build_ncrna_filter_cmd(db_prefix: str, reads_in: str, reads_out: str,
     locus is built from them -- filtering afterwards leaves the locus in place
     with its abundance already wrong.
     """
-    return ["bowtie", "-v", "1", "-f", "-p", str(threads),
+    fmt_flag = "-f" if fmt == "fasta" else "-q"
+    return ["bowtie", "-v", "1", fmt_flag, "-p", str(threads),
             db_prefix, reads_in, "--un", reads_out, "-S", "/dev/null"]
+
+
+def filter_ncrna_reads(db_prefix: str, reads_in: str, reads_out, threads: int = 1,
+                       fmt: str = "fasta") -> str:
+    """Drop structural RNA reads; return the path to what survived."""
+    if not check_bowtie_index(db_prefix):
+        raise RuntimeError(f"ncRNA Bowtie index not found for prefix: {db_prefix}")
+
+    reads_out = Path(reads_out)
+    reads_out.parent.mkdir(parents=True, exist_ok=True)
+
+    log(f"Filtering structural RNA against {db_prefix}", "INFO")
+    run_command(build_ncrna_filter_cmd(db_prefix, str(reads_in), str(reads_out),
+                                       threads=threads, fmt=fmt))
+
+    before = count_reads(str(reads_in))
+    after = count_reads(str(reads_out))
+    removed = before - after
+    pct = 100.0 * removed / before if before else 0.0
+    log(f"  structural RNA removed: {removed:,} of {before:,} reads ({pct:.1f}%)", "INFO")
+    log(f"  reads kept: {after:,}", "INFO")
+
+    return str(reads_out)
 
 
 def bowtie_build(genome_fa: str, out_prefix: str, threads: int = 1) -> None:
@@ -421,7 +445,18 @@ def run_mapping(args) -> None:
     # Infer format
     fmt = infer_format(reads_to_map, args.fmt)
     log(f"Input format: {fmt}", "INFO")
-    
+
+    # Drop structural RNA before the genome, so no locus is built from it
+    ncrna_db = getattr(args, 'ncrna_db', None)
+    if ncrna_db:
+        if reads2_to_map:
+            raise RuntimeError("--ncrna-db supports single-end reads only")
+        ext = "fasta" if fmt == "fasta" else "fastq"
+        filtered = outdir / f"{args.prefix}.ncrna_filtered.{ext}"
+        reads_to_map = filter_ncrna_reads(ncrna_db, reads_to_map, filtered,
+                                          threads=args.threads, fmt=fmt)
+        all_stats['parameters']['ncrna_db'] = ncrna_db
+
     # Run alignment
     alignment_stats = run_bowtie_alignment(
         index_prefix=index_prefix,
