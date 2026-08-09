@@ -648,6 +648,50 @@ perturbação genética da via**, na direção prevista, com a classe irmã imó
 inferência se apoia no controle interno, não em n. As outras duas réplicas de cada genótipo
 estão no ENA se valer a pena fechar isso.
 
+**A-classes. Todas as classes de planta testadas em arroz, sem anotação nova (2026-08-09)**
+
+A tool detecta cada classe por assinatura, então a validação não precisa de anotação de TE —
+ela precisa da assinatura, do controle genético e da comparação entre espécies.
+
+| classe | assinatura esperada | arroz WT |
+|---|---|---|
+| `hcsiRNA` | 24 nt, 5'A alto (AGO4), bifita | 24 nt, 5'A **0,471**, frac_top 0,507 ✓ |
+| `phasiRNA24` | 24 nt mas **não** hc-siRNA | 5'A **0,393**, 1U 0,291 — separável ✓ |
+| `phasiRNA` | 21 nt, 5'U alto (AGO1) | 21 nt, 1U **0,436**, 5'A 0,100 ✓ |
+| `siRNA` | 21–22 nt, bifita | 21 nt, frac_top 0,500 ✓ |
+| `miRNA` | 21 nt, 5'U alto | 21 nt, 1U **0,550** ✓ |
+
+**O `eat1` valida o `hcsiRNA` de graça.** A via Pol IV/RDR2/DCL3 não depende de EAT1 e não
+deve se mover: 121.692 → 111.828 RPM (**0,92×**), enquanto o `phasiRNA24` cai a **0,40×**.
+Duas classes de 24 nt no mesmo par de bibliotecas, uma cai e a outra não — validação de
+`hcsiRNA` sem tocar em anotação de repetição.
+
+**Dois problemas que só a terceira espécie expôs:**
+
+1. **`miRNA` em Arabidopsis tem tamanho dominante 24 nt em 120 dos 294 loci** (em arroz é 21 nt).
+   O rótulo vem da anotação e está certo; o **conteúdo** do locus não é miRNA — numa biblioteca
+   onde hc-siRNA é 96% dos loci, o intervalo do precursor coleta 24 nt junto. O `carve_out`
+   afirma miRNA sobre um locus cujo tamanho dominante é outro em 41% dos casos.
+2. **`phasiRNA` em Arabidopsis é bimodal e metade parece entulho.** `unique_frac` com quartis
+   **0,000–0,966**: os 6 TAS conhecidos têm ~1,00, mas **254 loci (54%)** têm <0,1, quase todos
+   multimapeadores com 61 reads medianas. Em arroz a classe é **99,5% única**.
+
+| | Arabidopsis | arroz |
+|---|---|---|
+| PHAS21 anotados | 35 | 2.595 |
+| precisão | **13,3%** | **90,7%** |
+| fundo | 0,3% | 19,7% |
+| enriquecimento | **53,0×** | 4,6× |
+
+Os dois números dizem coisas diferentes e ambos são verdade: em Arabidopsis a classe está 53×
+concentrada na anotação (ou seja, acha o que existe) e ainda assim 87% das chamadas caem fora
+dela. Com 35 loci anotados não dá para saber quanto disso é PHAS não anotado; a bimodalidade
+do `unique_frac` sugere que boa parte é repetição.
+
+**Conclusão:** as classes se comportam onde a via existe de verdade, e a `phasiRNA` recolhe
+entulho multimapeador onde ela quase não existe. Isso é limitação a documentar, não a esconder:
+`unique_frac` já está no TSV e separa os dois grupos.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
