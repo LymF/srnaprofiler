@@ -4,9 +4,16 @@ Measured on the 8 experimental TAS (12 loci) and 68 loci on annotated PHAS21,
 against controls matched by distinct_seqs: the count of cycles in register is
 the best discriminator available (AUC 0.826 / 0.769), the current p-value is at
 chance (0.560 / 0.481) and the abundance ratio is worse than a coin (0.415).
-Dividing the count by the locus's own occupied cycles destroys it (0.647),
-because the positives simply span more cycles than their controls.
+
+Two alternative normalisations were tried and set aside as a recorded design
+decision (not reproduced by any script in this repo): dividing the count by
+the locus's own occupied cycles instead of the fixed window (AUC 0.647/0.504,
+because positives simply span more cycles than their controls), and an
+empirical p0 from the other 20 registers (comes out inverted, because a dense
+locus has background coverage everywhere).
 """
+import pytest
+
 from evidence import effect_strength
 from features import build_record
 from samio import Aln
@@ -57,6 +64,22 @@ def test_the_denominator_is_the_window_not_the_locus():
     assert r.e_phase < 0.3
 
 
+def test_full_occupancy_saturates_the_statistic_without_enrichment():
+    """e_phase reads only phase_number, so a fully occupied window maxes it
+    out even with zero enrichment in the dominant register -- known caveat,
+    documented in FORMULAS.md next to e_phase. One 21-nt read at every
+    position over 250 nt: phase_ratio == 1/21 (no register is favoured) and
+    phase_pvalue == 1.0, yet e_phase reaches the ceiling."""
+    reads = [Aln("c", p, "+", _seqs(1, 21)[0], 1) for p in range(250)]
+    r = build_record(("c", 0, 250), reads, 1_000_000, CFG)
+    assert r.dicer_call == "21"
+    assert r.phase_number == PHASE_WINDOW_CYCLES
+    assert r.phase_ratio == pytest.approx(1 / 21, abs=0.01)
+    assert r.phase_pvalue == 1.0
+    assert r.e_phase == pytest.approx(effect_strength(PHASE_WINDOW_CYCLES,
+                                                       PHASE_WINDOW_CYCLES, 1 / 21))
+
+
 def test_abundance_alone_does_not_make_evidence():
     """One hot position with 40 reads is stacking, not processivity."""
     stacked = [Aln("c", 100, "+", seq, 1) for seq in _seqs(40)]
@@ -66,6 +89,16 @@ def test_abundance_alone_does_not_make_evidence():
 
 def test_an_empty_locus_has_no_phase_evidence():
     r = build_record(("c", 0, 400), [], 1_000_000, CFG)
+    assert r.e_phase == 0.0
+
+
+def test_a_zero_dicer_call_does_not_crash_the_division():
+    """dicermin=0 in the rules YAML is nonsensical, not impossible: it must
+    yield no phase evidence, not a ZeroDivisionError on 1/phase_length."""
+    reads = [Aln("c", i, "+", "", 1) for i in range(20)]
+    r = build_record(("c", 0, 400), reads, 1_000_000,
+                     {"dicermin": 0, "dicermax": 1, "strand_cutoff": 0.8})
+    assert r.dicer_call == "0"
     assert r.e_phase == 0.0
 
 

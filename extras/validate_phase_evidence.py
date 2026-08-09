@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TAS_BED = os.path.join(HERE, "phas_experimental_at_TAIR10.bed")
 PHAS_GFF = os.path.join(HERE, "phas21_ref_at_TAIR10.gff3")
 
-# The PHAS annotation is in TAIR names, the runs are on the RefSeq assembly.
+# The TAS BED is already RefSeq-named; only the PHAS GFF3 (TAIR names) needs mapping.
 TAIR_TO_REFSEQ = {"Chr1": "NC_003070.9", "Chr2": "NC_003071.7",
                   "Chr3": "NC_003074.8", "Chr4": "NC_003075.7",
                   "Chr5": "NC_003076.8"}
@@ -69,6 +69,12 @@ def main(tsv_path):
     d = pd.read_csv(tsv_path, sep="\t", low_memory=False)
     d = d[d.dicer_call.astype(str) == "21"].reset_index(drop=True)
     tas, phas = load_intervals()
+    if not set(tas.chrom) & set(d.chrom):
+        sys.exit(f"No chromosome in common. TAS BED: {sorted(set(tas.chrom))[:5]} "
+                 f"Run: {sorted(set(d.chrom))[:5]}")
+    if not set(phas.chrom) & set(d.chrom):
+        sys.exit(f"No chromosome in common. PHAS GFF3: {sorted(set(phas.chrom))[:5]} "
+                 f"Run: {sorted(set(d.chrom))[:5]}")
     d["in_tas"] = overlaps(d, tas)
     d["in_phas"] = overlaps(d, phas) | d.in_tas
 
@@ -91,9 +97,10 @@ def main(tsv_path):
             continue
         print(f"{col:14} {auc(d[d.in_tas][col], ctrl[col]):8.3f} "
               f"{auc(d[d.in_phas][col], ctrl[col]):9.3f}")
-    print("\nmedian score  TAS / PHAS / control: "
-          f"{d[d.in_tas].score.median():.3f} / "
-          f"{d[d.in_phas].score.median():.3f} / {ctrl.score.median():.3f}")
+    if "score" in d.columns:
+        print("\nmedian score  TAS / PHAS / control: "
+              f"{d[d.in_tas].score.median():.3f} / "
+              f"{d[d.in_phas].score.median():.3f} / {ctrl.score.median():.3f}")
 
 
 if __name__ == "__main__":

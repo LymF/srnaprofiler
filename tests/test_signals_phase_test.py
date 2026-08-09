@@ -101,8 +101,9 @@ def _raw_pvalue(positions, start, phase, cycles):
     return _phase_window(sorted(positions), start, phase, cycles).pvalue
 
 
-def test_result_carries_what_the_effect_size_needs():
-    """The hypergeometric inputs are discarded today, and e_phase needs them."""
+def test_hypergeometric_inputs_are_still_reported():
+    """draws/observed/null_frac have no production reader any more (e_phase
+    is built from `number` alone) but stay on PhaseResult for diagnostics."""
     pos = [(1000 + c * 21, 4.0) for c in range(8)]
     r = phase_test(pos, region_start=1000, phase_length=21, cycles=11)
     assert r.draws > 0

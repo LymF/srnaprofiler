@@ -194,7 +194,7 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
         r.e_pingpong = effect_strength(overlap_counts.get(10, 0), total_pairs,
                                        (sum(bg) / len(bg)) / total_pairs)
 
-    if r.dicer_call != "N":
+    if r.dicer_call != "N" and int(r.dicer_call) > 0:
         pl = int(r.dicer_call)
         # Only reads of the phase length carry the register (as PhasiHunter).
         in_phase_len = [(p, w) for p, w, L in phase_positions if L == pl]
