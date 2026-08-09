@@ -69,14 +69,24 @@ intervalo largo) e **0,810** em PHAS (IC 95% [0,736, 0,879]).
 
 ### Denominador: por que a constante da janela, e não o locus
 
-Duas alternativas foram medidas e **reprovadas**:
+Duas alternativas foram medidas e **reprovadas**. Ambas saem de
+`extras/experiment_phase_statistic.py`, junto com a variante escolhida — rodar o script
+reproduz a tabela inteira:
 
-- **Normalizar pelos ciclos do próprio locus** (`phase_number / ciclos_ocupados`): AUC cai
-  para 0,647 (TAS) e 0,504 (PHAS). Os TAS têm janela de 10 ciclos contra 5 dos controles, e
-  dividir pelo tamanho da janela joga fora justamente o que discrimina.
-- **`p0` empírico dos outros 20 registros**, análogo ao nulo empírico do ping-pong: sai
-  **invertido**. O fundo mediano é 0,201 nos TAS contra 0,050 nos controles, porque locus
-  denso tem alguma cobertura em todo registro; subtraí-lo penaliza o positivo.
+| variante | AUC TAS | AUC PHAS |
+|---|---|---|
+| `e_window` — ciclos em registro / 11 (**escolhida**) | **0,826** | **0,769** |
+| `e_locus` — ciclos em registro / ciclos do próprio locus | 0,610 | 0,593 |
+| `e_locus_bg` — o mesmo, com `p0` empírico dos outros 20 registros | 0,647 | 0,504 |
+
+- **Normalizar pelos ciclos do próprio locus** joga fora justamente o que discrimina: os TAS
+  abrangem 10 ciclos contra 5 dos controles, então dividir pelo tamanho do locus apaga a
+  diferença.
+- **`p0` empírico dos outros 20 registros**, análogo ao nulo empírico do ping-pong, sai
+  **invertido**: o fundo mediano é **0,201** nos TAS contra **0,050** nos controles, porque
+  locus denso tem alguma cobertura em todo registro. Subtraí-lo penaliza exatamente o
+  positivo. É a diferença de contexto com o ping-pong, onde o fundo de offsets não cresce
+  com o sinal.
 
 O denominador constante tem uma consequência deliberada: um locus que abrange 4 ciclos nunca
 passa de 4/11. Isso é correto — evidência de fase é uma **corrida** de ciclos consecutivos, e

@@ -514,6 +514,12 @@ p-valor intocados. AUC do `score` (`extras/validate_phase_evidence.py`, controle
 `distinct_seqs`): 0,618 → 0,861 em TAS (IC 95% bootstrap [0,738, 0,955], só 12 positivos),
 0,639 → 0,810 em PHAS (IC 95% [0,736, 0,879]).
 
+Os denominadores alternativos que foram reprovados — normalizar pelos ciclos do próprio locus
+(0,610/0,593) e a mesma coisa com `p₀` empírico dos outros 20 registros (0,647/0,504, que sai
+invertido porque locus denso tem fundo em todo registro) — estão em
+`extras/experiment_phase_statistic.py` junto com a variante escolhida, então a tabela inteira
+se reproduz rodando o script.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram

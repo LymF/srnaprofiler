@@ -5,12 +5,12 @@ against controls matched by distinct_seqs: the count of cycles in register is
 the best discriminator available (AUC 0.826 / 0.769), the current p-value is at
 chance (0.560 / 0.481) and the abundance ratio is worse than a coin (0.415).
 
-Two alternative normalisations were tried and set aside as a recorded design
-decision (not reproduced by any script in this repo): dividing the count by
-the locus's own occupied cycles instead of the fixed window (AUC 0.647/0.504,
-because positives simply span more cycles than their controls), and an
-empirical p0 from the other 20 registers (comes out inverted, because a dense
-locus has background coverage everywhere).
+Two alternative normalisations were measured and rejected, both reproducible
+with extras/experiment_phase_statistic.py: dividing the count by the locus's
+own occupied cycles instead of the fixed window (AUC 0.610/0.593, because the
+positives simply span more cycles than their controls), and the same with an
+empirical p0 from the other 20 registers (0.647/0.504 -- it runs inverted,
+since a dense locus has background coverage in every register).
 """
 import pytest
 
@@ -56,7 +56,7 @@ def test_the_denominator_is_the_window_not_the_locus():
     """A 3-cycle locus must not score like a 3-cycle run inside a long one.
 
     Normalising by the locus's own cycles was measured and rejected: it drops
-    the AUC from 0.826 to 0.647, because a TAS spans 10 cycles and its matched
+    the AUC from 0.826 to 0.610, because a TAS spans 10 cycles and its matched
     control spans 5.
     """
     r = build_record(("c", 0, 400), _in_register(3), 1_000_000, CFG)

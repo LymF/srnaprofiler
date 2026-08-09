@@ -13,11 +13,15 @@ Candidates, all on the same window the current test picks:
   perm_ratio   the same fraction, but as a permutation p-value
   perm_score   permutation p of phase_score (ratio x cycles x ln(mass))
   perm_number  permutation p of the number of cycles in the dominant register
+  e_window     cycles in register over the window's 11 -- the variant that shipped
+  e_locus      cycles in register over the LOCUS's own occupied cycles (rejected)
+  e_locus_bg   the same, with p0 estimated from the other 20 registers (rejected)
 
 The permutation keeps the abundances and the number of reads and throws the
 positions uniformly over the window, so it prices in the selection of the
 maximum over 21 registers -- which is what no test here or in the field does.
 """
+import math
 import os
 import sys
 from collections import defaultdict
@@ -29,6 +33,7 @@ import pysam
 sys.path.insert(0, "/home/lucas/srnaprofiler")
 from samio import read_region_handle, prefers_xm_as_nh
 from signals import phase_test, phase_metrics
+from evidence import effect_strength
 
 BAM = "/mnt/d/srnaprofiler-teste/plant/classify/at_ncrna.sorted.bam"
 TSV = "/mnt/d/srnaprofiler-teste/plant/classify/at_ncrna_org.clusters.tsv"
@@ -132,6 +137,42 @@ def permutation_pvalues(win, region_start, phase_len, win_start):
                 perm_number=p(numbers, obs["number"]))
 
 
+def denominator_variants(win, region_start, phase_len):
+    """The three ways of normalising the count of cycles in register.
+
+    e_window is what shipped: the denominator is the window's fixed 11 cycles.
+    e_locus divides by the cycles the locus itself spans, and e_locus_bg also
+    subtracts a null estimated from the other 20 registers -- the empirical-null
+    pattern that works for ping-pong. Both were rejected on these numbers.
+    """
+    if not win:
+        return dict(e_window=0.0, e_locus=0.0, e_locus_bg=0.0)
+
+    cyc_by_reg = defaultdict(set)
+    mass = defaultdict(float)
+    for pos, w in win:
+        reg = (pos - region_start) % phase_len
+        cyc_by_reg[reg].add((pos - region_start) // phase_len)
+        mass[reg] += w
+
+    dom = max(mass, key=mass.get)
+    k = len(cyc_by_reg[dom])
+
+    span = max(pos for pos, _ in win) - min(pos for pos, _ in win) + 1
+    own_cycles = max(1, min(CYCLES, math.ceil(span / phase_len)))
+
+    others = [len(cyc_by_reg[g]) / own_cycles
+              for g in range(phase_len) if g != dom]
+    p0_bg = float(np.mean(others)) if others else 0.0
+
+    return dict(
+        e_window=effect_strength(min(k, CYCLES), CYCLES, 1 / phase_len),
+        e_locus=k / own_cycles,
+        e_locus_bg=effect_strength(k, own_cycles, min(p0_bg, 0.99)),
+        p0_bg=round(p0_bg, 4),
+    )
+
+
 def load_intervals():
     tas = pd.read_csv(TAS_BED, sep="\t", comment="#",
                       names=["chrom", "start", "end", "name"])
@@ -193,17 +234,19 @@ def main():
                 win, wstart = best_window(p, int(r.start), PHASE)
                 stats = observed_stats(win, int(r.start), PHASE)
                 perm = permutation_pvalues(win, int(r.start), PHASE, wstart)
+                variants = denominator_variants(win, int(r.start), PHASE)
                 rows.append(dict(label=label, name=str(r["name"]),
                                  is_tas=bool(r.in_tas), reads=r.reads,
                                  distinct=r.distinct_seqs,
                                  hyper=r.phase_pvalue, ratio=stats["ratio"],
-                                 number=stats["number"], **perm))
+                                 number=stats["number"], **perm, **variants))
     out = pd.DataFrame(rows)
     out.to_csv("phase_experiment.csv", index=False)
     print(f"\n{len(out)} loci avaliados\n")
 
-    def auc(col, higher_is_better=False):
-        a = out[out.label == "pos"][col].values
+    def auc(col, higher_is_better=False, tas_only=False):
+        rows_pos = out[out.is_tas] if tas_only else out[out.label == "pos"]
+        a = rows_pos[col].values
         b = out[out.label == "neg"][col].values
         if len(a) == 0 or len(b) == 0:
             return float("nan")
@@ -212,9 +255,14 @@ def main():
         ties = (a[:, None] == b[None, :]).sum()
         return (wins + 0.5 * ties) / (len(a) * len(b))
 
-    print(f"{'estatistica':14} {'AUC':>6}  {'recall pos @ FPR 5%':>20}")
+    # The TAS column is the curated truth; the PHAS column is larger but
+    # inherits however liberal sRNAminer was when it produced the annotation.
+    print(f"{'estatistica':14} {'AUC TAS':>8} {'AUC PHAS':>9}  "
+          f"{'recall PHAS @ FPR 5%':>21}")
     for col, hib in [("hyper", False), ("ratio", True), ("perm_ratio", False),
-                     ("perm_score", False), ("perm_number", False)]:
+                     ("perm_score", False), ("perm_number", False),
+                     ("number", True), ("e_window", True), ("e_locus", True),
+                     ("e_locus_bg", True)]:
         a = out[out.label == "pos"][col].values
         b = out[out.label == "neg"][col].values
         if hib:
@@ -223,7 +271,15 @@ def main():
         else:
             thr = np.quantile(b, 0.05)
             rec = (a < thr).mean()
-        print(f"{col:14} {auc(col, hib):6.3f}  {rec*100:19.1f}%")
+        print(f"{col:14} {auc(col, hib, tas_only=True):8.3f} "
+              f"{auc(col, hib):9.3f}  {rec*100:20.1f}%")
+
+    # Why the empirical null fails here, unlike for ping-pong: it runs the wrong
+    # way. A phased locus is dense, so every register catches some coverage, and
+    # subtracting that background penalises exactly the loci it should reward.
+    print(f"\np0 empirico (cobertura media dos outros 20 registros): "
+          f"TAS {out[out.is_tas].p0_bg.median():.3f}, "
+          f"controles {out[out.label == 'neg'].p0_bg.median():.3f}")
 
     print("\nnos 8 TAS experimentais (p <= 0.01, ou ratio no top-5% dos controles):")
     t = out[out.is_tas]
