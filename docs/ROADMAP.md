@@ -559,6 +559,59 @@ de miRNA saíam do numerador e ficavam no denominador. Corrigido em
 corolário desconfortável: o **0,861** citado no design da evidência de fase estava inflado por
 esses mesmos 22 controles valendo score 0. O número comparável é **0,807**.
 
+**A-arroz. Terceira espécie, e o primeiro teste de recall do PHAS24 (2026-08-09)**
+
+`Oryza_sativa`, antera de meiose tardia selvagem (`DRR076316`, 16,7 M reads brutas), genoma e
+anotação do sRNAanno — que serve o próprio genoma, então as coordenadas batem por construção.
+Referências: **804 PHAS24** e **2.595 PHAS21**.
+
+**Montagem conferida antes de usar, não depois.** O miRBase serve `osa` em MSU7 e o genoma vem
+do sRNAanno; `extras/check_mirbase_assembly.py` (novo) confirmou **588/592 (99,3%)** de
+precursores cujo sequência genômica bate exatamente. Ele casa contig por **conteúdo**, não por
+nome, porque o mesmo cromossomo é `chr1`, `Chr1` ou `NC_003070.9` conforme a fonte. Validado
+antes nos dois casos de resposta conhecida: 326/326 (TAIR10) e 258/258 (Release 6).
+
+**O filtro de Rfam funcionou num organismo fora do desenho dele** — que era a alegação inteira
+do item A2b-pre. Removeu **56,4%** das reads (contra 41,5% em Arabidopsis e 31,0% em
+Drosophila) e deixou os dois picos de Dicer **enriquecidos**:
+
+| nt | antes | depois |
+|---|---|---|
+| 21 | 22,96% | **42,09%** |
+| 24 | 15,77% | **28,02%** |
+| 18–20, 22–23, 25–31 | — | todos caem |
+
+Juntos, 21+24 vão de 38,7% para **70,1%** da biblioteca. Se estivesse cortando sinal, os picos
+cairiam junto.
+
+**A classe `phasiRNA24` fecha o par de controles.**
+
+| classe | não-review | em anotação | precisão | fundo | enriquecimento |
+|---|---|---|---|---|---|
+| `phasiRNA24` | 231 | 220 | **95,2%** | 7,2% | **13,2×** |
+| `phasiRNA` (21 nt) | 5.711 | 5.178 | **90,7%** | 19,7% | 4,6× |
+
+Somado ao **zero falso positivo em Arabidopsis** (que não tem DCL5), isso é o par que nenhuma
+espécie sozinha dava: a classe não dispara onde a via não existe e acerta 95% onde ela existe.
+O `w_phase: 4.0` e o `phase_on: cycles`, que não puderam ser calibrados contra verdade, passam
+no teste que faltava.
+
+**Recall de 25,1% (202/804), com causa medida — profundidade, não regra.** Os PHAS24
+recuperados têm **1.200 reads** medianas e 9 ciclos em registro; os 2.102 loci em PHAS24 que
+chamamos `hcsiRNA` têm **23 reads** e 2 ciclos. Com 23 reads não há corrida para ver. A
+referência do sRNAanno é construída sobre **múltiplas bibliotecas** (o critério `Lib_Num` do
+código deles); esta corrida tem uma, com 4,5 M reads após o filtro.
+
+**Lição sobre o `--mincov` em RPM.** Ele transfere o limiar *relativo* mas **não o poder
+estatístico**: 1 RPM são 4 reads numa biblioteca de 4,5 M e 20 numa de 19,9 M. Resultado em
+arroz: mediana de 14,5 reads/locus (contra 120) e `review` em **56,4%** (contra 3,3%), com
+28,3% dos loci abaixo do `min_reads`. Não é a calibração de planta que não transfere — é a
+profundidade. Para biblioteca rasa, subir `--mincov`.
+
+*Pendência do teste:* a série `DRR0763xx` traz o mutante **`eat1`** nos mesmos estágios. Se a
+chamada de PHAS24 cair no mutante contra o selvagem, é evidência de que medimos a via e não
+artefato de anotação. Controle que não custa nada além de rodar.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
