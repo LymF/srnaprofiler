@@ -198,7 +198,8 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
         pl = int(r.dicer_call)
         # Only reads of the phase length carry the register (as PhasiHunter).
         in_phase_len = [(p, w) for p, w, L in phase_positions if L == pl]
-        res = phase_test(in_phase_len, region_start=start, phase_length=pl)
+        res = phase_test(in_phase_len, region_start=start, phase_length=pl,
+                         lib_size=lib_size)
         r.phase_score, r.phase_number = res.score, res.number
         r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
         r.s_phase = score_from_p(r.phase_pvalue)

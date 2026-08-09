@@ -81,8 +81,15 @@ O offset do dúplex de Dicer é `L − 2` (overhang de 2 nt em 3'), **não** um 
 registro(read) = (5' − início_do_locus) mod L,  com 5' da fita − corrigido em −2
 phase_number   = nº de ciclos ocupados no registro dominante
 phase_ratio    = massa no registro dominante / massa total
-phase_score    = phase_ratio × phase_number × ln(massa no registro)
+phase_score    = phase_ratio × phase_number × ln(massa no registro × 20e6/lib_size)
 ```
+**A massa é normalizada para 20 milhões** (`signals.NORM_LIB_SIZE`), como o
+`PHASMinerCLI --normLibSize 20000000` do sRNAminer. Sem isso o score cresce com a
+profundidade da biblioteca — medido, correlação **0,572** com `log(reads)`: mediana 0,89 em
+loci com <50 reads contra 10,88 acima de 5.000 — e o `phase_x0` do sigmoide vira um limiar da
+biblioteca em que foi calibrado. O 20e6 é o valor deles e também é onde nossa calibração está
+(a biblioteca de planta tem 19,93 M, fator 1,003), então os limiares publicados seguem valendo;
+em Drosophila, que tem 9,66 M, o fator é 2,07.
 
 ---
 

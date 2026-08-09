@@ -53,11 +53,24 @@ def pingpong_zscore(counts, target=10, lo=1, hi=20, min_bg=3, cap=100.0):
 # test can see, how many are in register".
 PHASE_WINDOW_CYCLES = 11
 
+# phase_score takes the logarithm of the in-register mass, so a deeper library
+# raises it with no change in biology (measured: correlation 0.572 with
+# log(reads), median 0.89 below 50 reads against 10.88 above 5000). The mass is
+# rescaled to this reference size first, as sRNAminer does with
+# `--normLibSize 20000000`. The value is theirs, and it also happens to be where
+# our own calibration sits -- the plant library is 19.93M -- so the shipped
+# `phase_x0` keeps its meaning.
+NORM_LIB_SIZE = 20_000_000
 
-def phase_metrics(positions, region_start, phase_length):
+
+def phase_metrics(positions, region_start, phase_length, lib_size=None):
     """PhasiHunter-style phase score: ratio * number * log(abun) at the dominant register.
 
     positions: [(pos5, abundance)]. Register = (pos5 - region_start) % phase_length.
+    lib_size: weighted library size; the mass is rescaled to NORM_LIB_SIZE so the
+    score means the same thing in a shallower or deeper run. Without it the raw
+    mass is used -- there is nothing to normalise by, and inventing a size would
+    be worse than saying so.
     """
     reg_abun = defaultdict(int)
     reg_cycles = defaultdict(set)
@@ -74,7 +87,10 @@ def phase_metrics(positions, region_start, phase_length):
     phase_abun = reg_abun[dom]
     phase_number = len(reg_cycles[dom])
     phase_ratio = phase_abun / total
-    score = phase_ratio * phase_number * math.log(phase_abun) if phase_abun > 0 else 0.0
+    scaled = phase_abun
+    if lib_size:
+        scaled = phase_abun * (NORM_LIB_SIZE / lib_size)
+    score = phase_ratio * phase_number * math.log(scaled) if scaled > 0 else 0.0
     return round(score, 3), phase_number, round(phase_ratio, 3)
 
 
@@ -85,7 +101,8 @@ PhaseResult = namedtuple(
 )
 
 
-def phase_test(positions, region_start, phase_length, cycles=PHASE_WINDOW_CYCLES):
+def phase_test(positions, region_start, phase_length, cycles=PHASE_WINDOW_CYCLES,
+               lib_size=None):
     """Phasing over the best window of `cycles` phase cycles.
 
     positions: [(pos5, abundance)], 5' ends already pooled across strands.
@@ -110,7 +127,7 @@ def phase_test(positions, region_start, phase_length, cycles=PHASE_WINDOW_CYCLES
     window_len = cycles * phase_length
     if span <= window_len:
         return _phase_window(positions, region_start, phase_length,
-                             min(cycles, max(1, -(-span // phase_length))))
+                             min(cycles, max(1, -(-span // phase_length))), lib_size)
     # Sort once and slice each window by binary search: refiltering the whole list
     # per window is O(windows x positions), which is untenable on a large island.
     ordered = sorted(positions)
@@ -124,7 +141,8 @@ def phase_test(positions, region_start, phase_length, cycles=PHASE_WINDOW_CYCLES
         if i == j:
             continue
         tried += 1
-        res = _phase_window(ordered[i:j], region_start, phase_length, cycles)
+        res = _phase_window(ordered[i:j], region_start, phase_length, cycles,
+                            lib_size)
         # Rank by evidence, never by p-value: the hypergeometric rewards
         # near-empty windows, so ranking by p picked the emptiest one.
         if best is None or (res.number, res.score) > (best.number, best.score):
@@ -137,9 +155,10 @@ def phase_test(positions, region_start, phase_length, cycles=PHASE_WINDOW_CYCLES
     return best._replace(pvalue=min(1.0, best.pvalue * tried))
 
 
-def _phase_window(positions, region_start, phase_length, cycles):
+def _phase_window(positions, region_start, phase_length, cycles, lib_size=None):
     """Phasing metrics and p-value for a single window."""
-    score, number, ratio = phase_metrics(positions, region_start, phase_length)
+    score, number, ratio = phase_metrics(positions, region_start, phase_length,
+                                         lib_size)
     window_len = cycles * phase_length
     population = max(2 * window_len - 1, 1)
     successes = max(2 * cycles - 1, 1)
