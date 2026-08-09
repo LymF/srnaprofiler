@@ -692,6 +692,55 @@ do `unique_frac` sugere que boa parte é repetição.
 entulho multimapeador onde ela quase não existe. Isso é limitação a documentar, não a esconder:
 `unique_frac` já está no TSV e separa os dois grupos.
 
+**A-tribolium. Quarto organismo, e a montagem quase inverteu a conclusão (2026-08-09)**
+
+`Tribolium castaneum`, oócitos (`SRR1687586`, 14,5 M reads), genoma Tcas3 (Ensembl Metazoa
+release 34 — a Tcas5.2 atual usa `LG*` e tem **outros tamanhos**: ChLG3 tem 38,8 Mb contra
+31,4 Mb). Referência: 148 clusters de piRNA do piRNAclusterDB, que são predições do proTRAC.
+
+**miRBase `tca.gff3` dá HTTP 500 em todas as rotas.** Contornado alinhando os 345 hairpins do
+`hairpin.fa` ao nosso próprio genoma: 345/345 alinharam, 320 com posição única viraram o
+`--mirna-loci`. Derivar as coordenadas é **melhor** que baixá-las — não há risco de montagem
+por construção.
+
+**As coordenadas publicadas dos clusters não pertencem a nenhuma montagem obtenível, e o
+resultado errado parecia respeitável:**
+
+| | GTF publicado | remapeado por sequência |
+|---|---|---|
+| clusters testáveis | 61 (só `ChLG`) | **146** |
+| recall | 31/61 (50,8%) | **146/146 (100%)** |
+| clusters com zero reads | 27/61 | **0** |
+| massa de piRNA dentro | 1,1% | **58,3%** |
+| enriquecimento | ~1,2× | **29,7×** |
+
+A prova foi por conteúdo: nas coordenadas do GTF, a Tcas3 contém sequência **completamente
+diferente** — 0 de 59 batem, e um cluster cai sobre um trecho de N. Os comprimentos coincidem
+exatamente porque vêm das próprias coordenadas, o que é justamente o que faz o erro parecer
+consistente.
+
+`extras/remap_reference_by_sequence.py` (novo) corta as sequências publicadas em pedaços de
+60 nt, mapeia, e deixa o genoma dizer onde cada feature está: **146 de 148**, com desvio
+mediano de **0 bp** entre os pedaços de um mesmo cluster. Os 2 descartados têm âncoras em
+contigs diferentes — rearranjo entre montagens, não chute.
+
+**Sem essa checagem, a conclusão registrada seria "a tool não generaliza para artrópode
+não-modelo", com números de aparência normal.** Enriquecimento de **29,7×** contra 5,1× medido
+em Drosophila.
+
+**Classes de artrópode:**
+
+| classe | n | tamanho | 1U | frac_top | esperado |
+|---|---|---|---|---|---|
+| `piRNA` | 11.917 | **28 nt** | **0,860** | 0,488 | 24–31 nt, 1U alto ✓ |
+| `siRNA` | 695 | 21 nt | 0,237 | 0,520 | 21 nt, bifita ✓ |
+| `miRNA` | 206 | 22 nt | **0,919** | 0,869 | 5'U alto, uni-fita ✓ |
+
+**Aberto:** `pingpong_frac` mediano **0,000** nas três classes, contra 0,059 (flamenco) e 0,132
+(42AB) em Drosophila. Oócito é piRNA materno e a via secundária pode estar de fato ausente,
+mas isso não foi medido — não escrever conclusão sobre ping-pong em Tribolium antes de
+investigar.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
