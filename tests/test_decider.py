@@ -79,6 +79,12 @@ def test_pirna_defining_evidence_is_1u_or_pingpong():
     r_1u.e_1u, r_1u.e_pingpong = 0.8, 0.0
     r_pp = ClusterRecord(chrom="c", start=0, end=100, reads=500, dicer_call="27")
     r_pp.e_1u, r_pp.e_pingpong = 0.0, 0.8
-    spec = _cfg()["classes"]["piRNA"]
-    assert RuleScorer.defining_scores(spec, r_1u) == [0.8]
-    assert RuleScorer.defining_scores(spec, r_pp) == [0.8]
+    cfg = _cfg()
+    spec = cfg["classes"]["piRNA"]
+    # An instance now: `size` evidence is scored against the class, so the
+    # lookup needs the config, not just the record.
+    scorer = RuleScorer(cfg)
+    # The OR slot is the first entry; `size` follows it and scores 0 here,
+    # since these bare records carry no size_counts.
+    assert scorer.defining_scores(spec, r_1u)[0] == 0.8
+    assert scorer.defining_scores(spec, r_pp)[0] == 0.8

@@ -17,6 +17,13 @@ decision:
   # signal (see the calibration table in the README) — filter noise with
   # --mincov instead.
   min_reads: 10
+# Size is a defining evidence, not only a weight: `w_size` picks the class, but
+# without `size` in this list the reported `score` ignores it, so a locus with a
+# perfect size profile and a weak signature scored the same as one with no
+# evidence at all. The score is the minimum over this list, so adding size makes
+# it strictly more conservative: it now says the size fits AND the signature is
+# there. The null is the window's share of the 18-35 nt range the extractor
+# keeps, so a locus with no size preference scores 0.
 classes:
   siRNA:
     size: {lo: 20, hi: 22}
@@ -24,7 +31,7 @@ classes:
     w_fractop_mid: 1.0        # rewards FracTop ~0.5 (double-stranded)
     w_pingpong_penalty: 1.0   # penalizes ping-pong (size-gated, like w_pingpong)
     w_phase: 0.5
-    defining_evidence: [fractop_bid]
+    defining_evidence: [fractop_bid, size]
   piRNA:
     size: {lo: 24, hi: 31}
     w_size: 1.0
@@ -34,4 +41,4 @@ classes:
     w_pingpong: 1.5
     w_1u: 1.0
     w_phase: 0.5
-    defining_evidence: [[1u, pingpong]]
+    defining_evidence: [[1u, pingpong], size]

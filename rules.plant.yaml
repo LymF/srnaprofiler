@@ -34,6 +34,13 @@ decision:
   review_confidence: 0.43
   min_margin: 0.15
   min_reads: 10
+# Size is a defining evidence, not only a weight: `w_size` picks the class, but
+# without `size` in this list the reported `score` ignores it, so a locus with a
+# perfect size profile and a weak signature scored the same as one with no
+# evidence at all. The score is the minimum over this list, so adding size makes
+# it strictly more conservative: it now says the size fits AND the signature is
+# there. The null is the window's share of the 18-35 nt range the extractor
+# keeps, so a locus with no size preference scores 0.
 classes:
   # DCL4 products from RDR6 dsRNA: 21 nt, strongly phased (that is the defining
   # evidence), 5'U, loaded into AGO1.
@@ -58,7 +65,7 @@ classes:
     phase_x0: 5.0
     phase_scale: 1.5
     w_1u: 0.3
-    defining_evidence: [phase]
+    defining_evidence: [phase, size]
   # DCL3 products from RDR2 dsRNA: 24 nt, 5'A, AGO4/RdDM. Repeat- and
   # TE-derived, dual-strand, and NOT phased.
   hcsiRNA:
@@ -66,11 +73,11 @@ classes:
     w_size: 1.0
     w_5a: 1.0
     w_fractop_mid: 0.5
-    defining_evidence: [5a]
+    defining_evidence: [5a, size]
   # Everything else double-stranded in the DCL4/DCL2 range: nat-siRNA, viral
   # siRNA, secondary siRNA without a clean register.
   siRNA:
     size: {lo: 21, hi: 22}
     w_size: 1.0
     w_fractop_mid: 1.0
-    defining_evidence: [fractop_bid]
+    defining_evidence: [fractop_bid, size]

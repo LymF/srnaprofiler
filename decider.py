@@ -1,6 +1,9 @@
 """Pluggable decider. v1: RuleScorer (transparent scoring model)."""
 import math
+
 import yaml
+
+from evidence import effect_strength
 
 
 def load_config(path):
@@ -29,7 +32,7 @@ def _mid(frac_top, sigma=0.15):
 
 class RuleScorer:
     # Only names with an e_* attribute on ClusterRecord; others silently score 0.0.
-    KNOWN_EVIDENCE = ("1u", "5a", "fractop_bid", "pingpong", "phase")
+    KNOWN_EVIDENCE = ("1u", "5a", "fractop_bid", "pingpong", "phase", "size")
 
     def __init__(self, config):
         self.cfg = config
@@ -42,6 +45,35 @@ class RuleScorer:
                         raise KeyError(
                             f"{name}: unknown evidence {ev!r} in "
                             f"defining_evidence; known: {', '.join(self.KNOWN_EVIDENCE)}")
+
+    def size_strength(self, spec, record):
+        """How much of the locus sits in this class's size window, as a strength.
+
+        The only class-dependent evidence: the other e_* live on the record
+        because they mean the same thing for every class, but a size only means
+        something against a window. Same shape as the rest -- Wilson lower bound
+        of p_hat over n, rescaled by the room the null leaves.
+
+          p_hat = mass in [lo, hi] / mass in [dicermin, dicermax]
+          n     = distinct_seqs
+          p0    = (hi - lo + 1) / (dicermax - dicermin + 1)
+        """
+        size = (spec or {}).get("size")
+        if not size or "lo" not in size or "hi" not in size:
+            return 0.0
+        counts = getattr(record, "size_counts", None) or {}
+        total = sum(counts.values())
+        n = getattr(record, "distinct_seqs", 0)
+        if total <= 0 or n <= 0:
+            return 0.0
+        ext = (self.cfg.get("extractor", {}) or {})
+        dmin, dmax = ext.get("dicermin", 18), ext.get("dicermax", 35)
+        width = dmax - dmin + 1
+        if width <= 0:
+            return 0.0
+        inside = sum(c for L, c in counts.items() if size["lo"] <= L <= size["hi"])
+        p0 = (size["hi"] - size["lo"] + 1) / width
+        return effect_strength(round((inside / total) * n), n, p0)
 
     def _size(self, record):
         return int(record.dicer_call) if record.dicer_call != "N" else None
@@ -93,8 +125,7 @@ class RuleScorer:
             s += t; terms["phase"] = round(t, 3)
         return s, terms
 
-    @staticmethod
-    def defining_scores(spec, record):
+    def defining_scores(self, spec, record):
         """Evidence scores the class is defined by, in config order.
 
         A nested list is an OR slot: score it as the max over its members
@@ -107,10 +138,16 @@ class RuleScorer:
         scores = []
         for name in spec.get("defining_evidence", []):
             if isinstance(name, list):
-                scores.append(max(getattr(record, f"e_{n}", 0.0) for n in name))
+                scores.append(max(self._strength(n, spec, record) for n in name))
             else:
-                scores.append(getattr(record, f"e_{name}", 0.0))
+                scores.append(self._strength(name, spec, record))
         return scores
+
+    def _strength(self, name, spec, record):
+        """`size` is computed against the class; every other name lives on the record."""
+        if name == "size":
+            return self.size_strength(spec, record)
+        return getattr(record, f"e_{name}", 0.0)
 
     def decide(self, record):
         scores = {}

@@ -141,6 +141,12 @@ onde `L95` é o limite inferior de Wilson a 95%. Fica em `[0,1]`: **0,61 signifi
 efeito está a 61% do caminho entre o nulo e o máximo, com 95% de confiança**. Não são
 colunas do TSV — vivem no `ClusterRecord` e alimentam o `score`.
 
+**`e_size` é a única dependente de classe.** As outras significam o mesmo para qualquer classe
+e por isso são calculadas uma vez no `features`; tamanho só significa alguma coisa contra uma
+janela, então é calculada no `RuleScorer` (`size_strength`). Ela entrou no `defining_evidence`
+de todas as classes dos dois configs: o `w_size` já escolhia a classe, mas o `score` — a coluna
+que diz o quanto a chamada é confiável — ignorava o tamanho por completo.
+
 | força | p̂ | n | p₀ |
 |---|---|---|---|
 | `e_1u` | `pct_1u` | `distinct_seqs` | composição do DNA (T) |
@@ -148,6 +154,7 @@ colunas do TSV — vivem no `ClusterRecord` e alimentam o `score`.
 | `e_fractop_bid` | fita minoritária | `distinct_seqs` | 0,10 |
 | `e_pingpong` | `counts[10] / Σcounts` | `Σcounts` | taxa de fundo / `Σcounts` |
 | `e_phase` | `ciclos em registro / 11` | `11` (a janela) | `1 / phase_length` |
+| `e_size` | massa em `[lo, hi]` da classe / massa na janela | `distinct_seqs` | largura da janela da classe / largura de `dicermin..dicermax` |
 
 ---
 
