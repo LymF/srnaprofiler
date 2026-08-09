@@ -19,8 +19,12 @@ import pandas as pd
 sys.path.insert(0, __file__.rsplit("/", 2)[0])
 from decider import RuleScorer, load_config  # noqa: E402
 
+# phase_number is here because a class may score phasing by the run in register
+# (`phase_on: cycles`) instead of by phase_score. Without it such a class scores
+# zero and the replay reports it as extinct -- an artefact of the replay, not a
+# rule change.
 FEATURES = ("dicer_call", "frac_top", "pct_1u", "pct_5a", "pingpong_frac",
-            "phase_score", "reads")
+            "phase_score", "phase_number", "reads")
 
 
 def replay(df, config):

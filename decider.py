@@ -114,8 +114,14 @@ class RuleScorer:
         size = self._size(record)
         edge = self.shape.get("size_edge", 3.0)
         sigma = self.shape.get("fractop_sigma", 0.15)
-        # Size gate: dual-strand 21-nt loci hit the 10-nt overlap by geometry, so
-        # ping-pong must not outvote an unambiguous size call.
+        # Size gate: every evidence term is multiplied by it, so a signal only
+        # counts where the size already fits the class. Ping-pong and phasing
+        # were gated from the start -- dual-strand 21-nt loci hit the 10-nt
+        # overlap by geometry -- but 5'U, 5'A and the dual-strand term were not,
+        # and each of them was carrying loci into a class whose window they sit
+        # outside: 14.5% of Drosophila piRNA (675 of them at 18-20 nt, held by a
+        # 5'U alone), 27.3% of rice siRNA, 12.1% of rice hcsiRNA. The one class
+        # whose terms were all gated, phasiRNA24, sat at 0.5%.
         gate = (_window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
                 if "size" in spec else 1.0)
         s = 0.0
@@ -127,15 +133,15 @@ class RuleScorer:
             t = spec["w_pingpong"] * self._pp_signal(record) * gate
             s += t; terms["pingpong"] = round(t, 3)
         if "w_1u" in spec:
-            t = spec["w_1u"] * record.pct_1u
+            t = spec["w_1u"] * record.pct_1u * gate
             s += t; terms["1u"] = round(t, 3)
         if "w_5a" in spec:
             # 5'A -> AGO4 in plants (24-nt heterochromatic siRNA); the counterpart
             # of the 5'U/AGO1 route scored by w_1u. Unused by the arthropod config.
-            t = spec["w_5a"] * getattr(record, "pct_5a", 0.0)
+            t = spec["w_5a"] * getattr(record, "pct_5a", 0.0) * gate
             s += t; terms["5a"] = round(t, 3)
         if "w_fractop_mid" in spec:
-            t = spec["w_fractop_mid"] * _mid(record.frac_top, sigma=sigma)
+            t = spec["w_fractop_mid"] * _mid(record.frac_top, sigma=sigma) * gate
             s += t; terms["fractop_mid"] = round(t, 3)
         if "w_pingpong_penalty" in spec:
             t = spec["w_pingpong_penalty"] * self._pp_signal(record) * gate
