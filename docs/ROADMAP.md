@@ -495,8 +495,19 @@ p-valor, que **não** usa — por isso quase nenhum passa. Os dois medem coisas 
 
 **Consequência para o resto:** enquanto isto não for consertado, não dá para usar `score`
 para negar rótulo (ver A1), porque 4 dos 13 loci em TAS têm score 0 — seriam descartados
-loci reais. Precisa de spec própria: um teste de fase que incorpore abundância mantendo a
-calibração que o nulo por permutação garante hoje.
+loci reais.
+
+**Resolvido (2026-08-08), spec em `docs/superpowers/specs/2026-08-08-phase-evidence-design.md`.**
+A premissa acima — que faltava incorporar abundância — foi medida e rejeitada: o
+`phase_ratio` cru (razão de abundância no registro) discrimina TAS/PHAS a AUC 0,415, pior
+que moeda; e `phase_score` (que já usa abundância via `w_phase`) parece bom em TAS isolado
+(0,754) só porque esses loci têm ~7x mais cobertura que os controles não pareados — contra
+controles casados por `distinct_seqs` cai para 0,526. O que faltava não era abundância, era
+medir a *extensão* da corrida em registro em vez da surpresa estatística. `e_phase` passou a
+ser `min(ciclos_em_registro, 11) / 11` com `p₀ = 1/phase_length` (antes era
+`observados/sorteios` com `p₀ = sucessos/população`), mantendo o `phase_test` e o p-valor
+intocados. AUC do `score` (`extras/validate_phase_evidence.py`, controles casados por
+`distinct_seqs`): 0,618 → 0,861 em TAS, 0,639 → 0,810 em PHAS.
 
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 

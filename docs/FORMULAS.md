@@ -140,7 +140,7 @@ colunas do TSV — vivem no `ClusterRecord` e alimentam o `score`.
 | `e_5a` | `pct_5a` | `distinct_seqs` | composição do DNA (A) |
 | `e_fractop_bid` | fita minoritária | `distinct_seqs` | 0,10 |
 | `e_pingpong` | `counts[10] / Σcounts` | `Σcounts` | taxa de fundo / `Σcounts` |
-| `e_phase` | `observados / sorteios` | `sorteios` | `sucessos / população` |
+| `e_phase` | `ciclos em registro / 11` | `11` (a janela) | `1 / phase_length` |
 
 ---
 
@@ -212,8 +212,12 @@ Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas n
   densidade. `evidence.density_score` continua no código, sem estar ligado.
 - **A escala mudou**: um `score` de 50 na escala antiga vira ~0,7 na escala de effect strength,
   então corridas anteriores a 2026-08-08 não comparam com as novas.
-- **`e_phase` é otimista**: a janela é escolhida por maximizar evidência, e o Bonferroni corrige
-  significância, não tamanho de efeito.
+- **`e_phase` mede a extensão da fase, não a surpresa.** É a fração dos 11 ciclos da janela que
+  está no registro dominante — a corrida de cortes processivos é a assinatura do mecanismo.
+  Medido contra controles casados por `distinct_seqs`: AUC 0,826 (TAS experimental) e 0,769
+  (PHAS anotado), contra 0,560/0,481 do p-valor dos mesmos dados e 0,415 da razão de
+  abundância. Ressalvas: a janela é escolhida por maximizar evidência, e o `p₀ = 1/phase_length`
+  é anticonservador porque o registro reportado é o máximo entre 21.
 - **`e_pingpong` é otimista**: o `n` são pares, que escalam com o quadrado da cobertura e não
   são ensaios independentes.
 - **`e_fractop_bid` herda o ruído do `s_fractop_bid`**: a fração minoritária separa uni-fita de
