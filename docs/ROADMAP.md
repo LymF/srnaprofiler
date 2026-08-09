@@ -822,6 +822,59 @@ e o locus cai no piRNA por falta de alternativa. É a reabertura exata do bug co
 com o 1U. Não unificar também é aceitável, desde que fique como decisão documentada e não
 acidente de duas linhas escritas em momentos diferentes. **Nada alterado.**
 
+**A-gate. Todo termo de evidência passa a ser condicionado ao tamanho (2026-08-09)**
+
+`w_pingpong`, `w_pingpong_penalty` e `w_phase` eram multiplicados pelo gate de tamanho da
+própria classe desde 2026-08-01. `w_1u`, `w_5a` e `w_fractop_mid` **não eram**, e cada um estava
+carregando loci para uma classe cuja janela eles não ocupam:
+
+| organismo | classe | fora da janela | termo solto |
+|---|---|---|---|
+| Drosophila | piRNA | **14,5%** | `1u` |
+| | siRNA | 16,3% | `fractop_mid` |
+| Tribolium | siRNA | 22,0% | `fractop_mid` |
+| Arabidopsis | phasiRNA | 20,7% | `1u` |
+| arroz | siRNA | **27,3%** | `fractop_mid` |
+| | hcsiRNA | 12,1% | `5a`, `fractop_mid` |
+| arroz | **`phasiRNA24`** | **0,5%** | **nenhum** |
+
+A última linha é o que provou que o padrão segue o **termo**, não a classe: a `phasiRNA24`,
+criada no mesmo dia com todos os termos já condicionados, fica em 0,5%.
+
+**O grupo pior são 675 loci de Drosophila com 18–20 nt** onde o termo de tamanho e o de
+ping-pong valem **zero** e a chamada de piRNA se apoia inteiramente num 1U de **0,78** — mais
+alto que o 0,70 dos piRNA verdadeiros. 5'U é comum a várias classes de small RNA e só significa
+piRNA junto com o tamanho: a janela vem do que o Piwi carrega, então RNA de 19 nt não é piRNA
+por mais 5'U que tenha. (siRNA mais **longo** é plausível — Dicer varia entre organismos — mas
+piRNA mais **curto** não.)
+
+**Piso intacto nos quatro organismos:**
+
+| organismo | métrica | antes | com gate |
+|---|---|---|---|
+| Drosophila | piC recall / enriquecimento | 85/90 · 7,2× | **85/90 · 7,2×** |
+| Arabidopsis | TAS / miRBase | 6/6 · 242/242 | **6/6 · 242/242** |
+| Tribolium | clusters / enriquecimento | 146/146 · 29,7× | **146/146 · 30,7×** |
+| arroz | precisão PHAS24 / PHAS21 | 95,2% / 90,7% | 92,3% / 90,1% |
+
+**piRNA fora da janela em Drosophila: 3.073 → 1.526**, com 1.554 loci indo para `siRNA` sem
+custar um piC.
+
+*Duas leituras que não são ganho puro, ditas como são:* a precisão de PHAS24 no arroz cai
+95,2% → 92,3% **com a classe crescendo** de 231 para 259 loci — entraram 28 e 20 acertaram, o
+denominador cresceu mais rápido que os acertos, e o recall subiu junto. E o enriquecimento de
+Tribolium sobe 29,7× → 30,7× com 382 loci a menos, o que **seria** a armadilha de denominador de
+sempre — mas o recall ficou em 146/146 e a massa dentro dos clusters subiu em absoluto
+(58,3% → 60,1%), então os removidos estavam mesmo fora.
+
+**Sobra:** os 1.526 restantes em Drosophila são quase todos de 23 nt, onde o decaimento de borda
+ainda dá 0,67 de gate. Atacar isso é mexer no `size_edge`, que afeta todas as classes de uma
+vez — outra decisão, com outra medição.
+
+*Nota de ferramenta:* `extras/simulate_rules.py` não passava `phase_number`, então classes com
+`phase_on: cycles` apareciam **extintas** na simulação. Corrigido — era artefato do replay, e
+por um momento pareceu que o gate matava a `phasiRNA24`.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
