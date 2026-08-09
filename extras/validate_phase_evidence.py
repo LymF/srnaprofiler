@@ -55,9 +55,17 @@ def overlaps(d, iv):
 
 
 def auc(pos, neg):
-    """Probability a positive outranks a control, ties counted as half."""
+    """Probability a positive outranks a control, ties counted as half.
+
+    Missing values are dropped, not compared: a NaN loses every `>` and every
+    `==`, so leaving them in silently deflates the result. miRNA loci report
+    score NA -- they bypass the scorer -- and 22 of them among 66 controls once
+    turned an AUC of 0.861 into 0.543 with nothing having changed in the data.
+    """
     a = np.asarray(pos, dtype=float)
     b = np.asarray(neg, dtype=float)
+    a = a[~np.isnan(a)]
+    b = b[~np.isnan(b)]
     if len(a) == 0 or len(b) == 0:
         return float("nan")
     wins = (a[:, None] > b[None, :]).sum()
@@ -91,6 +99,10 @@ def main(tsv_path):
     ctrl = d.loc[negs]
     print(f"{len(d)} loci 21-nt; {d.in_tas.sum()} on experimental TAS, "
           f"{d.in_phas.sum()} on annotated PHAS; {len(ctrl)} matched controls")
+    n_na = int(d.score.isna().sum()) if "score" in d.columns else 0
+    if n_na:
+        print(f"({n_na} loci report score NA -- they bypassed the scorer -- and are "
+              f"dropped from the AUCs)")
     print(f"\n{'column':14} {'AUC TAS':>8} {'AUC PHAS':>9}")
     for col in ("score", "s_phase", "phase_number", "phase_ratio"):
         if col not in d.columns:

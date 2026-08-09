@@ -520,6 +520,45 @@ invertido porque locus denso tem fundo em todo registro) — estão em
 `extras/experiment_phase_statistic.py` junto com a variante escolhida, então a tabela inteira
 se reproduz rodando o script.
 
+**A-size/A-norm. Tamanho vira evidência, e o phase_score deixa de medir profundidade (2026-08-09)**
+
+Vieram da leitura completa do sRNAminer (`docs/superpowers/specs/2026-08-07-signature-literature-review.md` §6b).
+
+1. **`phase_score` normalizado para 20 M** (`signals.NORM_LIB_SIZE`), como o
+   `PHASMinerCLI --normLibSize 20000000`. Ele é `ratio × number × ln(massa)` sobre massa crua e
+   correlacionava **0,572** com `log(reads)` — mediana 0,89 em loci com <50 reads contra 10,88
+   acima de 5.000 — alimentando um sigmoide cujo `phase_x0` foi calibrado numa biblioteca só.
+   O fator é 1,003 em Arabidopsis (19,93 M, por isso os limiares publicados seguem valendo) e
+   **2,07** em Drosophila (9,66 M).
+2. **`e_size`**: tamanho entrou no `defining_evidence` de todas as classes. O `w_size` já
+   escolhia a classe, mas o `score` ignorava o tamanho — um locus 24 nt de perfil perfeito com
+   5'A fraco reportava o mesmo 0,0 de um locus sem evidência nenhuma. É a **primeira evidência
+   dependente de classe** (as outras vivem no record; tamanho só significa algo contra uma
+   janela), então é calculada no `RuleScorer.size_strength`.
+
+| | Arabidopsis | Drosophila |
+|---|---|---|
+| classe idêntica à corrida anterior | 100,00% | 99,73% |
+| `phase_score` mediano | 1,79 → 1,79 | 1,08 → **1,76** |
+| `score` mediano | 0,134 → 0,135 | 0,473 → **0,207** |
+| piso | TAS 6/6, miRBase 242/242 | **piC 85/90**, miRBase 134/134 |
+| discriminação do `score` (TAS / PHAS) | 0,807 → **0,823** / 0,785 → **0,800** | — |
+
+**As 69 mudanças de classe em Drosophila são todas piRNA→siRNA e nenhuma tem tamanho de
+piRNA** (26 de 19 nt, 23 de 21 nt, 11 de 22 nt — todas fora de 24–31). Eram chamadas pelo
+`w_1u` (1U mediano 0,784) com ping-pong baixo (0,038 contra 0,067). É o resíduo que este
+documento registra desde 2026-08-01, e ele saiu sozinho: a normalização subiu o `phase_score`,
+e o `w_phase` é multiplicado pela janela de tamanho da **própria** classe, então o siRNA
+ganhou onde o piRNA não ganhou.
+
+**Erro de medição registrado.** A primeira leitura desta mudança disse que o `e_size` derrubava
+a discriminação de 0,861 para 0,543. Era artefato: o conserto do score de miRNA (`NA`)
+atravessou uma `auc()` que compara `NaN` com `>`, e `NaN` perde toda comparação — 22 controles
+de miRNA saíam do numerador e ficavam no denominador. Corrigido em
+`extras/validate_phase_evidence.py`, que agora descarta ausentes e **imprime quantos**. O
+corolário desconfortável: o **0,861** citado no design da evidência de fase estava inflado por
+esses mesmos 22 controles valendo score 0. O número comparável é **0,807**.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
