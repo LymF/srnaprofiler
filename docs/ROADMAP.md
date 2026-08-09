@@ -764,6 +764,37 @@ validador (consertado), e agora com o `pingpong_frac` sob a guarda de 10 pares. 
 alterado** — fica registrado: quem agregar `pingpong_frac` precisa filtrar `pingpong_pairs10`
 antes, ou vai medir a fração de loci uni-fita em vez de ping-pong.
 
+**A-pp2. O ping-pong na classificação: correto, com uma inconsistência interna (2026-08-09)**
+
+Verificado em Tribolium, que exercita as duas rotas do `defining_evidence: [[1u, pingpong], size]`
+com 12 mil loci (em Drosophila só havia dois landmarks):
+
+| | n | termo `pingpong` | termo `1u` |
+|---|---|---|---|
+| ping-pong mensurável (≥10 pares) | 3.429 | **1,500** (máximo) | 0,868 |
+| não mensurável | 8.488 | 0,000 | **0,856** |
+
+Onde o ping-pong não pode ser medido, o 1U sustenta: `pct_1u` mediano **0,856**, com 86,6%
+acima de 0,5. E **149 loci têm ping-pong forte com 1U < 0,4** — perdidos se a rota do 1U fosse
+a única. O desenho bimodal está fazendo o que foi desenhado para fazer.
+
+**A inconsistência:** a mesma evidência tem duas guardas diferentes no mesmo arquivo.
+
+```
+features.py:188   pingpong_frac  ->  zerado se total_pairs < 10    (termo de CLASSE)
+features.py:193   e_pingpong     ->  calculado se total_pairs > 0  (evidência do SCORE)
+```
+
+Na faixa de 1–9 pares — **43,5% dos loci de piRNA em Tribolium, 63,9% em Drosophila** — o
+ping-pong conta para o `score` e não conta para a decisão de classe. Duas colunas do mesmo TSV
+discordam sobre se aquele ping-pong existe.
+
+Defensável mas não intencional: 10 pares é piso de ruído sensato para uma **fração** (com 2
+pares, `frac` dá 0,5 por acaso), e o `effect_strength` já desconta incerteza via Wilson, o que
+torna a guarda redundante ali. São duas linhas escritas em momentos diferentes, não uma decisão.
+**Não alterado** — decidir com medição antes, porque unificar mexe na chamada de classe de 44%
+a 64% dos loci de piRNA.
+
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
 `overlap_dup_frac`, `size_purity`, `dicer_call_2` e `unique_frac` são reportadas e não entram
