@@ -171,6 +171,7 @@ margin     = S(1º) − S(2º)
 review     = confidence < review_confidence  OU  margin < min_margin
              OU  reads < min_reads  OU  dicer_call == "N"
 score      = min( e_* das evidências em defining_evidence )     ← 0 se dicer_call == "N"
+             ← NA em miRNA: a classe vem da anotação, não foi pontuada
 e_X        = max(0, (L95(p̂, n) − p₀) / (1 − p₀))              ← L95 = limite inferior de Wilson
 ```
 Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas no topo são

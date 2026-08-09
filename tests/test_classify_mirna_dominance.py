@@ -86,3 +86,25 @@ def test_a_mirna_inside_a_big_cluster_is_carved_into_its_own_locus(tmp_path):
     assert int(mir[0]["start"]) == 1499 and int(mir[0]["end"]) == 1589
     # the flanks survive as their own loci instead of being thrown away
     assert len(rows) >= 3
+
+
+def test_a_carved_mirna_locus_is_marked_unscored():
+    """It never reaches the scorer, so it has no score -- not a score of zero."""
+    from classify import mark_mirna
+    from records import ClusterRecord
+
+    r = ClusterRecord(chrom="chr1", start=100, end=200)
+    mark_mirna([r], {"chr1": [(100, 200)]})
+    assert r.cls == "miRNA"
+    assert r.score is None
+
+
+def test_a_locus_the_mirna_does_not_cover_keeps_its_score():
+    from classify import mark_mirna
+    from records import ClusterRecord
+
+    r = ClusterRecord(chrom="chr1", start=100, end=1100)
+    r.score = 0.7
+    mark_mirna([r], {"chr1": [(100, 150)]})
+    assert r.cls != "miRNA"
+    assert r.score == 0.7

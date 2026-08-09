@@ -93,6 +93,10 @@ def mark_mirna(records, mirna_intervals, min_fraction=0.5):
             r.cls = "miRNA"
             r.confidence = 1.0
             r.review = False
+            # The class comes from the annotation, not from evidence measured
+            # here, so there is nothing to score. Leaving the 0.0 default would
+            # read as "no evidence found", which is a different statement.
+            r.score = None
 
 
 def parse_contig_list(value):

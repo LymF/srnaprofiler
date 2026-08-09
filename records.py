@@ -44,7 +44,7 @@ class ClusterRecord:
     e_fractop_bid: float = 0.0
     e_pingpong: float = 0.0
     e_phase: float = 0.0
-    score: float = 0.0
+    score: Optional[float] = 0.0   # None when the class bypassed the scorer
     gc: float = 0.0
     # biogenesis
     pingpong_z: float = 0.0

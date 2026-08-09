@@ -14,6 +14,8 @@ _COLS = [
 
 def _cell(value):
     """Serializes a field for the TSV, neutralizing TAB/newline that would break the row."""
+    if value is None:
+        return "NA"
     return str(value).replace("\t", " ").replace("\n", " ")
 
 
@@ -28,10 +30,13 @@ def write_gff3(records, path):
     with open(path, "w") as fh:
         fh.write("##gff-version 3\n")
         for r in records:
-            attrs = f"ID={r.name};score={r.score};confidence={r.confidence};review={r.review}"
+            # GFF3 column 6 takes a number or ".", never a string.
+            score_col = "." if r.score is None else str(r.score)
+            attrs = (f"ID={r.name};score={'NA' if r.score is None else r.score};"
+                     f"confidence={r.confidence};review={r.review}")
             fh.write("\t".join([
                 r.chrom, "srnaprofiler", r.cls or "unclassified",
-                str(r.start + 1), str(r.end), str(r.score),
+                str(r.start + 1), str(r.end), score_col,
                 r.strand_call, ".", attrs,
             ]) + "\n")
 
