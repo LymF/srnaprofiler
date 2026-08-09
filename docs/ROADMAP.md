@@ -736,10 +736,33 @@ em Drosophila.
 | `siRNA` | 695 | 21 nt | 0,237 | 0,520 | 21 nt, bifita ✓ |
 | `miRNA` | 206 | 22 nt | **0,919** | 0,869 | 5'U alto, uni-fita ✓ |
 
-**Aberto:** `pingpong_frac` mediano **0,000** nas três classes, contra 0,059 (flamenco) e 0,132
-(42AB) em Drosophila. Oócito é piRNA materno e a via secundária pode estar de fato ausente,
-mas isso não foi medido — não escrever conclusão sobre ping-pong em Tribolium antes de
-investigar.
+**Ping-pong: a primeira leitura estava errada, e o erro foi de análise, não da tool.**
+`pingpong_frac` mediano 0,000 sobre todos os loci de piRNA parecia ausência da via secundária.
+Não é: em **51,8%** dos loci de piRNA de Tribolium o valor é zero **por construção** — o locus é
+quase uni-fita (contra 20,1% em Drosophila) e não existe par de fitas opostas, então a guarda de
+`total_pairs >= 10` (`features.py:188`) grava 0,0. A mediana misturava "não tem" com "não dá
+para medir".
+
+Restringindo aos loci onde a medida é possível, a direção **se inverte**:
+
+| | Tribolium (oócito) | Drosophila (ovário) |
+|---|---|---|
+| `pingpong_frac` mediano | **0,247** | 0,099 |
+| `pingpong_z` mediano | **3,71** | 1,43 |
+| acima de 0,10 | **80,3%** | 49,3% |
+| acima de 0,20 | **58,0%** | 24,0% |
+| `pct_10a` mediano | 0,329 | 0,242 |
+
+Tribolium tem ping-pong **mais forte** que Drosophila, com z de 6,9 a 28,9 nos loci mais
+profundos. O que é coerente com a biologia: oócito é linhagem germinativa, e é ali que a via
+secundária opera — em Drosophila quem não tem ping-pong é o tecido somático (flamenco, 0,059),
+não o germinativo (42AB, 0,132).
+
+**Terceira aparição do mesmo anti-padrão nesta sessão: 0,0 significando "não medido".**
+Aconteceu com o `score` de miRNA (consertado hoje, virou `NA`), com o `NaN` na `auc()` do
+validador (consertado), e agora com o `pingpong_frac` sob a guarda de 10 pares. Aqui **não foi
+alterado** — fica registrado: quem agregar `pingpong_frac` precisa filtrar `pingpong_pairs10`
+antes, ou vai medir a fração de loci uni-fita em vez de ping-pong.
 
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
