@@ -261,6 +261,55 @@ Descompilado do `sRNAminer.jar` (CFR) e lido do código das demais:
 
 ---
 
+## 6b. sRNAminer lido por inteiro (2026-08-09)
+
+A revisão de 2026-08-07 tinha lido só o pré-processamento e as duas classes Java de PHAS. O
+código-fonte Python completo (`ref_tools/sRNAminer/`, ~3.900 linhas) traz cinco coisas que
+mudam decisões nossas.
+
+**1. hc-siRNA não usa base 5'.** Nenhuma menção a 5'A em lugar nenhum. Os critérios são
+`minRepeatRatio` (0,5) — que pelo próprio help é **fração de abundância do comprimento
+específico**, ou seja o nosso `frac_in_window`, não repetição — mais `minRegionGap` (200),
+`SpeciesNum` e `LibNum`. Nossa `rules.plant.yaml` define `hcsiRNA` **só** por `5a`
+(`defining_evidence: [5a]`), a evidência mais fraca da tool.
+
+**2. Não existe anotação de repetição no pipeline deles.** Procurado no fonte inteiro: nenhum
+RepeatMasker, nenhum arquivo de TE, nenhuma flag. `Repeat_ID` é só o nome que dão ao locus de
+hc-siRNA. Portanto, associação a repetição **não tem referência no campo** — se implementarmos,
+é decisão nossa, e por isso fica opcional e não-definidora (a tool tem de servir organismo sem
+anotação).
+
+**3. As classes são resolvidas em cascata com prioridade, não por competição.** A ordem do
+`One_step_sRNAminer.py` é: `collapse → remove_rRNA → remove_Organelle → align → miRNA →
+PHAS21 → PHAS24 → hc-siRNA`, e o hc-siRNA ainda **remove** todo locus que sobreponha um PHAS24
+(`filter_24_PHAS`, quatro geometrias de overlap). Nosso `RuleScorer` faz softmax entre classes
+que competem. Consequência direta para a generalização: sem exclusão entre classes, os 804
+PHAS24 de arroz seriam chamados `hcsiRNA` por nós, porque 24 nt cai na janela do hc-siRNA.
+
+**4. O filtro final de PHAS é conjunção de quatro critérios**
+(`PHAS_identification_one_step.py:73`):
+```
+Max_Region_Phase_Score >= 10  AND  Lib_Num >= N  AND  Pvalue <= 0,001  AND  Note != "Potential miRNA"
+```
+Exigem **efeito E significância** juntos — a estrutura que temos hoje (`score` = efeito,
+`phase_pvalue` = significância) mas não usamos em conjunto. E o `Note != "Potential miRNA"` é a
+mesma contaminação que resolvemos com o `carve_out`.
+
+**5. A abundância deles é normalizada; a nossa não.** `PHASMinerCLI --normLibSize 20000000` e
+`PHASMergedListToGraphAdvanced --normLibSize 20000000`; o `sRNA_abundance` divide por
+10.000.000. Nosso `phase_score = ratio × number × ln(massa)` usa massa **crua**, correlaciona
+**0,572** com `log(reads)` e alimenta um sigmoide com `phase_x0 = 5,0` calibrado nesta
+biblioteca — ou seja, o limiar não transfere para outra profundidade.
+
+**O que já estava alinhado, agora confirmado no código:** `detInfo` faz `int(abund)/int(hits)`,
+que é a ponderação **1/NH** que usamos, e o denominador de normalização
+(`calculate_alignments_read.cal_abundance`) soma a abundância de cada read **uma vez só**,
+que é o nosso `weighted_library_size`. Divergência de política: eles alinham com `-a -m 20`,
+descartando a read que mapeia em mais de 20 lugares (mas no hc-siRNA usam `-a` sem `-m`);
+nós usamos `-k` com peso 1/NH e não descartamos.
+
+---
+
 ## Problema transversal, independente de assinatura
 
 Todas as pontuações são `log10(1/p)`, e **p confunde tamanho de efeito com tamanho
