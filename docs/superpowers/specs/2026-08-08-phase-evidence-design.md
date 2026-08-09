@@ -31,9 +31,14 @@ Três leituras, todas medidas:
    conservadorismo do Bonferroni: é a formulação. Isto explica o 5,5% de detecção a p ≤ 0,01
    registrado no ROADMAP.
 2. **Abundância não é o que falta.** O `phase_ratio` cru discrimina **pior que moeda**
-   (0,415). O `phase_score`, que usa abundância, parece bom nos TAS (0,754) e **desaba para
-   0,526** no conjunto casado — os TAS têm 1.236 reads medianas contra 173 dos controles, e
-   o que ele mede é profundidade, não fase.
+   (0,415). O `phase_score`, que usa abundância, sai a 0,786 (TAS) e 0,562 (PHAS) contra o
+   fundo não pareado, e a 0,754 / **0,526** contra o casado por `distinct_seqs` — o
+   casamento por profundidade quase não move o número de TAS (0,786 → 0,754), o que o
+   derruba é o conjunto PHAS, maior e mais heterogêneo, pareado ou não. A profundidade em si
+   é bem maior nos TAS (mediana 1.236 reads contra 85 do fundo, 14,6x, e 173 dos controles
+   casados, 7,1x) mas essa diferença não é a causa da queda do PHAS — o que o `phase_score`
+   mede continua sendo profundidade, não fase, só que o efeito de casar por profundidade é
+   menor do que a formulação anterior deste documento afirmava.
 3. **Toda transformação do `phase_number` em p-valor perde informação.** O p mistura o efeito
    com o número de posições, exatamente como o `score` fazia antes de 2026-08-08 (correlação
    com o efeito 0,323 → 0,883 quando passou a ser tamanho de efeito).
@@ -57,6 +62,10 @@ Resultado da variante escolhida:
 | | AUC TAS | AUC PHAS | mediana TAS / PHAS / controle | controles ≥ 0,3 |
 |---|---|---|---|---|
 | `e_phase` nova | **0,826** | **0,769** | 0,177 / 0,052 / **0,000** | **0%** (42% dos TAS) |
+
+O `score` reportado (mínimo entre as evidências de `defining_evidence`, que para `phasiRNA`
+é só `e_phase`) sai a **0,861** em TAS (IC 95% bootstrap [0,738, 0,955] — só 12 positivos,
+intervalo largo) e **0,810** em PHAS (IC 95% [0,736, 0,879]).
 
 ### Denominador: por que a constante da janela, e não o locus
 

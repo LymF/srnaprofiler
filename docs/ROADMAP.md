@@ -500,14 +500,19 @@ loci reais.
 **Resolvido (2026-08-08), spec em `docs/superpowers/specs/2026-08-08-phase-evidence-design.md`.**
 A premissa acima — que faltava incorporar abundância — foi medida e rejeitada: o
 `phase_ratio` cru (razão de abundância no registro) discrimina TAS/PHAS a AUC 0,415, pior
-que moeda; e `phase_score` (que já usa abundância via `w_phase`) parece bom em TAS isolado
-(0,754) só porque esses loci têm ~7x mais cobertura que os controles não pareados — contra
-controles casados por `distinct_seqs` cai para 0,526. O que faltava não era abundância, era
-medir a *extensão* da corrida em registro em vez da surpresa estatística. `e_phase` passou a
-ser `min(ciclos_em_registro, 11) / 11` com `p₀ = 1/phase_length` (antes era
-`observados/sorteios` com `p₀ = sucessos/população`), mantendo o `phase_test` e o p-valor
-intocados. AUC do `score` (`extras/validate_phase_evidence.py`, controles casados por
-`distinct_seqs`): 0,618 → 0,861 em TAS, 0,639 → 0,810 em PHAS.
+que moeda. O `phase_score` (que já usa abundância via `w_phase`) sai a 0,786 (TAS) e 0,562
+(PHAS) contra o fundo não pareado — quase todo esse número já cai contra o casamento por
+`distinct_seqs` sozinho: 0,754 (TAS, quase intacto) e 0,526 (PHAS, no acaso). Ou seja, casar
+por profundidade **quase não move o TAS**; o que derruba o `phase_score` é o conjunto PHAS,
+maior e mais heterogêneo, pareado ou não. (A cobertura em si é bem maior nos TAS — mediana
+1.236 reads contra 85 do fundo não pareado, 14,6x, e 173 dos controles casados, 7,1x — mas
+essa diferença de profundidade não é a causa da queda do PHAS.) O que faltava não era
+abundância, era medir a *extensão* da corrida em registro em vez da surpresa estatística.
+`e_phase` passou a ser `min(ciclos_em_registro, 11) / 11` com `p₀ = 1/phase_length` (antes
+era `observados/sorteios` com `p₀ = sucessos/população`), mantendo o `phase_test` e o
+p-valor intocados. AUC do `score` (`extras/validate_phase_evidence.py`, controles casados por
+`distinct_seqs`): 0,618 → 0,861 em TAS (IC 95% bootstrap [0,738, 0,955], só 12 positivos),
+0,639 → 0,810 em PHAS (IC 95% [0,736, 0,879]).
 
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 

@@ -198,11 +198,16 @@ Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas n
   e a separação uni-fita × bifita fica em 1,5–1,7× em qualquer limiar.
 - **`s_phase` é pouco sensível.** 1 de 8 loci TAS experimentais a p ≤ 0,01. Medido contra a
   fórmula do sRNAminer nos **mesmos dados**: ele detecta 2 de 8, com 10× mais falso positivo
-  (ele não corrige a seleção do registro). Não há caso para redesenhar.
+  (ele não corrige a seleção do registro). Não há caso para redesenhar *o teste* — a correção
+  pela varredura de janelas está certa e é mais conservadora que o campo. O que não funciona
+  é usar esse p-valor para **ranquear** loci entre si (AUC 0,560/0,481, no acaso — ver
+  `e_phase` abaixo): esse trabalho passou para `e_phase`/`score`, que usa a mesma contagem
+  de ciclos sem convertê-la em p-valor.
 - **`s_pingpong` assume variância = média** (Poisson). Medido no fundo de offsets: mediana
   1,3, mas 22,5% dos loci acima de 5. Binomial negativa seria a síntese.
 - **`phase_score` correlaciona 0,53 com `log(reads)`** — mede abundância junto com fase, então
-  não é comparável entre loci. Use `phase_pvalue`.
+  não é comparável entre loci. `phase_pvalue` também não serve para isso (AUC 0,560/0,481,
+  no acaso — ver `e_phase` abaixo); para comparar loci entre si use `e_phase`/`score`.
 - **`pingpong_z` é diagnóstico**, capado em 100 e instável em locus estreito e denso. Para
   classificar, use `pingpong_frac`.
 - **`overlap_dup_frac`, `size_purity`, `dicer_call_2`, `unique_frac`** são reportados e **não
@@ -215,9 +220,24 @@ Em `defining_evidence`, uma lista aninhada é **OU** (usa o máximo); entradas n
 - **`e_phase` mede a extensão da fase, não a surpresa.** É a fração dos 11 ciclos da janela que
   está no registro dominante — a corrida de cortes processivos é a assinatura do mecanismo.
   Medido contra controles casados por `distinct_seqs`: AUC 0,826 (TAS experimental) e 0,769
-  (PHAS anotado), contra 0,560/0,481 do p-valor dos mesmos dados e 0,415 da razão de
+  (PHAS anotado), contra 0,560/0,481 do p-valor dos mesmos dados e 0,415/0,293 da razão de
   abundância. Ressalvas: a janela é escolhida por maximizar evidência, e o `p₀ = 1/phase_length`
   é anticonservador porque o registro reportado é o máximo entre 21.
+- **`e_phase` satura com ocupação total, não com concentração num registro.** Ele só lê
+  `phase_number` — quantos ciclos têm *alguma* leitura no registro dominante — e ignora
+  `phase_ratio`. Um locus com uma leitura de 21 nt em **cada** posição de uma janela de 250 nt
+  dá `phase_number = 11` (o máximo), mesmo com `phase_ratio = 0,048` (= 1/21, nenhum
+  enriquecimento) e `phase_pvalue = 1,0`: `e_phase = 0,7282`, o teto. Em Arabidopsis, 8 loci
+  caem nesse regime (`phase_number >= 11` e `phase_ratio < 0,15`), todos `hcsiRNA` de 24 nt
+  definidos por `5a` — nada errado nesta corrida. Mas em `phasiRNA`, `score` **é** `e_phase`:
+  um locus de 21 nt densamente sequenciado e não fásico, noutra biblioteca, carregaria
+  evidência de fase máxima com p-valor 1. Teste:
+  `tests/test_features_phase_evidence.py::test_full_occupancy_saturates_the_statistic_without_enrichment`.
+- **`score == 0` num locus `phasiRNA` significa `phase_number <= 1` na melhor janela**, não
+  "não foi procurada evidência de fase". `e_phase` é uma função-degrau de 12 níveis de
+  `phase_number` (0 a 11): `0, 0,004, 0,052, 0,109, 0,173, 0,244, 0,322, 0,406, 0,499, 0,604,
+  0,729`. Em Arabidopsis (`at_ephase.clusters.tsv`), 63% dos loci chamados `phasiRNA` têm
+  `score == 0` (era 56% antes desta mudança).
 - **`e_pingpong` é otimista**: o `n` são pares, que escalam com o quadrado da cobertura e não
   são ensaios independentes.
 - **`e_fractop_bid` herda o ruído do `s_fractop_bid`**: a fração minoritária separa uni-fita de
