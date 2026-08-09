@@ -789,11 +789,38 @@ Na faixa de 1–9 pares — **43,5% dos loci de piRNA em Tribolium, 63,9% em Dro
 ping-pong conta para o `score` e não conta para a decisão de classe. Duas colunas do mesmo TSV
 discordam sobre se aquele ping-pong existe.
 
-Defensável mas não intencional: 10 pares é piso de ruído sensato para uma **fração** (com 2
-pares, `frac` dá 0,5 por acaso), e o `effect_strength` já desconta incerteza via Wilson, o que
-torna a guarda redundante ali. São duas linhas escritas em momentos diferentes, não uma decisão.
-**Não alterado** — decidir com medição antes, porque unificar mexe na chamada de classe de 44%
-a 64% dos loci de piRNA.
+*Correção de um número que eu havia exagerado:* estar na faixa de 1–9 pares não é a mesma
+coisa que ter par no offset 10. Os loci onde as guardas de fato divergem são **6,8%**
+(Tribolium) e **3,5%** (Drosophila), não os 43–64% da faixa.
+
+**Medido o que cada unificação acarreta.** A aritmética fecha sem rodar nada: `pingpong_frac_full`
+é 0,1, e com `total_pairs <= 9` qualquer locus com ao menos 1 par no offset 10 tem
+`frac >= 1/9 = 0,111` — já saturado. Afrouxar não daria um pouco de crédito, daria o **termo cheio**.
+
+| | Tribolium | Drosophila |
+|---|---|---|
+| loci que ganhariam o termo cheio | 875 (6,8%) | 891 (3,5%) |
+| mudanças de classe (fora artefato de miRNA do simulador) | **7** | **163** |
+
+E os 163 de Drosophila **não são piRNA**:
+
+| | dentro de piC | tamanho |
+|---|---|---|
+| os que mudariam | **26,4%** | **21 nt** |
+| piRNA existentes | 29,5% | 25 nt |
+| siRNA que ficam | 25,5% | 21 nt |
+| fundo | 28,7% | — |
+
+Sem enriquecimento em piC, e com 21 nt — fora da janela do piRNA. **O mecanismo é por
+eliminação, não por evidência:** o gate de tamanho do piRNA é zero em 21 nt, então o sinal
+cheio não soma nada lá; ele **subtrai** do siRNA, cujo `w_pingpong_penalty` tem gate 1 em 21 nt,
+e o locus cai no piRNA por falta de alternativa. É a reabertura exata do bug consertado em
+2026-08-01 (*"reads de 21 nt em fitas opostas pegam sobreposição 5'-5' de 10 nt por geometria"*).
+
+**Decisão:** afrouxar está **descartado por medição**. Apertar `e_pingpong` para ≥10 pares é a
+única unificação defensável — mexe no `score`, não na classe, e o efeito é limitado pelo **OU**
+com o 1U. Não unificar também é aceitável, desde que fique como decisão documentada e não
+acidente de duas linhas escritas em momentos diferentes. **Nada alterado.**
 
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
