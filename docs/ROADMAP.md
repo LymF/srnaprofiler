@@ -620,9 +620,33 @@ precisão** (95,2% → 94,5%) e **custa recall** (202 → 175). Os loci rasos ex
 para esta classe. O `review` alto é a resposta certa para uma biblioteca rasa: sinalizar, não
 descartar. *Não* subir o `mincov` para perseguir um número de `review` mais bonito.
 
-*Pendência do teste:* a série `DRR0763xx` traz o mutante **`eat1`** nos mesmos estágios. Se a
-chamada de PHAS24 cair no mutante contra o selvagem, é evidência de que medimos a via e não
-artefato de anotação. Controle que não custa nada além de rodar.
+**Controle genético `eat1` — FEITO, e é a validação mais forte que a classe tem.**
+`DRR076325` (antera, meiose tardia, mutante, réplica 2) contra `DRR076316` (mesmo estágio e
+réplica, selvagem); 5,02 M contra 4,49 M reads mapeadas. O estudo de origem desta série reporta
+que EAT1 **ativa** a biogênese de phasiRNA meiótico de 24 nt, então a direção esperada é queda
+no mutante. Comparação em RPM sobre os mesmos loci de referência (`extras/compare_runs.py`):
+
+| | selvagem | `eat1` | razão |
+|---|---|---|---|
+| massa nos 804 PHAS24 (RPM) | 235.384 | 97.137 | **0,41×** |
+| massa dos `phasiRNA24` chamados | 199.617 | 67.359 | **0,34×** |
+| loci `phasiRNA24` não-review | 231 | 182 | 0,79× |
+| massa de 24 nt (todos os loci) | 295.769 | 163.209 | **0,55×** |
+| **controle:** massa nos 2.595 PHAS21 | 468.845 | 580.229 | **1,24×** |
+| **controle:** loci `phasiRNA` 21 nt | 5.711 | 5.868 | 1,03× |
+| **controle:** massa de 21 nt | 484.312 | 596.965 | 1,23× |
+
+**A dissociação é o resultado**, não a queda: a via de 24 nt cai a um terço enquanto a de 21 nt
+não se move (sobe 23%). Profundidade ou processamento moveriam as duas juntas — foi por isso
+que o controle interno entrou no desenho antes de rodar.
+
+Isto responde uma pergunta que recall contra anotação não pode responder. Recall diz que
+achamos o que outro anotou, e o outro pode estar errado; aqui a chamada **respondeu a uma
+perturbação genética da via**, na direção prevista, com a classe irmã imóvel.
+
+*Ressalva:* uma réplica por genótipo, então não há teste estatístico sobre a diferença — a
+inferência se apoia no controle interno, não em n. As outras duas réplicas de cada genótipo
+estão no ENA se valer a pena fechar isso.
 
 **A2. As quatro colunas órfãs — medido o que cada uma agrega (2026-08-08)**
 
