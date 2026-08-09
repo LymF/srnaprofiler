@@ -608,6 +608,18 @@ arroz: mediana de 14,5 reads/locus (contra 120) e `review` em **56,4%** (contra 
 28,3% dos loci abaixo do `min_reads`. Não é a calibração de planta que não transfere — é a
 profundidade. Para biblioteca rasa, subir `--mincov`.
 
+**E subir o `--mincov` para compensar é a decisão errada, medido:**
+
+| corrida | profundidade | loci | review | `phasiRNA24` | precisão | recall |
+|---|---|---|---|---|---|---|
+| `mincov 1,0` | 4 | 34.633 | 56,4% | 231 | **95,2%** | **202**/804 |
+| `mincov 4,5` | 20 | 9.178 | **22,5%** | 217 | 94,5% | 175/804 |
+
+Casar o poder estatístico da Arabidopsis derruba o `review` pela metade mas **não compra
+precisão** (95,2% → 94,5%) e **custa recall** (202 → 175). Os loci rasos extras não são lixo
+para esta classe. O `review` alto é a resposta certa para uma biblioteca rasa: sinalizar, não
+descartar. *Não* subir o `mincov` para perseguir um número de `review` mais bonito.
+
 *Pendência do teste:* a série `DRR0763xx` traz o mutante **`eat1`** nos mesmos estágios. Se a
 chamada de PHAS24 cair no mutante contra o selvagem, é evidência de que medimos a via e não
 artefato de anotação. Controle que não custa nada além de rodar.
