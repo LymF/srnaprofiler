@@ -16,12 +16,22 @@ def _flat_names(defining_evidence):
     return names
 
 
-def _key(defining_evidence):
-    """Hashable key for the defining set: OR slots become inner frozensets."""
-    return frozenset(
+def _key(spec):
+    """Hashable key for the defining set: OR slots become inner frozensets.
+
+    The size window is part of the key when `size` is one of the defining
+    evidences, because e_size is scored against the class's own window: two
+    classes both defined by [phase, size] are still telling different things
+    apart if one asks for 21-22 nt and the other for 24.
+    """
+    names = frozenset(
         frozenset(item) if isinstance(item, list) else item
-        for item in defining_evidence
+        for item in spec["defining_evidence"]
     )
+    if "size" in _flat_names(spec["defining_evidence"]):
+        window = spec.get("size") or {}
+        return names, (window.get("lo"), window.get("hi"))
+    return names, None
 
 
 @pytest.mark.parametrize("path", CONFIGS)
@@ -40,6 +50,6 @@ def test_defining_evidence_names_are_known(path):
 def test_no_two_classes_share_the_same_defining_set(path):
     seen = {}
     for name, spec in load_config(path)["classes"].items():
-        key = _key(spec["defining_evidence"])
+        key = _key(spec)
         assert key not in seen, f"{path}: {name} and {seen[key]} are indistinguishable"
         seen[key] = name

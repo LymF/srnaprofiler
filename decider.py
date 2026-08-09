@@ -4,6 +4,7 @@ import math
 import yaml
 
 from evidence import effect_strength
+from signals import PHASE_WINDOW_CYCLES
 
 
 def load_config(path):
@@ -34,11 +35,18 @@ class RuleScorer:
     # Only names with an e_* attribute on ClusterRecord; others silently score 0.0.
     KNOWN_EVIDENCE = ("1u", "5a", "fractop_bid", "pingpong", "phase", "size")
 
+    PHASE_MODES = ("score", "cycles")
+
     def __init__(self, config):
         self.cfg = config
         # Configurable shape parameters (defaults = previous behavior).
         self.shape = (config.get("decision", {}) or {}).get("shape", {}) or {}
         for name, spec in (config.get("classes") or {}).items():
+            mode = spec.get("phase_on", "score")
+            if mode not in self.PHASE_MODES:
+                raise ValueError(
+                    f"{name}: unknown phase_on {mode!r}; "
+                    f"known: {', '.join(self.PHASE_MODES)}")
             for entry in spec.get("defining_evidence", []):
                 for ev in (entry if isinstance(entry, list) else [entry]):
                     if ev not in self.KNOWN_EVIDENCE:
@@ -74,6 +82,23 @@ class RuleScorer:
         inside = sum(c for L, c in counts.items() if size["lo"] <= L <= size["hi"])
         p0 = (size["hi"] - size["lo"] + 1) / width
         return effect_strength(round((inside / total) * n), n, p0)
+
+    def phase_cycle_strength(self, record):
+        """Phasing read as the length of the run, in [0, 1].
+
+        Same quantity as `e_phase`: cycles in register out of the window's, as a
+        Wilson lower bound against the chance a position lands in register. Kept
+        here rather than read off the record so it also works when the scorer is
+        replayed over a .clusters.tsv, where only the columns exist.
+        """
+        if record.dicer_call == "N":
+            return 0.0
+        pl = int(record.dicer_call)
+        if pl <= 0:
+            return 0.0
+        number = getattr(record, "phase_number", 0) or 0
+        return effect_strength(min(int(number), PHASE_WINDOW_CYCLES),
+                               PHASE_WINDOW_CYCLES, 1 / pl)
 
     def _size(self, record):
         return int(record.dicer_call) if record.dicer_call != "N" else None
@@ -116,12 +141,20 @@ class RuleScorer:
             t = spec["w_pingpong_penalty"] * self._pp_signal(record) * gate
             s -= t; terms["pingpong_penalty"] = round(-t, 3)
         if "w_phase" in spec:
-            # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].
             # Size-gated like ping-pong: phasing only counts where the size fits,
             # which is what lets one config serve plants and arthropods.
-            t = spec["w_phase"] * _sigmoid(
-                record.phase_score,
-                x0=spec.get("phase_x0", 5.0), scale=spec.get("phase_scale", 3.0)) * gate
+            if spec.get("phase_on", "score") == "cycles":
+                # The run in register, with no abundance in it. phase_score
+                # carries a ln(mass) factor, and measured on a 24-nt class in
+                # Arabidopsis -- which has no DCL5 -- it selected loci 5x deeper
+                # with phase_pvalue 1.000: depth, not phasing.
+                signal = self.phase_cycle_strength(record)
+            else:
+                # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].
+                signal = _sigmoid(record.phase_score,
+                                  x0=spec.get("phase_x0", 5.0),
+                                  scale=spec.get("phase_scale", 3.0))
+            t = spec["w_phase"] * signal * gate
             s += t; terms["phase"] = round(t, 3)
         return s, terms
 

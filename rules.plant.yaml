@@ -66,6 +66,31 @@ classes:
     phase_scale: 1.5
     w_1u: 0.3
     defining_evidence: [phase, size]
+  # Reproductive phasiRNA: 24 nt, phased, from DCL5 (DCL3b) on miR2275-triggered
+  # precursors. A monocot pathway -- Arabidopsis has no DCL5, and measured there
+  # this class takes ZERO loci, which is the right answer and the specificity
+  # control for it.
+  #
+  # `phase_on: cycles` is not decoration. With the default (a sigmoid over
+  # phase_score) this class took 2006 hc-siRNA loci in Arabidopsis: they are 5x
+  # deeper than the ones that stayed (555 vs 112 reads), their phase_pvalue is
+  # 1.000, and they hit p <= 0.01 at 1.1% against a 0.9% background. phase_score
+  # carries a ln(mass) factor, so against a class holding 96% of the loci it
+  # selects depth. Reading the run in register instead drops that to zero.
+  #
+  # The 21-nt class keeps the default on purpose: switching IT to cycles loses 5
+  # of the 12 experimentally characterised TAS loci to siRNA. There the abundance
+  # term earns its place; here it does not.
+  #
+  # w_phase 4.0 makes a full 11-cycle run beat hcsiRNA. It is NOT calibrated
+  # against truth yet -- Arabidopsis cannot calibrate a pathway it lacks. Rice
+  # (804 PHAS24 loci in sRNAanno) is where that number gets tested.
+  phasiRNA24:
+    size: {lo: 24, hi: 24}
+    w_size: 1.0
+    w_phase: 4.0
+    phase_on: cycles
+    defining_evidence: [phase, size]
   # DCL3 products from RDR2 dsRNA: 24 nt, 5'A, AGO4/RdDM. Repeat- and
   # TE-derived, dual-strand, and NOT phased.
   hcsiRNA:

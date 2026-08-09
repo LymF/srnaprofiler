@@ -173,8 +173,22 @@ S(classe) = w_size          × _window(dicer_call, lo, hi)
           + w_fractop_mid   × _mid(frac_top)
           + w_pingpong      × pingpong_frac × gate
           − w_pingpong_penalty × pingpong_frac × gate
-          + w_phase         × _sigmoid(phase_score, phase_x0, phase_scale) × gate
+          + w_phase         × sinal_de_fase × gate
 ```
+onde `sinal_de_fase` depende de `phase_on` na classe:
+```
+phase_on: score  (default)  → _sigmoid(phase_score, phase_x0, phase_scale)
+phase_on: cycles            → e_phase, a corrida em registro sem abundância dentro
+```
+**Por que os dois modos existem.** O `phase_score` traz `ln(massa)`, então contra uma classe
+que domina o genoma ele seleciona profundidade: com o modo `score`, a classe `phasiRNA24`
+tomou **2.006** loci de `hcsiRNA` em Arabidopsis — que não tem DCL5 — e esses loci são 5×
+mais profundos (555 contra 112 reads), com `phase_pvalue` **1,000** e p ≤ 0,01 em 1,1% contra
+0,9% de fundo. No modo `cycles` isso vai a **zero**. Mas o inverso vale nos 21 nt: passar a
+classe `phasiRNA` para `cycles` **perde 5 dos 12** loci TAS experimentais para `siRNA`, porque
+ali os positivos são de fato abundantes e a abundância está fazendo trabalho. Por isso o modo
+é por classe.
+
 `gate = _window(dicer_call, lo, hi)` da **própria classe** — ping-pong e fase só pontuam a
 classe cujo tamanho já encaixa. É isso que permite um único código servir planta e artrópode.
 
