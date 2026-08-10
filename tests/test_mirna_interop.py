@@ -260,3 +260,56 @@ def test_validation_can_be_switched_off_but_is_not_by_default():
     assert "--no-validate" in h
     # nothing in the help offers to turn it *on*: it already is
     assert "--validate " not in h
+
+
+# --- silent failure 6: a dot in the FASTQ name zeroes every count ---------
+
+from mirna import staged_reads_name, stage_reads_for_mirscore
+
+
+def test_a_dotted_read_name_is_staged_without_dots():
+    """miRScore keys the library on the name cut at the first dot, while the BAM
+    keeps the whole name. They stop matching and every locus counts zero reads --
+    with the reads sitting aligned inside the BAM."""
+    assert staged_reads_name("at_ncrna.ncrna_filtered.fastq") == \
+        "at_ncrna_ncrna_filtered.fastq"
+
+
+def test_the_extension_survives_staging():
+    """It dispatches on the extension, so .fastq must stay .fastq."""
+    assert staged_reads_name("s.trimmed.fq").endswith(".fq")
+    assert staged_reads_name("plain.fastq") == "plain.fastq"
+
+
+def test_staging_points_at_the_same_reads(tmp_path):
+    reads = tmp_path / "a.b.fastq"
+    reads.write_text("@r\nACGT\n+\nIIII\n")
+    work = tmp_path / "w"
+    work.mkdir()
+    staged = stage_reads_for_mirscore(reads, work)
+    assert "." not in staged.stem
+    assert staged.read_text() == reads.read_text()
+
+
+def test_staging_is_idempotent(tmp_path):
+    reads = tmp_path / "a.b.fastq"
+    reads.write_text("@r\nACGT\n+\nIIII\n")
+    work = tmp_path / "w"
+    work.mkdir()
+    assert stage_reads_for_mirscore(reads, work) == \
+        stage_reads_for_mirscore(reads, work)
+
+
+from mirna import no_reads_counted
+
+
+def test_zero_reads_everywhere_is_treated_as_a_failure(tmp_path):
+    f = tmp_path / "reads.csv"
+    f.write_text("miRNA,library,mReads,msReads,allReads\na,x,0,0,0\nb,x,0,0,0\n")
+    assert no_reads_counted(f) is True
+
+
+def test_a_library_with_any_reads_is_a_real_result(tmp_path):
+    f = tmp_path / "reads.csv"
+    f.write_text("miRNA,library,mReads,msReads,allReads\na,x,0,0,45\nb,x,0,0,0\n")
+    assert no_reads_counted(f) is False

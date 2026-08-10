@@ -928,12 +928,48 @@ def mirscore_command(mature, hairpin, reads, kingdom, outdir, workdir, threads=1
             "-threads", str(threads), "-out", rel(outdir)]
 
 
+def staged_reads_name(name):
+    """A read file name miRScore can key on: no dots before the extension.
+
+    It cuts the library name at the first dot but names the BAM with the whole
+    stem, so `x.ncrna_filtered.fastq` looks up `x` against `x.ncrna_filtered_s`,
+    finds nothing, and reports zero reads for every locus -- while the reads sit
+    aligned in the BAM. Our own mapping module emits exactly that name.
+    """
+    stem, dot, ext = str(name).rpartition(".")
+    if not dot:
+        return str(name)
+    return stem.replace(".", "_") + dot + ext
+
+
+def stage_reads_for_mirscore(reads, workdir):
+    """The reads under a name miRScore counts correctly, linked not copied."""
+    reads = Path(reads).resolve()
+    staged = Path(workdir) / staged_reads_name(reads.name)
+    if staged.resolve() == reads:
+        return staged
+    if staged.is_symlink() or staged.exists():
+        staged.unlink()
+    staged.symlink_to(reads)
+    return staged
+
+
 def parse_mirscore_results(path):
     """Names miRScore passed. Anything not an explicit pass is a fail."""
     import csv as _csv
     with open(path) as fh:
         return {r["name"] for r in _csv.DictReader(fh)
                 if str(r.get("result", "")).strip().lower().startswith("pass")}
+
+
+def no_reads_counted(reads_csv):
+    """Every locus at zero total reads: impossible for a library that aligned."""
+    import csv as _csv
+    if not Path(reads_csv).exists():
+        return False
+    with open(reads_csv) as fh:
+        rows = list(_csv.DictReader(fh))
+    return bool(rows) and all(float(r.get("allReads") or 0) == 0 for r in rows)
 
 
 def write_mirna_loci_bed(predictions, passing, path):
@@ -1022,13 +1058,19 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
     out = workdir / "mirscore"
     if out.exists():
         shutil.rmtree(out)          # it refuses an existing output directory
-    cmd = mirscore_command(mature_fa, hairpin_fa, reads, kingdom, out, workdir,
-                           threads=threads)
+    cmd = mirscore_command(mature_fa, hairpin_fa,
+                           stage_reads_for_mirscore(reads, workdir),
+                           kingdom, out, workdir, threads=threads)
     subprocess.run(cmd, cwd=workdir, check=True)
 
     results = out / "miRScore_results.csv"
     if not results.exists():
         raise RuntimeError(f"miRScore wrote no results to {results}")
     passing = parse_mirscore_results(results)
+    if not passing and no_reads_counted(out / "reads.csv"):
+        raise RuntimeError(
+            f"miRScore counted zero reads at every locus ({out/'reads.csv'}); "
+            "that is its silent failure, not a biological result -- check that "
+            "the reads it was given are the library the predictions came from")
     log(f"miRScore validated {len(passing)}/{kept}", "INFO")
     return passing
