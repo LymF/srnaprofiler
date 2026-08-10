@@ -53,6 +53,11 @@ MODULE_TOOLS = {
         _pkg("viennarna", "RNA",
              "ViennaRNA's Python binding, used by miRScore -- a different "
              "interface from the RNAfold binary, and missing on Python 3.14"),
+        # One row per engine: they are alternatives, so each is optional on its
+        # own, but "mirna works" is meaningless without saying which --engine.
+        _tool("miRDeep2.pl", "optional: needed for --engine mirdeep2"),
+        {"kind": "mirdeep_p2", "name": "miRDeep-P2",
+         "note": "optional: needed for --engine mirdeep-p2"},
         _tool("miRScore", "optional: validation is skipped without it"),
     ],
     "plots": [
@@ -80,12 +85,36 @@ def check_python_package(import_name):
             "detail": getattr(mod, "__file__", "") or "built-in"}
 
 
+def check_mirdeep_p2():
+    """Is a usable miRDeep-P2 recorded -- patched, with its Rfam index linked.
+
+    Presence is not enough: unpatched or without the index it runs to completion
+    and predicts nothing, which is the failure this whole module exists to stop.
+    """
+    from utils import user_config
+
+    recorded = user_config().get("mirdp2_pipeline")
+    candidate = Path(recorded) if recorded else (
+        tools_dir() / "1.1.4" / "miRDP2-v1.1.4_pipeline.bash")
+    if not candidate.exists():
+        return {"name": "miRDeep-P2", "ok": False,
+                "detail": f"not found at {candidate}; run `setup --tools`"}
+    try:
+        from mirna import check_mirdeep_p2_install
+        check_mirdeep_p2_install(candidate)
+    except RuntimeError as exc:
+        return {"name": "miRDeep-P2", "ok": False, "detail": str(exc)[:120]}
+    return {"name": "miRDeep-P2", "ok": True, "detail": str(candidate)}
+
+
 def check_module(module):
     """One result per requirement of `module`, in declaration order."""
     out = []
     for req in MODULE_TOOLS[module]:
         if req["kind"] == "tool":
             r = check_tool(req["name"])
+        elif req["kind"] == "mirdeep_p2":
+            r = check_mirdeep_p2()
         else:
             r = check_python_package(req["import_name"])
             r["name"] = req["name"]

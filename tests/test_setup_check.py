@@ -203,3 +203,19 @@ def test_downloaded_scripts_live_beside_the_code():
     import setup_module
     assert tools_dir().name == "tools"
     assert tools_dir().parent == Path(setup_module.__file__).resolve().parent
+
+
+def test_each_engine_is_checked_separately(monkeypatch, tmp_path):
+    """`mirna` reporting yes told nothing about which engine could run."""
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(tmp_path / "absent.yaml"))
+    names = [c["name"] for c in MODULE_TOOLS["mirna"]]
+    assert "miRDeep2.pl" in names        # the arthropod engine
+    assert "miRDeep-P2" in names         # the plant engine
+
+
+def test_a_missing_engine_does_not_claim_the_module_works(monkeypatch, tmp_path):
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(tmp_path / "absent.yaml"))
+    rows = check_module("mirna")
+    p2 = [r for r in rows if r["name"] == "miRDeep-P2"][0]
+    assert p2["ok"] is False
+    assert "setup --tools" in p2["detail"] or "setup" in p2["note"]
