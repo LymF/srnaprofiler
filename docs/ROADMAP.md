@@ -1,12 +1,70 @@
 # srnaprofiler — Roadmap / Próximos passos
 
 **Autor:** Lucas
-**Atualizado:** 2026-08-08
+**Atualizado:** 2026-08-10
 
 Documento vivo para alinhar sessões. Estado atual + backlog priorizado. Detalhes de COMO a
 pipeline funciona (todas as fórmulas) estão na memória `srnaprofiler-pipeline-reference`.
 Design/planos: `docs/superpowers/specs/2026-07-22-classification-engine-design.md` e
 `docs/superpowers/plans/2026-07-22-classification-engine.md`.
+
+---
+
+## ESTADO DE REFERÊNCIA — commit `5edfd4d` (2026-08-10)
+
+**Qualquer mudança futura tem de bater contra esta tabela.** Os números espalhados pelo resto
+do documento são de corridas anteriores, com estados de código diferentes, e servem como
+registro do caminho — não para comparação. Comparar entre eles foi o que produziu um erro real
+nesta sessão (ver a retratação da `phasiRNA24`).
+
+Quatro organismos, `classify` sobre os mesmos BAMs, configs oficiais. Arroz usa
+`/mnt/d/srnaprofiler-teste/refs/rules.monocot.yaml`, que é o `rules.plant.yaml` com
+`phasiRNA24: enabled: true` — a via existe em monocotiledônea e não em Arabidopsis.
+
+| organismo | biblioteca | loci | review | span mediano |
+|---|---|---|---|---|
+| Drosophila | DRR351382, ovário | 25.738 | 13,6% | 533 bp |
+| Tribolium | SRR1687586, oócitos | 12.818 | 8,8% | 1.022 bp |
+| Arabidopsis | SRR30831721, flor | 28.754 | 5,0% | 589 bp |
+| arroz | DRR076316, antera meiótica | 34.633 | 52,8% | 1.012 bp |
+
+**Classes** (n, e % da massa de reads):
+
+| organismo | classes |
+|---|---|
+| Drosophila | piRNA 18.349 (36,9%) · siRNA 4.453 (5,8%) · ambiguous 2.801 (6,2%) · miRNA 135 (51,2%) |
+| Tribolium | piRNA 11.433 (94,5%) · ambiguous 684 (3,2%) · siRNA 495 (1,1%) · miRNA 206 (1,2%) |
+| Arabidopsis | hcsiRNA 26.843 (90,3%) · ambiguous 943 (3,2%) · siRNA 399 · miRNA 294 (3,1%) · phasiRNA 275 (3,0%) |
+| arroz | phasiRNA 6.719 (54,8%) · hcsiRNA 19.645 (11,4%) · ambiguous 4.679 (6,0%) · phasiRNA24 442 (24,4%) · siRNA 2.862 · miRNA 286 |
+
+**Validações contra verdade externa:**
+
+| organismo | referência | resultado |
+|---|---|---|
+| Drosophila | 90 piC conservados | **83/90**, enriquecimento **7,5×** |
+| | miRBase `dme` | 134/134 corretos |
+| Tribolium | 146 clusters (remapeados por sequência) | **146/146**, enriquecimento **30,8×** |
+| Arabidopsis | 6 TAS experimentais | **6/6** |
+| | miRBase `ath` | 242/242 corretos |
+| | AUC do `score` (controles casados) | 0,823 TAS · 0,809 PHAS |
+| arroz | 804 PHAS24 (sRNAanno) | precisão **92,3%**, recall 218 |
+| | 2.595 PHAS21 (sRNAanno) | precisão **91,1%**, recall **2.445 (94,2%)** |
+
+**Três números que precisam de contexto para não serem lidos como defeito:**
+
+1. **piC 83/90, não 85/90.** Os 2 que faltam são clusters representados por um único locus de
+   78 e 46 reads, com tamanhos espalhados de 18 a 27 nt e moda de 19% e 23% em 23 nt. Eles
+   agora saem `ambiguous`, não `piRNA`. O locus continua sendo reportado; o que mudou é não
+   afirmarmos uma classe sobre ele. 85/90 com duas chamadas forçadas é afirmação pior que
+   83/90 com duas honestas.
+2. **Arroz com 52,8% de review** é a biblioteca rasa (4,5 M reads após o filtro) com `--mincov`
+   em RPM: o limiar absoluto cai para 4 e semeia loci de 14 reads medianas. Medido: subir o
+   `mincov` **não** compra precisão e **custa** recall.
+3. **miRNA com 51,2% da massa em Drosophila** é biologia da biblioteca, não erro de chamada —
+   135 loci carregam metade das reads.
+
+**O melhor recall que a tool tem contra qualquer referência** é o `phasiRNA` de 21 nt em arroz:
+2.445 de 2.595 loci anotados (94,2%), com 91,1% de precisão.
 
 ---
 
