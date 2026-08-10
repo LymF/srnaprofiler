@@ -265,6 +265,15 @@ def run_data(args):
                 raise RuntimeError(
                     f"{script.name} finished but {prefix}.*.ebwt is incomplete")
         recorded["ncrna_db"] = prefix
+        # `--tools` then `--data` is the documented order, so the pipeline is
+        # usually already recorded rather than passed as a flag. Link into it
+        # too: unlinked, miRDeep-P2 runs to completion and predicts nothing.
+        if not args.mirdp2:
+            from utils import user_config
+            known = user_config().get("mirdp2_pipeline")
+            if known and Path(known).exists():
+                link_rfam_for_mirdeep_p2(prefix, Path(known))
+                log(f"linked the Rfam index into {known}", "INFO")
 
     if args.mirdp2:
         pipeline = Path(args.mirdp2)

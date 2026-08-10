@@ -7,6 +7,7 @@ that actually breaks -- ViennaRNA's Python binding rather than the package name,
 the miRDeep-P2 patch rather than the file's existence.
 """
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -136,6 +137,7 @@ def test_linking_refuses_an_incomplete_index(tmp_path):
 
 from setup_module import patch_mirdeep_p2
 
+FIXED_LINE = '\tseq="$results_folder/${filename}/${filename}.ori.fa"\n'
 BUGGY_LINE = '\tseq="$results_folder/${filename}.ori.fa"\n'
 
 
@@ -219,3 +221,22 @@ def test_a_missing_engine_does_not_claim_the_module_works(monkeypatch, tmp_path)
     p2 = [r for r in rows if r["name"] == "miRDeep-P2"][0]
     assert p2["ok"] is False
     assert "setup --tools" in p2["detail"] or "setup" in p2["note"]
+
+
+def test_data_links_the_index_into_an_already_installed_mirdeep_p2(tmp_path,
+                                                                   monkeypatch):
+    """`--tools` then `--data` is the documented order, and it left the index
+    unlinked: the pipeline was recorded in the config, not passed as a flag."""
+    import setup_module
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(tmp_path / "paths.yaml"))
+    rfam = _fake_index(tmp_path / "rfam", "ncrna")
+    pipeline = tmp_path / "1.1.4" / "miRDP2.bash"
+    (pipeline.parent / "scripts" / "index").mkdir(parents=True)
+    pipeline.write_text("#!/bin/bash\n" + FIXED_LINE)
+    write_config({"mirdp2_pipeline": str(pipeline)})   # as `--tools` leaves it
+
+    args = SimpleNamespace(rfam_dir=str(tmp_path / "rfam"), mirdp2=None)
+    assert setup_module.run_data(args) == 0
+
+    linked = pipeline.parent / "scripts" / "index" / "rfam_index.1.ebwt"
+    assert linked.is_symlink()
