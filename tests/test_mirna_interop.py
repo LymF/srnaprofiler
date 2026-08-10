@@ -313,3 +313,14 @@ def test_a_library_with_any_reads_is_a_real_result(tmp_path):
     f = tmp_path / "reads.csv"
     f.write_text("miRNA,library,mReads,msReads,allReads\na,x,0,0,45\nb,x,0,0,0\n")
     assert no_reads_counted(f) is False
+
+
+def test_a_staged_link_keeps_its_own_name_in_the_command(tmp_path):
+    """Resolving the symlink hands miRScore back the dotted name we staged
+    away from, and the zero-count failure returns."""
+    real = tmp_path / "a.b.fastq"
+    real.write_text("@r\nACGT\n+\nIIII\n")
+    work = tmp_path / "w"
+    work.mkdir()
+    staged = stage_reads_for_mirscore(real, work)
+    assert str(relative_to(staged, work)) == "a_b.fastq"

@@ -813,8 +813,12 @@ def relative_to(path, workdir):
     miRScore chdirs into its output directory and prefixes `../` to the reads
     path. An absolute path becomes `..//abs/path`, bowtie finds nothing, the BAM
     comes out empty, and the run only fails later, in samtools sort.
+
+    Absolute, not resolved: the reads are handed over as a symlink named so
+    miRScore can key on it, and resolving it would restore the name we staged
+    away from.
     """
-    return Path(os.path.relpath(Path(path).resolve(), Path(workdir).resolve()))
+    return Path(os.path.relpath(os.path.abspath(path), os.path.abspath(workdir)))
 
 
 def mirdeep_p2_command(pipeline, genome, index, reads, outdir, threads=1):
