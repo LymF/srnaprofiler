@@ -216,7 +216,11 @@ def test_each_engine_is_checked_separately(monkeypatch, tmp_path):
 
 
 def test_a_missing_engine_does_not_claim_the_module_works(monkeypatch, tmp_path):
+    import setup_module
     monkeypatch.setenv("SRNAPROFILER_CONFIG", str(tmp_path / "absent.yaml"))
+    # Point at an empty tools dir: the answer must not depend on whether this
+    # particular machine happens to have run `setup --tools`.
+    monkeypatch.setattr(setup_module, "tools_dir", lambda: tmp_path / "tools")
     rows = check_module("mirna")
     p2 = [r for r in rows if r["name"] == "miRDeep-P2"][0]
     assert p2["ok"] is False
