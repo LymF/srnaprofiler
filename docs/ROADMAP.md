@@ -1264,6 +1264,36 @@ mantém 22 das 44 falsas; randfold significativo mantém 23.
 do reino, porque quem decide é o usuário e a documentação diz qual serve para quê. Mesmo
 princípio do `--organelle-contigs`: explícito em vez de adivinhado.
 
+**`miRScore` TESTADO (2026-08-10) — funciona, e é a validação que faltava.**
+
+Rodado sobre as 94 predições do miRDeep2 em Arabidopsis, onde 50 são verdadeiras e 44 falsas
+por miRBase:
+
+| | aprovadas | reprovadas |
+|---|---|---|
+| verdadeiras | **33** | 17 |
+| falsas | **1** | **43** |
+
+**Precisão 97,1%** (33/34), recall de 66% das verdadeiras. Ele leva uma saída de 53,2% de
+precisão para 97,1%, eliminando 43 das 44 falsas — sem uma linha de heurística nossa.
+
+**O que o wrapper tem de absorver** (nenhuma disso pode chegar ao usuário):
+
+1. **O precursor do miRDeep2 vem cortado rente ao maduro**, e o miRScore recusa maduro na
+   borda do grampo. Solução: reextrair do genoma pelas coordenadas do próprio miRDeep2 com
+   ~25 nt de flanco. O `hairpinHelper` que vem com o miRScore **não** resolve isto — ele trata
+   outro caso (vários maduros para um grampo).
+2. **Caminho absoluto quebra o miRScore.** Ele faz `chdir` para o diretório de saída e prefixa
+   `../` no FASTQ; com caminho absoluto vira `..//tmp/arq.fastq`, o bowtie não acha nada, o BAM
+   sai **vazio** e a falha só aparece depois, no `samtools sort`. Passar caminho relativo.
+3. **Diretório de saída existente é erro fatal** — limpar ou nomear por corrida.
+4. **Env próprio ou Python compatível:** o miRScore usa o *binding Python* do ViennaRNA
+   (`import RNA`), não só o binário `RNAfold` que o miRDeep usa. O binding não existe para
+   Python 3.14; com `python=3.13` os dois cabem no mesmo ambiente — que é o caminho preferido
+   para reprodutibilidade.
+5. O executável tem shebang `#!/usr/bin/env python`, então **exige o env ativado**; chamar por
+   caminho absoluto pega o Python errado.
+
 **Validação independente: `miRScore`.** Ferramenta publicada (PLOS Comp Biol, 2025;
 `github.com/Aez35/miRScore`) que valida miRNA anotado contra os critérios de estrutura e de
 expressão — reads do maduro **e** do star, precisão de mapeamento — e devolve pass/fail por
