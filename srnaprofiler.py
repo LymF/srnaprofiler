@@ -317,7 +317,13 @@ For more information on each module:
     map_output.add_argument(
         "--create-bam",
         action="store_true",
-        help="Also create sorted BAM file with index"
+        help="Accepted for compatibility: the sorted BAM is built by default"
+    )
+    map_output.add_argument(
+        "--no-bam",
+        action="store_true",
+        help="Stop at the SAM and build no BAM (classify would have to sort it "
+             "itself)"
     )
     map_output.add_argument(
         "--keep-sam",

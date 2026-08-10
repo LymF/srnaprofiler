@@ -1385,6 +1385,12 @@ degradação. Não é o mesmo tipo de erro.
 BAM, ninguém o lê. Nesta sessão foram **24 GB** de SAM apagados à mão. Com `--create-bam`, o
 `mapping` remove o SAM e `--keep-sam` preserva.
 
+O BAM deixou de ser opcional. `--create-bam` fazia o padrão do `mapping` parar num SAM de
+dezenas de GB que o `classify` teria de re-ordenar por conta própria — o artefato que a
+pipeline consome era opt-in. Agora o BAM ordenado e indexado sai sempre, `--no-bam` para no
+SAM, e `--create-bam` continua aceito sem efeito para não quebrar linhas de comando antigas.
+Medido: 130 MB de SAM -> 9,8 MB de BAM, e o `classify` reaproveita o BAM sem re-ordenar.
+
 A remoção só acontece depois de `samtools quickcheck` aprovar o BAM — não basta o arquivo
 existir. Um run morto no meio do `sort` deixa um BAM plausível, e até o quickcheck passar o SAM
 é a única cópia do alinhamento (horas de CPU). Verificado com um SAM real de 65 MB: BAM

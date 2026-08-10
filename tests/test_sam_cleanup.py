@@ -74,3 +74,20 @@ def test_keeping_the_sam_is_available_on_the_command_line():
     h = subprocess.run(["python3", "srnaprofiler.py", "mapping", "--help"],
                        capture_output=True, text=True).stdout
     assert "--keep-sam" in h
+
+
+def test_the_bam_is_produced_by_default():
+    """The BAM is what classify consumes, so making it opt-in was backwards:
+    the default run left tens of GB of SAM and nothing the pipeline reads."""
+    h = subprocess.run(["python3", "srnaprofiler.py", "mapping", "--help"],
+                       capture_output=True, text=True).stdout
+    assert "--no-bam" in h
+
+
+def test_the_old_flag_is_still_accepted():
+    """Existing command lines carry --create-bam; it is now the default."""
+    h = subprocess.run(["python3", "srnaprofiler.py", "mapping", "--help"],
+                       capture_output=True, text=True).stdout
+    assert "--create-bam" in h
+    # the option's own description, not the usage line at the top
+    assert "default" in h.rsplit("--create-bam", 1)[1][:200]

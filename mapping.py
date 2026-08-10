@@ -512,10 +512,12 @@ def run_mapping(args) -> None:
         detailed_stats = get_alignment_stats(sam_out, args.threads)
         all_stats['alignment_stats'].update(detailed_stats)
         
-        # Optionally convert to BAM
-        if hasattr(args, 'create_bam') and args.create_bam:
+        # The sorted BAM is the artefact the rest of the pipeline reads, so it
+        # is built by default; the SAM is the intermediate.
+        if not getattr(args, 'no_bam', False):
             bam_out = sam_out.with_suffix('.bam')
             convert_sam_to_bam(sam_out, bam_out, args.threads)
+            all_stats['bam'] = str(bam_out)
             if not getattr(args, 'keep_sam', False):
                 drop_sam(sam_out, bam_out)
     
