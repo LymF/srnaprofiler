@@ -257,3 +257,87 @@ def run_data(args):
         return 1
     write_config(recorded)
     return 0
+
+
+# Everything conda can install, in one transaction: a partial environment is
+# how you get a tool that is present and unusable.
+CONDA_PACKAGES = [
+    "bowtie", "samtools", "fastp", "fastqc", "bedtools",
+    "viennarna", "mirdeep2", "mirscore",
+    "pysam", "pyyaml", "biopython", "pandas", "numpy", "scipy",
+    "matplotlib", "pybedtools", "tqdm", "pytest",
+]
+
+MIRDP2_URL = ("https://cfhcable.dl.sourceforge.net/project/mirdp2/"
+              "version%201.1.4/miRDP2-v1.1.4.tar.gz")
+
+
+def tools_dir():
+    """Where downloaded third-party scripts go: beside the code, not in $HOME.
+
+    An installation that keeps its own tools can be moved, copied or deleted as
+    one thing, and two checkouts do not fight over the same patched script.
+    """
+    return Path(__file__).resolve().parent / "tools"
+
+
+def conda_install_command(packages):
+    """Install into the environment that is active, never into base.
+
+    Without CONDA_PREFIX conda would resolve to base, which is usually shared
+    and not what anyone means by "install this for my project".
+    """
+    prefix = os.environ.get("CONDA_PREFIX")
+    if not prefix:
+        raise RuntimeError(
+            "no active conda environment (CONDA_PREFIX unset). Create and "
+            "activate one first: conda env create -f environment.yml && "
+            "conda activate srnaprofiler")
+    return ["conda", "install", "-y", "-p", prefix,
+            "-c", "bioconda", "-c", "conda-forge", *packages]
+
+
+def install_mirdeep_p2(dest=None):
+    """Fetch miRDeep-P2 into the tools directory and patch it.
+
+    Downloaded from a named mirror: SourceForge's "latest/download" serves the
+    *test data* rather than the program, and its default mirror often refuses
+    connections outright.
+    """
+    dest = Path(dest or tools_dir())
+    dest.mkdir(parents=True, exist_ok=True)
+    pipeline = dest / "1.1.4" / "miRDP2-v1.1.4_pipeline.bash"
+    if pipeline.exists():
+        log(f"miRDeep-P2 already in {dest}", "INFO")
+    else:
+        tarball = dest / "miRDP2-v1.1.4.tar.gz"
+        log(f"downloading miRDeep-P2 to {tarball}", "INFO")
+        subprocess.run(["curl", "-sSL", "--fail", "-m", "1800",
+                        "-o", str(tarball), MIRDP2_URL], check=True)
+        subprocess.run(["tar", "-xzf", str(tarball), "-C", str(dest)], check=True)
+        tarball.unlink()
+        if not pipeline.exists():
+            raise RuntimeError(f"the archive did not contain {pipeline.name}; "
+                               f"the download may have served the test data")
+    patch_mirdeep_p2(pipeline)
+    return pipeline
+
+
+def run_tools(args):
+    """Install what conda can, fetch what it cannot, and verify the result."""
+    log(f"installing into {os.environ.get('CONDA_PREFIX', '(no env)')}", "INFO")
+    subprocess.run(conda_install_command(CONDA_PACKAGES), check=True)
+
+    pipeline = install_mirdeep_p2()
+    rfam = None
+    from utils import user_config
+    rfam = user_config().get("ncrna_db")
+    if rfam and rfam_index_ready(rfam):
+        link_rfam_for_mirdeep_p2(rfam, pipeline)
+    else:
+        log("miRDeep-P2's rfam_index is not linked yet: run "
+            "`setup --data --rfam-dir DIR` or it will predict nothing", "WARN")
+    write_config({"mirdp2_pipeline": pipeline})
+
+    log("verifying...", "INFO")
+    return run_check(args)

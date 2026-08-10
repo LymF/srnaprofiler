@@ -12,7 +12,7 @@ from qc import run_qc
 from mapping import run_mapping
 from clusters import run_clusters
 from mirna import run_mirna_analysis
-from setup_module import run_check, run_data
+from setup_module import run_check, run_data, run_tools
 from utils import (
     log, which, 
     DEFAULT_MIN_LEN, DEFAULT_QTRIM,
@@ -207,6 +207,11 @@ For more information on each module:
         action="store_true",
         help="Report what each module needs and whether it can run here")
     setup_parser.add_argument(
+        "--tools",
+        action="store_true",
+        help="Install the toolchain into the ACTIVE conda environment, fetch "
+             "miRDeep-P2 into ./tools, patch it, and verify the result")
+    setup_parser.add_argument(
         "--data",
         action="store_true",
         help="Prepare reference data and record where it went")
@@ -218,8 +223,12 @@ For more information on each module:
         "--mirdp2",
         help="Path to miRDP2-v1.1.4_pipeline.bash (with --data): patches its "
              "path bug, links the Rfam index it needs, and records it")
-    setup_parser.set_defaults(
-        func=lambda a: sys.exit(run_data(a) if a.data else run_check(a)))
+    def _setup(a):
+        if a.tools:
+            sys.exit(run_tools(a))
+        sys.exit(run_data(a) if a.data else run_check(a))
+
+    setup_parser.set_defaults(func=_setup)
 
     # ==================== Mapping Module ====================
     map_parser = subparsers.add_parser(

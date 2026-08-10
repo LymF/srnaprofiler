@@ -33,3 +33,4 @@ deep-research-report-*.md
 
 # legacy standalone version (superseded)
 srnaprofiler-func.py
+tools/

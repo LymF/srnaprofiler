@@ -6,6 +6,8 @@ per module, and for the pieces with a known silent failure it verifies the thing
 that actually breaks -- ViennaRNA's Python binding rather than the package name,
 the miRDeep-P2 patch rather than the file's existence.
 """
+from pathlib import Path
+
 import pytest
 
 from setup_module import (check_python_package, check_tool, check_module,
@@ -165,3 +167,39 @@ def test_an_unrecognised_script_is_refused_rather_than_edited(tmp_path):
     p = _p2(tmp_path, 'seq="something else entirely"\n')
     with pytest.raises(RuntimeError, match="not find"):
         patch_mirdeep_p2(p)
+
+
+# --- setup --tools: install into the active env, keep scripts in the repo ---
+
+from setup_module import conda_install_command, tools_dir, CONDA_PACKAGES
+
+
+def test_the_install_targets_the_active_environment(monkeypatch):
+    monkeypatch.setenv("CONDA_PREFIX", "/opt/conda/envs/mine")
+    cmd = conda_install_command(["bowtie"])
+    assert "-p" in cmd and "/opt/conda/envs/mine" in cmd
+    assert "-y" in cmd
+
+
+def test_installing_outside_a_conda_environment_is_refused(monkeypatch):
+    """Without a target env, conda would write to base -- someone else's."""
+    monkeypatch.delenv("CONDA_PREFIX", raising=False)
+    with pytest.raises(RuntimeError, match="conda"):
+        conda_install_command(["bowtie"])
+
+
+def test_the_channels_are_the_ones_the_packages_live_in(monkeypatch):
+    monkeypatch.setenv("CONDA_PREFIX", "/opt/env")
+    cmd = " ".join(conda_install_command(["bowtie"]))
+    assert "bioconda" in cmd and "conda-forge" in cmd
+
+
+def test_the_package_list_covers_every_module(monkeypatch):
+    assert {"bowtie", "samtools", "fastp", "viennarna"} <= set(CONDA_PACKAGES)
+
+
+def test_downloaded_scripts_live_beside_the_code():
+    """Not in the user's home: an installation stays self-contained."""
+    import setup_module
+    assert tools_dir().name == "tools"
+    assert tools_dir().parent == Path(setup_module.__file__).resolve().parent
