@@ -36,12 +36,31 @@ class RuleScorer:
     KNOWN_EVIDENCE = ("1u", "5a", "fractop_bid", "pingpong", "phase", "size")
 
     PHASE_MODES = ("score", "cycles")
+    # Reported instead of a class when the size fits no class's window. Distinct
+    # from `review`, which means the classes compete: here none of them applies.
+    AMBIGUOUS = "ambiguous"
+
+    @staticmethod
+    def enabled_classes(config):
+        """Classes the config leaves switched on, in order.
+
+        A class is a description of a pathway, and a pathway can be absent from
+        a clade: 24-nt reproductive phasiRNA needs DCL5, which monocots have and
+        Arabidopsis does not. `enabled: false` removes the class everywhere it
+        would otherwise act -- scoring here, and island merging through
+        `classify.class_size_windows`.
+        """
+        return {name: spec for name, spec in (config.get("classes") or {}).items()
+                if (spec or {}).get("enabled", True)}
 
     def __init__(self, config):
         self.cfg = config
         # Configurable shape parameters (defaults = previous behavior).
         self.shape = (config.get("decision", {}) or {}).get("shape", {}) or {}
-        for name, spec in (config.get("classes") or {}).items():
+        if not self.enabled_classes(config):
+            raise ValueError("no enabled class in the config: every locus would "
+                             "come out ambiguous")
+        for name, spec in self.enabled_classes(config).items():
             mode = spec.get("phase_on", "score")
             if mode not in self.PHASE_MODES:
                 raise ValueError(
@@ -191,7 +210,7 @@ class RuleScorer:
     def decide(self, record):
         scores = {}
         evidence = {}
-        for name, spec in self.cfg["classes"].items():
+        for name, spec in self.enabled_classes(self.cfg).items():
             scores[name], evidence[name] = self._score_class(name, spec, record)
         record.class_scores = {k: round(v, 3) for k, v in scores.items()}
         # softmax for confidence
@@ -216,4 +235,26 @@ class RuleScorer:
             or record.reads < dec["min_reads"]
             or record.dicer_call == "N"
         )
+        if self._outside_window(self.cfg["classes"][top_name], record):
+            # The winner's own size window does not contain this locus, so its
+            # definition does not hold here -- and with every term size-gated an
+            # "N" scores zero everywhere, which would make the argmax the config's
+            # first key. Report the size verdict instead of a class, keep the
+            # nearest one in the trail, and leave review to mean what it means.
+            record.cls = self.AMBIGUOUS
+            record.score = None
+            # review stays True: it means "do not trust this call, look at it",
+            # and a locus whose size fits no class is exactly that. Clearing it
+            # would let ambiguous loci pass any `review == False` filter as if
+            # they were confident calls.
+            record.review = True
+            record.evidence = f"nearest={top_name}; " + record.evidence
         return record
+
+    def _outside_window(self, spec, record):
+        """True when the locus's dominant size is not inside this class's window."""
+        window = spec.get("size")
+        if not window:
+            return False
+        size = self._size(record)
+        return size is None or not (window["lo"] <= size <= window["hi"])

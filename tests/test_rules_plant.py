@@ -41,7 +41,10 @@ def test_no_pirna_class_exists():
     # class is not in the config at all
     assert "piRNA" not in _cfg()["classes"]
     r = _decide(dicer_call="27", pct_1u=0.9)
-    assert r.cls in ("phasiRNA", "hcsiRNA", "siRNA")
+    # And it is not forced into a plant class either: no plant window reaches
+    # 27 nt, so the honest answer is that none of them applies.
+    assert r.cls == "ambiguous"
+    assert "piRNA" not in r.evidence
 
 
 def test_ping_pong_is_not_scored_in_plants():

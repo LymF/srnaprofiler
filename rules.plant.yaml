@@ -86,6 +86,13 @@ classes:
   # against truth yet -- Arabidopsis cannot calibrate a pathway it lacks. Rice
   # (804 PHAS24 loci in sRNAanno) is where that number gets tested.
   phasiRNA24:
+    # OFF by default, and the default is the honest one: this is a MONOCOT
+    # pathway. 24-nt reproductive phasiRNA come from DCL5, which rice and maize
+    # have and Arabidopsis does not. Enabled on Arabidopsis it took 3514 loci
+    # and 46.4% of the read mass -- with a median phase_pvalue of 1.000, because
+    # they are simply the deepest hc-siRNA loci. Turn it on for a species that
+    # has the pathway (`enabled: true`), not by default.
+    enabled: false
     size: {lo: 24, hi: 24}
     w_size: 1.0
     w_phase: 4.0

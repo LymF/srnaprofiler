@@ -26,9 +26,15 @@ def resolve_pad(cli_pad, config):
 
 
 def class_size_windows(config):
-    """Size windows of the classes, used to group neighbouring islands."""
+    """Size windows of the enabled classes, used to group neighbouring islands.
+
+    A disabled class must not reach here: these windows decide which islands may
+    merge (`clustering._same_size_group`), so leaving one in would change the
+    loci themselves. Adding {24,24} moved an Arabidopsis run from 28,754 to
+    32,992 loci with no other change.
+    """
     out = []
-    for spec in (config.get("classes") or {}).values():
+    for spec in RuleScorer.enabled_classes(config).values():
         size = (spec or {}).get("size")
         if size and "lo" in size and "hi" in size:
             out.append((size["lo"], size["hi"]))

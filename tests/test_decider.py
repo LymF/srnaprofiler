@@ -20,8 +20,13 @@ def test_sirna_dualstrand_21nt():
     RuleScorer(_cfg()).decide(r)
     assert r.cls == "siRNA"
 
-def test_pingpong_frac_flips_ambiguous_to_pirna():
-    # a 23-nt dual-strand locus sits between the size windows; ping-pong decides.
+def test_a_size_between_the_windows_is_ambiguous_however_strong_the_evidence():
+    """23 nt sits one below piRNA and one above siRNA, so neither holds.
+
+    This used to assert that ping-pong picked the class here. It no longer can:
+    a class is asserted only over a size inside its own window, and no amount of
+    evidence changes which sizes a class is defined over.
+    """
     scorer = RuleScorer(_cfg())
     base = dict(chrom="c", start=0, end=100, reads=500, dicer_call="23",
                 frac_top=0.5, pct_1u=0.5)
@@ -29,8 +34,11 @@ def test_pingpong_frac_flips_ambiguous_to_pirna():
     strong_pp = ClusterRecord(**base, pingpong_frac=0.5)
     scorer.decide(no_pp)
     scorer.decide(strong_pp)
-    assert no_pp.cls == "siRNA"       # without ping-pong -> siRNA
-    assert strong_pp.cls == "piRNA"   # strong ping-pong -> piRNA
+    assert no_pp.cls == "ambiguous"
+    assert strong_pp.cls == "ambiguous"
+    # the trail is kept: ping-pong still moved which class came closest
+    assert "nearest=siRNA" in no_pp.evidence
+    assert "nearest=piRNA" in strong_pp.evidence
 
 def test_pingpong_does_not_override_sirna_size():
     # 21-nt dual-strand loci (canonical endo-siRNA) pick up 10-nt 5'-5' overlaps by
@@ -70,7 +78,10 @@ def test_no_size_call_scores_zero():
                       dicer_call="N", frac_top=0.95, pct_1u=0.9, pingpong_frac=0.3)
     r.e_1u, r.e_pingpong = 0.9, 0.9
     RuleScorer(_cfg()).decide(r)
-    assert r.score == 0.0
+    # No size means no class window contains it: reported ambiguous, and a
+    # locus with nothing asserted over it carries no score rather than a zero.
+    assert r.cls == "ambiguous"
+    assert r.score is None
 
 
 def test_pirna_defining_evidence_is_1u_or_pingpong():
