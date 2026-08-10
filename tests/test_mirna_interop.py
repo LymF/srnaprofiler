@@ -153,3 +153,13 @@ def test_a_missing_rfam_index_is_refused(tmp_path):
 def test_a_missing_install_says_where_it_looked(tmp_path):
     with pytest.raises(RuntimeError, match="not found"):
         check_mirdeep_p2_install(tmp_path / "nope" / "pipeline.bash")
+
+
+def test_the_engine_must_be_declared():
+    """No default: running the animal engine on a plant library halves precision."""
+    import subprocess, sys
+    r = subprocess.run([sys.executable, "srnaprofiler.py", "mirna", "-p", "x",
+                        "-o", "/tmp/x", "--reads", "r.fq", "--species", "ath"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "--engine" in r.stderr

@@ -557,6 +557,15 @@ Examples:
         required=True,
         help="Species name for miRNA annotation"
     )
+    mirna_required.add_argument(
+        "--engine",
+        required=True,
+        choices=["mirdeep2", "mirdeep-p2"],
+        help="Prediction engine. mirdeep2 for animals; mirdeep-p2 for plants. "
+             "Required on purpose: running miRDeep2 on a plant library scores "
+             "50/94 predictions correct against miRBase (41 of them 24-nt "
+             "hc-siRNA with a hairpin), against 85/85 for miRDeep-P2"
+    )
     
     # Reference options (mutually exclusive group)
     # miRDeep2 needs both: the index to map, the FASTA to fold precursors.
