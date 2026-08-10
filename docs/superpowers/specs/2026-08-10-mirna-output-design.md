@@ -74,6 +74,17 @@ O `precursor_seq` publicado é o que **nós** recortamos do genoma com flanco de
 (`hairpin_with_flank`) e o miRScore validou — é a sequência que corresponde às coordenadas da
 linha, não a que o motor emitiu rente ao maduro.
 
+**Um alfabeto só: DNA.** Conferido na saída real (`plant/mirna_fresh`), o miRScore devolve
+`mSeq`, `msSeq` e `precSeq` em **RNA** (`GCAAGUUGACCUUGGCUCUGU`), enquanto nossas predições já
+vêm em DNA — os dois parsers fazem `.replace("U", "T")`. Sem conversão, o `mature.fa` sairia
+em T e o `star.fa`/`precursor.fa` em U. As colunas e os FASTA saem em **DNA**, que é o que
+casa com o genoma, com o BED e com o `.clusters.tsv`; quem quiser a forma RNA da publicação
+faz um `tr T U`.
+
+**Os campos numéricos do miRScore são strings com ponto flutuante** (`'545.0'`, `'21.0'`) e
+`precision` está em **0–100**, não 0–1. Vão para a tabela como vieram: são medidas dele, e
+reformatá-las inventaria precisão que ele não deu.
+
 **`result` tem quatro valores, e nenhum deles é vazio.** O ROADMAP registra três ocorrências
 do mesmo anti-padrão nesta base (o `0.0` do `pingpong_frac` sob a guarda de 10 pares, o score
 de miRNA, o `NaN` na `auc()`): um valor que significa "não medido" sendo lido como medição.
@@ -109,9 +120,12 @@ profundidade; quando ele não existir (binário ausente, ou `-nostrucvis`), cai 
 `RNAplots/`. Se nenhum dos dois existir, o diretório sai vazio e o log avisa em **WARN** —
 não é erro fatal, mas também não é silêncio.
 
-**Sem conversão de formato.** Cada ferramenta emite o que emite (`.ps` do strucVis, `.pdf` do
-miRDeep2) e nós não convertemos: ganhar uniformidade cosmética não vale uma dependência de
-ghostscript no `setup`, que é o módulo com o maior custo de fragilidade do projeto.
+**Já são PDF, então não há conversão a fazer** — o que eu supunha ser `.ps` do strucVis é na
+verdade `<nome>.ps.pdf`, e o RNAplots emite `<nome>_plot.pdf`. Nenhuma dependência nova.
+
+**A preferência pelo strucVis não é só qualitativa, é de cobertura**: na corrida real ele tem
+plot para **87/87** (56 `passed` + 31 `failed`) e o RNAplots para **86** — um locus reprovado
+por estrutura inválida não chega a render um plot lá.
 
 ### O layout
 
