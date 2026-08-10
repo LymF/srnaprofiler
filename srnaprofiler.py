@@ -213,20 +213,19 @@ For more information on each module:
              "miRDeep-P2 into ./tools, patch it, and verify the result")
     setup_parser.add_argument(
         "--data",
-        action="store_true",
-        help="Prepare reference data and record where it went")
-    setup_parser.add_argument(
-        "--rfam-dir",
-        help="Where to build the Rfam structural RNA index (with --data). "
-             "Downloads ~1.8 GB and runs bowtie-build; skipped if already built")
+        metavar="DIR",
+        help="Build the Rfam structural RNA index in DIR and record where it "
+             "went (downloads ~1.8 GB and runs bowtie-build; skipped if DIR "
+             "already holds it)")
     setup_parser.add_argument(
         "--mirdp2",
-        help="Path to miRDP2-v1.1.4_pipeline.bash (with --data): patches its "
-             "path bug, links the Rfam index it needs, and records it")
+        metavar="PIPELINE",
+        help="Record a miRDeep-P2 installed elsewhere instead of fetching one: "
+             "patches its path bug and links the Rfam index it needs")
     def _setup(a):
         if a.tools:
             sys.exit(run_tools(a))
-        sys.exit(run_data(a) if a.data else run_check(a))
+        sys.exit(run_data(a) if (a.data or a.mirdp2) else run_check(a))
 
     setup_parser.set_defaults(func=_setup)
 
@@ -610,11 +609,6 @@ Examples:
         help="Skip miRScore validation. On by default: an unvalidated false "
              "prediction becomes a carved locus with miRNA asserted over it, "
              "while a missed one merely falls into the ordinary classes"
-    )
-    mirna_parser.add_argument(
-        "--mirdp2",
-        help="Path to miRDP2-v1.1.4_pipeline.bash. Only needed if "
-             "`srnaprofiler setup` has not recorded it"
     )
     mirna_required.add_argument(
         "--engine",

@@ -274,15 +274,15 @@ def run_data(args):
     """Prepare the reference data and record where it went."""
     recorded = {}
 
-    if args.rfam_dir:
-        prefix = Path(args.rfam_dir) / "ncrna"
+    if args.data:
+        prefix = Path(args.data) / "ncrna"
         if rfam_index_ready(prefix):
             log(f"Rfam index already built at {prefix}", "INFO")
         else:
             script = Path(__file__).parent / "extras" / "fetch_ncrna_db.sh"
-            log(f"building the Rfam index in {args.rfam_dir} "
+            log(f"building the Rfam index in {args.data} "
                 f"(downloads ~1.8 GB, then bowtie-build)", "INFO")
-            subprocess.run(["bash", str(script), str(args.rfam_dir)], check=True)
+            subprocess.run(["bash", str(script), str(args.data)], check=True)
             if not rfam_index_ready(prefix):
                 raise RuntimeError(
                     f"{script.name} finished but {prefix}.*.ebwt is incomplete")
@@ -308,12 +308,12 @@ def run_data(args):
             link_rfam_for_mirdeep_p2(rfam, pipeline)
         else:
             log("no Rfam index recorded yet, so miRDeep-P2's rfam_index was not "
-                "linked -- run `setup --data --rfam-dir DIR` first, or it will "
+                "linked -- run `setup --data DIR` first, or it will "
                 "predict nothing", "WARN")
         recorded["mirdp2_pipeline"] = pipeline
 
     if not recorded:
-        log("nothing to do: pass --rfam-dir and/or --mirdp2", "WARN")
+        log("nothing to do: pass --data DIR and/or --mirdp2", "WARN")
         return 1
     write_config(recorded)
     return 0
@@ -397,7 +397,7 @@ def run_tools(args):
         link_rfam_for_mirdeep_p2(rfam, pipeline)
     else:
         log("miRDeep-P2's rfam_index is not linked yet: run "
-            "`setup --data --rfam-dir DIR` or it will predict nothing", "WARN")
+            "`setup --data DIR` or it will predict nothing", "WARN")
     write_config({"mirdp2_pipeline": pipeline})
 
     log("verifying...", "INFO")

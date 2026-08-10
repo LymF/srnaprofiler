@@ -16,7 +16,7 @@ conda env create -f environment.yml
 conda activate srnaprofiler
 
 python3 srnaprofiler.py setup --tools                       # toolchain
-python3 srnaprofiler.py setup --data --rfam-dir ~/ncrna_db  # references
+python3 srnaprofiler.py setup --data ~/ncrna_db             # references
 python3 srnaprofiler.py setup --check                       # verify
 ```
 
@@ -75,7 +75,7 @@ keeps the original beside it, is idempotent, and **refuses a script whose known
 bug it cannot find** — a later version may fix it differently, and rewriting
 third-party code on a guess is worse than stopping.
 
-### `setup --data`
+### `setup --data DIR`
 
 Builds the Rfam structural RNA index (~1.8 GB downloaded, then `bowtie-build`;
 skipped if already built), links it into miRDeep-P2 so the 2.9 GB is not held

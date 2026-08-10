@@ -994,8 +994,13 @@ def write_mirna_loci_bed(predictions, passing, path):
 def run_mirdeep_p2(args, reads, outdir):
     """The plant engine, with the three things it needs to not fail silently."""
     from utils import user_config
-    pipeline = Path(getattr(args, "mirdp2", None)
-                    or user_config().get("mirdp2_pipeline", ""))
+    recorded = user_config().get("mirdp2_pipeline")
+    if not recorded:
+        raise RuntimeError(
+            "no miRDeep-P2 recorded: run `srnaprofiler setup --tools` to fetch "
+            "and patch one, or `setup --mirdp2 PATH` to record an existing "
+            "install")
+    pipeline = Path(recorded)
     check_mirdeep_p2_install(pipeline)
 
     outdir = Path(outdir)

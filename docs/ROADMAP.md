@@ -1335,7 +1335,7 @@ trabalho e cobre o caso comum.
 |---|---|
 | `srnaprofiler setup --check` | verifica cada dependência **no ambiente atual** e imprime a tabela do README, executável em vez de escrita. Sem instalar nada. |
 | `srnaprofiler setup --tools` | instala no ambiente conda ativo (`bowtie`, `samtools`, `fastp`, `fastqc`, `viennarna`, `r-base`, `mirdeep2`) e busca o miRDeep-P2 do espelho versionado do SourceForge |
-| `srnaprofiler setup --data --rfam-dir DIR` | baixa as 829 famílias do Rfam, roda `bowtie-build`, e **grava o caminho** num arquivo de config |
+| `srnaprofiler setup --data DIR` | baixa as 829 famílias do Rfam, roda `bowtie-build`, e **grava o caminho** num arquivo de config |
 | `srnaprofiler setup --data --mirbase SPECIES` | baixa `<sp>.gff3` + `hairpin.fa` e roda o `check_mirbase_assembly.py` contra o genoma informado |
 
 **Requisito que atravessa tudo: reprodutível em qualquer máquina.** O `setup` tem de ser

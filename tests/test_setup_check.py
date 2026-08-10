@@ -239,7 +239,7 @@ def test_data_links_the_index_into_an_already_installed_mirdeep_p2(tmp_path,
     pipeline.write_text("#!/bin/bash\n" + FIXED_LINE)
     write_config({"mirdp2_pipeline": str(pipeline)})   # as `--tools` leaves it
 
-    args = SimpleNamespace(rfam_dir=str(tmp_path / "rfam"), mirdp2=None)
+    args = SimpleNamespace(data=str(tmp_path / "rfam"), mirdp2=None)
     assert setup_module.run_data(args) == 0
 
     linked = pipeline.parent / "scripts" / "index" / "rfam_index.1.ebwt"
@@ -267,3 +267,26 @@ def test_r_is_part_of_the_environment_recipe():
     text = recipe.read_text()
     for pkg in ("r-base", "r-ggplot2", "r-reshape2", "r-plyr"):
         assert pkg in text
+
+
+def test_the_data_flag_carries_the_directory_itself():
+    """`--data --rfam-dir DIR` read as two unrelated options; the path belongs
+    to the step that uses it."""
+    import subprocess, sys
+    h = subprocess.run([sys.executable, "srnaprofiler.py", "setup", "--help"],
+                       capture_output=True, text=True).stdout
+    assert "--data DIR" in h
+    assert "--rfam-dir" not in h
+
+
+def test_recording_a_pipeline_alone_needs_no_rfam_dir(tmp_path, monkeypatch):
+    """Pointing setup at a miRDeep-P2 installed elsewhere is its own action."""
+    import setup_module
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(tmp_path / "paths.yaml"))
+    pipeline = tmp_path / "1.1.4" / "miRDP2.bash"
+    (pipeline.parent / "scripts" / "index").mkdir(parents=True)
+    pipeline.write_text("#!/bin/bash\n" + FIXED_LINE)
+    assert setup_module.run_data(SimpleNamespace(data=None,
+                                                mirdp2=str(pipeline))) == 0
+    from utils import user_config
+    assert user_config()["mirdp2_pipeline"] == str(pipeline)
