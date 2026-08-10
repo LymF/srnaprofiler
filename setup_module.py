@@ -125,3 +125,135 @@ def run_check(args):
     print(f"\nrecorded paths: {cfg}" if cfg.exists()
           else f"\nno recorded paths yet ({cfg}); run `setup --data`")
     return 0 if all(usable.values()) else 1
+
+
+_EBWT = ("1", "2", "3", "4", "rev.1", "rev.2")
+
+
+def write_config(paths):
+    """Record prepared paths, merging with whatever is already there.
+
+    `--data` is run once per kind of reference, so overwriting would make the
+    second run erase the first.
+    """
+    import yaml
+    from utils import user_config
+
+    current = user_config()
+    current.update({k: str(v) for k, v in paths.items()})
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as fh:
+        yaml.safe_dump(current, fh, sort_keys=True)
+    log(f"recorded in {path}: {', '.join(sorted(paths))}", "INFO")
+    return path
+
+
+def rfam_index_ready(prefix):
+    """All six bowtie files, not just some: a partial index aligns nothing."""
+    prefix = Path(prefix)
+    return all((prefix.parent / f"{prefix.name}.{e}.ebwt").exists()
+               for e in _EBWT)
+
+
+def link_rfam_for_mirdeep_p2(rfam_prefix, pipeline):
+    """Point miRDeep-P2's rfam_index at the index built for --ncrna-db.
+
+    It ships `mature_index` but not `rfam_index`, which is a separate download,
+    and without it the pipeline runs to completion and predicts nothing. The
+    paths are derived from the script's own directory and have no flag, so a
+    symlink is the way in that survives their updates -- and it avoids holding
+    the same 2.9 GB twice.
+    """
+    rfam_prefix = Path(rfam_prefix)
+    if not rfam_index_ready(rfam_prefix):
+        raise RuntimeError(f"the Rfam index at {rfam_prefix} is incomplete; "
+                           f"build it with extras/fetch_ncrna_db.sh")
+    index_dir = Path(pipeline).parent / "scripts" / "index"
+    if not index_dir.is_dir():
+        raise RuntimeError(f"{index_dir} does not exist -- is {pipeline} really "
+                           f"a miRDeep-P2 install?")
+    n = 0
+    for e in _EBWT:
+        target = rfam_prefix.parent / f"{rfam_prefix.name}.{e}.ebwt"
+        link = index_dir / f"rfam_index.{e}.ebwt"
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to(target.resolve())
+        n += 1
+    log(f"linked {n} Rfam index files into {index_dir}", "INFO")
+    return n
+
+
+_P2_BUG = 'seq="$results_folder/${filename}.ori.fa"'
+_P2_FIX = 'seq="$results_folder/${filename}/${filename}.ori.fa"'
+
+
+def patch_mirdeep_p2(pipeline):
+    """Fix the 1.1.4 path bug, keeping the original beside it.
+
+    The script writes the collapsed reads to `$out/$name/$name.ori.fa` and reads
+    them back from `$out/$name.ori.fa`, so every later step sees an empty file
+    and the run ends with `end...` and zero predictions.
+
+    Returns True if it patched, False if it was already patched. Refuses a
+    script it does not recognise instead of rewriting it: a later version may
+    fix this differently, and editing third-party code on a guess is worse than
+    stopping.
+    """
+    pipeline = Path(pipeline)
+    text = pipeline.read_text()
+    if _P2_FIX in text:
+        log(f"{pipeline.name} is already patched", "INFO")
+        return False
+    if _P2_BUG not in text:
+        raise RuntimeError(
+            f"could not find the known path bug in {pipeline}, and it is not "
+            f"patched either. Refusing to edit a script I do not recognise; "
+            f"check the version.")
+    backup = Path(str(pipeline) + ".orig")
+    if not backup.exists():
+        backup.write_text(text)
+    pipeline.write_text(text.replace(_P2_BUG, _P2_FIX))
+    log(f"patched {pipeline.name} (original kept at {backup.name})", "INFO")
+    return True
+
+
+def run_data(args):
+    """Prepare the reference data and record where it went."""
+    recorded = {}
+
+    if args.rfam_dir:
+        prefix = Path(args.rfam_dir) / "ncrna"
+        if rfam_index_ready(prefix):
+            log(f"Rfam index already built at {prefix}", "INFO")
+        else:
+            script = Path(__file__).parent / "extras" / "fetch_ncrna_db.sh"
+            log(f"building the Rfam index in {args.rfam_dir} "
+                f"(downloads ~1.8 GB, then bowtie-build)", "INFO")
+            subprocess.run(["bash", str(script), str(args.rfam_dir)], check=True)
+            if not rfam_index_ready(prefix):
+                raise RuntimeError(
+                    f"{script.name} finished but {prefix}.*.ebwt is incomplete")
+        recorded["ncrna_db"] = prefix
+
+    if args.mirdp2:
+        pipeline = Path(args.mirdp2)
+        patch_mirdeep_p2(pipeline)
+        rfam = recorded.get("ncrna_db")
+        if rfam is None:
+            from utils import user_config
+            rfam = user_config().get("ncrna_db")
+        if rfam:
+            link_rfam_for_mirdeep_p2(rfam, pipeline)
+        else:
+            log("no Rfam index recorded yet, so miRDeep-P2's rfam_index was not "
+                "linked -- run `setup --data --rfam-dir DIR` first, or it will "
+                "predict nothing", "WARN")
+        recorded["mirdp2_pipeline"] = pipeline
+
+    if not recorded:
+        log("nothing to do: pass --rfam-dir and/or --mirdp2", "WARN")
+        return 1
+    write_config(recorded)
+    return 0

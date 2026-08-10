@@ -12,7 +12,7 @@ from qc import run_qc
 from mapping import run_mapping
 from clusters import run_clusters
 from mirna import run_mirna_analysis
-from setup_module import run_check
+from setup_module import run_check, run_data
 from utils import (
     log, which, 
     DEFAULT_MIN_LEN, DEFAULT_QTRIM,
@@ -206,7 +206,20 @@ For more information on each module:
         "--check",
         action="store_true",
         help="Report what each module needs and whether it can run here")
-    setup_parser.set_defaults(func=lambda a: sys.exit(run_check(a)))
+    setup_parser.add_argument(
+        "--data",
+        action="store_true",
+        help="Prepare reference data and record where it went")
+    setup_parser.add_argument(
+        "--rfam-dir",
+        help="Where to build the Rfam structural RNA index (with --data). "
+             "Downloads ~1.8 GB and runs bowtie-build; skipped if already built")
+    setup_parser.add_argument(
+        "--mirdp2",
+        help="Path to miRDP2-v1.1.4_pipeline.bash (with --data): patches its "
+             "path bug, links the Rfam index it needs, and records it")
+    setup_parser.set_defaults(
+        func=lambda a: sys.exit(run_data(a) if a.data else run_check(a)))
 
     # ==================== Mapping Module ====================
     map_parser = subparsers.add_parser(

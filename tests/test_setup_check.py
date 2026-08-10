@@ -65,3 +65,103 @@ def test_the_summary_says_which_modules_are_usable():
                     "mirna": [{"name": "RNAfold", "ok": False, "detail": "x"}]})
     assert ok["qc"] is True
     assert ok["mirna"] is False
+
+
+# --- setup --data: prepare the references and record where they are ------
+
+from setup_module import write_config, link_rfam_for_mirdeep_p2, rfam_index_ready
+
+
+def test_recorded_paths_survive_a_round_trip(tmp_path, monkeypatch):
+    cfg = tmp_path / "sub" / "paths.yaml"
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(cfg))
+    write_config({"ncrna_db": "/data/ncrna"})
+    from utils import user_config
+    assert user_config()["ncrna_db"] == "/data/ncrna"
+
+
+def test_recording_a_path_keeps_the_ones_already_there(tmp_path, monkeypatch):
+    """Running `--data` twice for different things must not erase the first."""
+    cfg = tmp_path / "paths.yaml"
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(cfg))
+    write_config({"ncrna_db": "/data/ncrna"})
+    write_config({"mirdp2_pipeline": "/opt/p.bash"})
+    from utils import user_config
+    got = user_config()
+    assert got["ncrna_db"] == "/data/ncrna"
+    assert got["mirdp2_pipeline"] == "/opt/p.bash"
+
+
+def _fake_index(dirpath, prefix):
+    dirpath.mkdir(parents=True, exist_ok=True)
+    for e in ("1", "2", "3", "4", "rev.1", "rev.2"):
+        (dirpath / f"{prefix}.{e}.ebwt").write_text("x")
+    return dirpath / prefix
+
+
+def test_an_index_is_ready_only_with_all_six_files(tmp_path):
+    p = _fake_index(tmp_path / "idx", "ncrna")
+    assert rfam_index_ready(p) is True
+    (tmp_path / "idx" / "ncrna.rev.2.ebwt").unlink()
+    assert rfam_index_ready(p) is False
+
+
+def test_the_rfam_index_is_linked_into_mirdeep_p2(tmp_path):
+    """One index serves both: miRDeep-P2's rfam_index is a separate download,
+    and without it the pipeline runs to completion and predicts nothing."""
+    rfam = _fake_index(tmp_path / "rfam", "ncrna")
+    pipeline = tmp_path / "1.1.4" / "miRDP2.bash"
+    (pipeline.parent / "scripts" / "index").mkdir(parents=True)
+    pipeline.write_text("#!/bin/bash\n")
+
+    n = link_rfam_for_mirdeep_p2(rfam, pipeline)
+
+    assert n == 6
+    linked = pipeline.parent / "scripts" / "index" / "rfam_index.1.ebwt"
+    assert linked.is_symlink()
+    assert linked.resolve() == (tmp_path / "rfam" / "ncrna.1.ebwt").resolve()
+
+
+def test_linking_refuses_an_incomplete_index(tmp_path):
+    rfam = _fake_index(tmp_path / "rfam", "ncrna")
+    (tmp_path / "rfam" / "ncrna.3.ebwt").unlink()
+    pipeline = tmp_path / "1.1.4" / "miRDP2.bash"
+    (pipeline.parent / "scripts" / "index").mkdir(parents=True)
+    pipeline.write_text("#!/bin/bash\n")
+    with pytest.raises(RuntimeError, match="incomplete"):
+        link_rfam_for_mirdeep_p2(rfam, pipeline)
+
+
+from setup_module import patch_mirdeep_p2
+
+BUGGY_LINE = '\tseq="$results_folder/${filename}.ori.fa"\n'
+
+
+def _p2(tmp_path, line):
+    p = tmp_path / "1.1.4" / "miRDP2.bash"
+    (p.parent / "scripts" / "index").mkdir(parents=True)
+    p.write_text("#!/bin/bash\necho hi\n" + line)
+    return p
+
+
+def test_the_path_bug_is_patched_and_the_original_kept(tmp_path):
+    p = _p2(tmp_path, BUGGY_LINE)
+    assert patch_mirdeep_p2(p) is True
+    assert "${filename}/${filename}.ori.fa" in p.read_text()
+    assert p.with_suffix(p.suffix + ".orig").exists()
+
+
+def test_patching_twice_changes_nothing(tmp_path):
+    """setup must be idempotent: running it again cannot corrupt an install."""
+    p = _p2(tmp_path, BUGGY_LINE)
+    patch_mirdeep_p2(p)
+    first = p.read_text()
+    assert patch_mirdeep_p2(p) is False
+    assert p.read_text() == first
+
+
+def test_an_unrecognised_script_is_refused_rather_than_edited(tmp_path):
+    """Their next version may fix it differently; do not rewrite blindly."""
+    p = _p2(tmp_path, 'seq="something else entirely"\n')
+    with pytest.raises(RuntimeError, match="not find"):
+        patch_mirdeep_p2(p)
