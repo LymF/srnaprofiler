@@ -271,6 +271,40 @@ def convert_sam_to_bam(sam_file: Path, bam_file: Path, threads: int, sort: bool 
     log(f"BAM file created: {bam_file}", "INFO")
 
 
+def bam_is_complete(bam_file: Path) -> bool:
+    """Is the BAM whole -- asked of samtools, not of the file's existence.
+
+    A run killed mid-sort leaves a file that looks like a BAM. `quickcheck`
+    reads the header and the EOF block, which is what catches truncation.
+    """
+    bam_file = Path(bam_file)
+    if not bam_file.exists() or bam_file.stat().st_size == 0:
+        return False
+    if not which("samtools"):
+        return False
+    return subprocess.run(["samtools", "quickcheck", str(bam_file)],
+                          capture_output=True).returncode == 0
+
+
+def drop_sam(sam_file: Path, bam_file: Path) -> bool:
+    """Remove the SAM once the BAM that replaces it is verified whole.
+
+    Never before: until quickcheck passes, the SAM is the only copy of the
+    alignment, and a run of this size is hours of CPU.
+    """
+    sam_file = Path(sam_file)
+    if not bam_is_complete(bam_file):
+        log(f"BAM did not verify, so {sam_file.name} was kept", "WARN")
+        return False
+    if not sam_file.exists():
+        return False
+    freed = sam_file.stat().st_size / 1e9
+    sam_file.unlink()
+    log(f"Removed {sam_file.name} ({freed:.1f} GB); the sorted BAM replaces it "
+        f"-- pass --keep-sam to preserve it", "INFO")
+    return True
+
+
 def get_alignment_stats(sam_file: Path, threads: int = 1) -> dict:
     """Extract detailed alignment statistics from SAM file."""
     if not which("samtools"):
@@ -482,6 +516,8 @@ def run_mapping(args) -> None:
         if hasattr(args, 'create_bam') and args.create_bam:
             bam_out = sam_out.with_suffix('.bam')
             convert_sam_to_bam(sam_out, bam_out, args.threads)
+            if not getattr(args, 'keep_sam', False):
+                drop_sam(sam_out, bam_out)
     
     # Generate report
     generate_mapping_report(all_stats, outdir, args.prefix)

@@ -1381,9 +1381,14 @@ Para isso não virar mágica, duas regras:
 que lá o dano de errar é afirmar biologia falsa sobre um contig; aqui é deixar de limpar
 degradação. Não é o mesmo tipo de erro.
 
-**Limpeza de intermediários.** O SAM é subproduto: uma vez ordenado em BAM, ninguém o lê.
-Nesta sessão foram **24 GB** de SAM apagados à mão. Proposta: `mapping` remove o SAM depois de
-gerar o BAM ordenado com sucesso, e `--keep-sam` preserva.
+**Limpeza de intermediários — FEITO (2026-08-10).** O SAM é subproduto: uma vez ordenado em
+BAM, ninguém o lê. Nesta sessão foram **24 GB** de SAM apagados à mão. Com `--create-bam`, o
+`mapping` remove o SAM e `--keep-sam` preserva.
+
+A remoção só acontece depois de `samtools quickcheck` aprovar o BAM — não basta o arquivo
+existir. Um run morto no meio do `sort` deixa um BAM plausível, e até o quickcheck passar o SAM
+é a única cópia do alinhamento (horas de CPU). Verificado com um SAM real de 65 MB: BAM
+truncado → SAM preservado com WARN; BAM íntegro → SAM removido.
 
 **O FASTQ filtrado de ncRNA fica** (decisão de 2026-08-10), mesmo custando 1,6 GB por corrida:
 diferente do SAM, ele é **reaproveitável** — permite re-mapear com outros parâmetros sem

@@ -319,6 +319,12 @@ For more information on each module:
         action="store_true",
         help="Also create sorted BAM file with index"
     )
+    map_output.add_argument(
+        "--keep-sam",
+        action="store_true",
+        help="Keep the SAM after the BAM is written (default: remove it once "
+             "the sorted BAM verifies; SAMs run tens of GB)"
+    )
     
     # Performance options
     map_perf = map_parser.add_argument_group("performance options")
