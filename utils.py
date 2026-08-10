@@ -8,6 +8,7 @@ import gzip
 import shlex
 import subprocess
 import datetime
+import os
 from pathlib import Path
 from typing import Optional, Tuple, Union
 from shutil import which as _which
@@ -344,3 +345,34 @@ def validate_arguments(args) -> None:
             if not hasattr(args, 'no_plots') or not args.no_plots:
                 if not which("Rscript"):
                     log("Rscript not found - plots will be skipped", "WARN")
+
+def config_path():
+    """Where `srnaprofiler setup` records the paths it prepared.
+
+    Overridable with SRNAPROFILER_CONFIG, which is what the tests use and what
+    lets one machine hold several installations.
+    """
+    override = os.environ.get("SRNAPROFILER_CONFIG")
+    if override:
+        return Path(override)
+    base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
+    return Path(base) / "srnaprofiler" / "paths.yaml"
+
+
+def user_config():
+    """The recorded paths, or an empty mapping when setup has not run.
+
+    Absent config is not an error: every path it holds can also be given on the
+    command line. It exists so that a prepared installation does not make the
+    user repeat what setup already found.
+    """
+    path = config_path()
+    if not path.exists():
+        return {}
+    try:
+        import yaml
+        with open(path) as fh:
+            return yaml.safe_load(fh) or {}
+    except Exception as exc:                      # a broken config must not
+        log(f"ignoring unreadable config {path}: {exc}", "WARN")   # block a run
+        return {}

@@ -557,24 +557,27 @@ Examples:
         required=True,
         help="Species name for miRNA annotation"
     )
+    mirna_parser.add_argument(
+        "--mirdp2",
+        help="Path to miRDP2-v1.1.4_pipeline.bash. Only needed if "
+             "`srnaprofiler setup` has not recorded it"
+    )
     mirna_required.add_argument(
         "--engine",
         required=True,
         choices=["mirdeep2", "mirdeep-p2"],
-        help="Prediction engine. mirdeep2 for animals; mirdeep-p2 for plants. "
-             "Required on purpose: running miRDeep2 on a plant library scores "
-             "50/94 predictions correct against miRBase (41 of them 24-nt "
-             "hc-siRNA with a hairpin), against 85/85 for miRDeep-P2"
+        help="Prediction engine: mirdeep2 for animals, mirdeep-p2 for plants "
+             "(no default -- the wrong engine halves precision, see README)"
     )
     
     # Reference options (mutually exclusive group)
     # miRDeep2 needs both: the index to map, the FASTA to fold precursors.
-    mirna_ref = mirna_parser.add_argument_group(
-        "reference (at least one; both avoids rebuilding the index)")
+    mirna_ref = mirna_parser.add_argument_group("reference")
     mirna_ref.add_argument(
         "-g", "--genome",
-        help="Reference genome FASTA. Needed by miRDeep2 to fold precursors; "
-             "an index is built from it if --index-prefix is not given"
+        required=True,
+        help="Reference genome FASTA. Required: the engines fold precursors "
+             "from it, and validation re-cuts them from it with flanks"
     )
     mirna_ref.add_argument(
         "--index-prefix",

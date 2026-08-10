@@ -484,9 +484,43 @@ def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
     return input_files
 
 
+def finish_mirna(predictions, args, mirna_dir, reads):
+    """Validate, write the BED that feeds --mirna-loci, and say what happened."""
+    kingdom = "plant" if args.engine == "mirdeep-p2" else "animal"
+    passing = None
+    if getattr(args, "genome", None):
+        passing = validate_with_mirscore(
+            predictions, args.genome, reads, kingdom,
+            Path(mirna_dir) / "validation", threads=getattr(args, "threads", 1))
+    else:
+        log("no -g/--genome: skipping miRScore validation, which needs the "
+            "genome to re-cut precursors with flanks", "WARN")
+
+    bed = Path(mirna_dir) / f"{args.prefix}.mirna_loci.bed"
+    if passing is None:
+        # Unvalidated predictions are still written, and the log says so: a
+        # false prediction becomes a carved locus with miRNA asserted over it.
+        names = {p["name"] for p in predictions}
+        n = write_mirna_loci_bed(predictions, names, bed)
+        log(f"{n} UNVALIDATED loci written to {bed}", "WARN")
+    else:
+        n = write_mirna_loci_bed(predictions, passing, bed)
+        log(f"{n} validated loci written to {bed} "
+            f"(of {len(predictions)} predicted)", "INFO")
+    return bed
+
+
 def run_mirna_analysis(args):
     """Main function for miRNA analysis module."""
     
+    if getattr(args, "engine", "mirdeep2") == "mirdeep-p2":
+        outdir = ensure_outdir(Path(args.outdir))
+        mirna_dir = ensure_outdir(outdir / "mirna")
+        preds = run_mirdeep_p2(args, args.reads, mirna_dir / "mirdp2")
+        finish_mirna(preds, args, mirna_dir, args.reads)
+        log("miRNA analysis completed successfully!", "INFO")
+        return
+
     # Check dependencies
     if not check_mirdeep2_dependencies():
         sys.exit(1)
@@ -650,6 +684,18 @@ def run_mirna_analysis(args):
     log("Step 6: Generating results summary...", "INFO")
     results = parse_mirdeep2_results(results_dir, args.prefix)
     generate_mirna_report(results, mirna_dir, args.prefix)
+
+    # Step 7: validate the novel predictions and emit the BED for --mirna-loci
+    novel = []
+    for csv_path in sorted(results_dir.glob("result_*.csv")):
+        novel = parse_mirdeep2_novel(csv_path)
+        if novel:
+            break
+    if novel:
+        log(f"Step 7: validating {len(novel)} novel predictions...", "INFO")
+        finish_mirna(novel, args, mirna_dir, input_files["reads"])
+    else:
+        log("no novel predictions to validate", "INFO")
     
     log("=" * 60, "INFO")
     log(f"miRNA analysis completed successfully!", "INFO")
@@ -817,3 +863,170 @@ def check_mirdeep_p2_install(pipeline):
             f"miRDeep-P2's rfam_index is missing from {index} (it ships only "
             f"mature_index). Without it the run predicts nothing. `srnaprofiler "
             f"setup` links it to the Rfam index built for --ncrna-db.")
+
+
+def parse_mirdeep_p2_predictions(path):
+    """miRDeep-P2's `*_filter_P_prediction` as a list of predictions.
+
+    Columns: chrom, strand, read id, name, mature coords, precursor coords,
+    mature sequence, precursor sequence. Coordinates are 1-based inclusive.
+    A line that does not parse is skipped rather than guessed at -- a wrong
+    coordinate here carves a locus in the wrong place and asserts miRNA on it.
+    """
+    out = []
+    with open(path) as fh:
+        for line in fh:
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 7:
+                continue
+            m = re.match(r"(\d+)\.\.(\d+)$", f[5].strip())
+            if not m:
+                continue
+            out.append({"chrom": f[0], "strand": f[1], "name": f[3],
+                        "start": int(m.group(1)), "end": int(m.group(2)),
+                        "mature": f[6].strip().upper().replace("U", "T")})
+    return out
+
+
+def parse_mirdeep2_novel(path):
+    """miRDeep2's result CSV, novel section, in the same shape as the above."""
+    import csv as _csv
+    rows = list(_csv.reader(open(path), delimiter="\t"))
+    start = None
+    for i, r in enumerate(rows):
+        if r and r[0] == "provisional id":
+            hdr, start = r, i + 1
+            break
+    if start is None:
+        return []
+    out = []
+    for r in rows[start:]:
+        if not r or not r[0].strip():
+            break
+        d = dict(zip(hdr, r))
+        m = re.match(r"(\S+):(\d+)\.\.(\d+)", d.get("precursor coordinate", ""))
+        if not m:
+            continue
+        out.append({"chrom": m.group(1), "strand": ".", "name": d["provisional id"],
+                    "start": int(m.group(2)), "end": int(m.group(3)),
+                    "mature": d["consensus mature sequence"].strip().upper().replace("U", "T")})
+    return out
+
+
+def mirscore_command(mature, hairpin, reads, kingdom, outdir, workdir, threads=1):
+    """miRScore's invocation, with every path relative to `workdir`.
+
+    It chdirs into its output directory and prefixes `../` to the reads path, so
+    an absolute path becomes `..//abs/path`: bowtie aligns nothing, the BAM comes
+    out empty, and the run dies later in samtools sort with an unrelated message.
+    """
+    rel = lambda p: str(relative_to(p, workdir))
+    return ["miRScore", "-mature", rel(mature), "-hairpin", rel(hairpin),
+            "-fastq", rel(reads), "-kingdom", kingdom,
+            "-threads", str(threads), "-out", rel(outdir)]
+
+
+def parse_mirscore_results(path):
+    """Names miRScore passed. Anything not an explicit pass is a fail."""
+    import csv as _csv
+    with open(path) as fh:
+        return {r["name"] for r in _csv.DictReader(fh)
+                if str(r.get("result", "")).strip().lower().startswith("pass")}
+
+
+def write_mirna_loci_bed(predictions, passing, path):
+    """The deliverable: a BED of validated precursors, ready for --mirna-loci.
+
+    The engines report 1-based inclusive coordinates; BED is 0-based half-open.
+    """
+    n = 0
+    with open(path, "w") as out:
+        for p in predictions:
+            if p["name"] not in passing:
+                continue
+            out.write(f"{p['chrom']}\t{p['start'] - 1}\t{p['end']}\t{p['name']}\n")
+            n += 1
+    return n
+
+
+def run_mirdeep_p2(args, reads, outdir):
+    """The plant engine, with the three things it needs to not fail silently."""
+    from utils import user_config
+    pipeline = Path(getattr(args, "mirdp2", None)
+                    or user_config().get("mirdp2_pipeline", ""))
+    check_mirdeep_p2_install(pipeline)
+
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)   # it does not create its own
+
+    reads = Path(reads)
+    if str(reads).endswith(".gz"):              # it would predict zero, silently
+        plain = outdir / reads.name[:-3]
+        log(f"miRDeep-P2 cannot read gzip; decompressing to {plain}", "INFO")
+        with gzip.open(reads, "rb") as src, open(plain, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        reads = plain
+
+    cmd = mirdeep_p2_command(pipeline, args.genome, args.index_prefix, reads,
+                             outdir, threads=getattr(args, "threads", 1))
+    log("Running miRDeep-P2...", "INFO")
+    subprocess.run(cmd, check=True)
+
+    hits = sorted(outdir.glob("*/*_filter_P_prediction"))
+    if not hits:
+        raise RuntimeError(
+            f"miRDeep-P2 produced no prediction file under {outdir}. It reports "
+            f"success even when it predicts nothing, so this is checked here.")
+    preds = parse_mirdeep_p2_predictions(hits[0])
+    log(f"miRDeep-P2: {len(preds)} predictions", "INFO")
+    return preds
+
+
+def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
+                           threads=1, flank=25):
+    """miRScore's verdict per prediction, or None when it cannot be run.
+
+    Takes the precursor from the genome by the engine's own coordinates, with
+    flanks: the engines report it flush against the mature, and miRScore refuses
+    a mature at the edge of the hairpin.
+    """
+    if not shutil.which("miRScore"):
+        log("miRScore not found in PATH; skipping validation. Install it with "
+            "`conda install -c bioconda miRScore`", "WARN")
+        return None
+
+    import pysam
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    mature_fa, hairpin_fa = workdir / "mature.fa", workdir / "hairpin.fa"
+    genome = pysam.FastaFile(str(genome_path))
+
+    kept = 0
+    with open(mature_fa, "w") as mf, open(hairpin_fa, "w") as hf:
+        for p in predictions:
+            hp = hairpin_with_flank(genome, p["chrom"], p["start"], p["end"],
+                                    p["mature"], flank=flank)
+            if hp is None:
+                continue
+            mf.write(f">{p['name']}\n{p['mature']}\n")
+            hf.write(f">{p['name']}\n{hp}\n")
+            kept += 1
+    if not kept:
+        log("No prediction could be re-cut against the genome; skipping "
+            "validation", "WARN")
+        return None
+    log(f"{kept}/{len(predictions)} predictions prepared for miRScore", "INFO")
+
+    out = workdir / "mirscore"
+    if out.exists():
+        shutil.rmtree(out)          # it refuses an existing output directory
+    cmd = mirscore_command(mature_fa, hairpin_fa, reads, kingdom, out, workdir,
+                           threads=threads)
+    subprocess.run(cmd, cwd=workdir, check=True)
+
+    results = out / "miRScore_results.csv"
+    if not results.exists():
+        raise RuntimeError(f"miRScore wrote no results to {results}")
+    passing = parse_mirscore_results(results)
+    log(f"miRScore validated {len(passing)}/{kept}", "INFO")
+    return passing

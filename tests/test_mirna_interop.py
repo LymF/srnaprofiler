@@ -163,3 +163,91 @@ def test_the_engine_must_be_declared():
                        capture_output=True, text=True)
     assert r.returncode != 0
     assert "--engine" in r.stderr
+
+
+# --- parsing each engine into one shape, and the final BED ---------------
+
+from mirna import (parse_mirdeep_p2_predictions, mirscore_command,
+                   parse_mirscore_results, write_mirna_loci_bed)
+
+P2_LINE = ("NC_003070.9\t+\tread04305100_x40\tNC_003070.9_102\t"
+           "10227086..10227107\t10227086..10227186\tGGGTAAGATCTCTATTGGCAGG\t"
+           "GGGTAAGATCTCTATTGGCAGGAAACCATTACTTAGATCTTTGCATCTCTTT\n")
+
+
+def test_a_mirdeep_p2_prediction_carries_its_coordinates_and_mature(tmp_path):
+    f = tmp_path / "p"
+    f.write_text(P2_LINE)
+    got = parse_mirdeep_p2_predictions(f)
+    assert len(got) == 1
+    p = got[0]
+    assert p["chrom"] == "NC_003070.9" and p["strand"] == "+"
+    assert (p["start"], p["end"]) == (10227086, 10227186)   # the precursor
+    assert p["mature"] == "GGGTAAGATCTCTATTGGCAGG"
+    assert p["name"] == "NC_003070.9_102"
+
+
+def test_a_malformed_prediction_line_is_skipped_not_guessed(tmp_path):
+    f = tmp_path / "p"
+    f.write_text("rubbish\n" + P2_LINE)
+    assert len(parse_mirdeep_p2_predictions(f)) == 1
+
+
+def test_the_mirscore_command_uses_relative_paths(tmp_path):
+    """Absolute paths make miRScore align to nothing and fail three steps later."""
+    work = tmp_path
+    reads = tmp_path / "sub" / "lib.fastq"
+    reads.parent.mkdir()
+    reads.write_text("@r\nACGT\n+\nIIII\n")
+    cmd = mirscore_command(work / "m.fa", work / "h.fa", reads, "plant",
+                           work / "out", work, threads=4)
+    for token in cmd:
+        assert not token.startswith("/"), f"{token} is absolute"
+    assert "plant" in cmd and "-kingdom" in cmd
+
+
+def test_mirscore_results_are_read_as_the_set_that_passed(tmp_path):
+    f = tmp_path / "miRScore_results.csv"
+    f.write_text("name,mSeq,result\na,ACGT,Pass\nb,ACGT,Fail\nc,ACGT,Pass\n")
+    assert parse_mirscore_results(f) == {"a", "c"}
+
+
+def test_the_final_bed_holds_only_what_passed(tmp_path):
+    preds = [dict(chrom="c1", start=101, end=200, name="a", strand="+"),
+             dict(chrom="c1", start=301, end=400, name="b", strand="-")]
+    out = tmp_path / "loci.bed"
+    n = write_mirna_loci_bed(preds, {"a"}, out)
+    assert n == 1
+    line = out.read_text().strip().split("\t")
+    assert line[0] == "c1" and line[3] == "a"
+
+
+def test_the_final_bed_is_zero_based_half_open(tmp_path):
+    """--mirna-loci reads BED; the engines report 1-based inclusive."""
+    preds = [dict(chrom="c1", start=101, end=200, name="a", strand="+")]
+    out = tmp_path / "loci.bed"
+    write_mirna_loci_bed(preds, {"a"}, out)
+    f = out.read_text().strip().split("\t")
+    assert (int(f[1]), int(f[2])) == (100, 200)
+
+
+# --- the paths setup records, so the flags become optional ---------------
+
+from utils import user_config, config_path
+
+
+def test_a_recorded_path_is_read_from_the_config(tmp_path, monkeypatch):
+    cfg = tmp_path / "paths.yaml"
+    cfg.write_text("mirdp2_pipeline: /opt/mirdp2/pipeline.bash\n")
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(cfg))
+    assert user_config()["mirdp2_pipeline"] == "/opt/mirdp2/pipeline.bash"
+
+
+def test_no_config_is_an_empty_mapping_not_a_crash(tmp_path, monkeypatch):
+    monkeypatch.setenv("SRNAPROFILER_CONFIG", str(tmp_path / "absent.yaml"))
+    assert user_config() == {}
+
+
+def test_the_config_lives_where_setup_writes_it(monkeypatch):
+    monkeypatch.delenv("SRNAPROFILER_CONFIG", raising=False)
+    assert str(config_path()).endswith("srnaprofiler/paths.yaml")
