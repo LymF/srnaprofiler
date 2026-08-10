@@ -1423,6 +1423,42 @@ grandes, que era o problema resolvido em 2026-08-06.
 
 ---
 
+## Instalação testada do zero — FEITO (2026-08-10)
+
+Clone limpo em `/tmp/fresh/srnaprofiler` + ambiente `srnafresh` criado apenas do
+`environment.yml`, sem nada herdado da máquina de desenvolvimento. O teste achou
+três defeitos que nenhuma rodada local acharia:
+
+1. **`--check` mentia sobre o `mirna`.** Verificava só a base compartilhada
+   (bowtie, RNAfold, binding) e reportava "yes" com os dois motores ausentes.
+   Agora há uma linha por motor.
+2. **`--tools` seguido de `--data` deixava o índice Rfam desligado.** O `--data`
+   só ligava com `--mirdp2` explícito, mas depois do `--tools` o pipeline está
+   gravado na config, não passado como flag — a ordem documentada produzia uma
+   instalação que o `--check` reprovava.
+3. **Um ponto no nome do FASTQ zerava toda a validação** (6º modo de falha
+   silenciosa). O miRScore corta a chave da biblioteca no primeiro ponto
+   (`at_ncrna.ncrna_filtered.fastq` -> `at_ncrna`) mas nomeia o BAM com o nome
+   inteiro (`at_ncrna.ncrna_filtered_s.bam`): a chave não bate e ele conta zero
+   reads em todos os loci, com os reads alinhados dentro do BAM. O nome que
+   quebra é o que o nosso próprio `mapping` produz, então encadear os módulos
+   entregava `0/87 validados` sem erro nenhum.
+
+Conserto do 3: os reads são apresentados por um link sem pontos, e `relative_to`
+deixou de usar `.resolve()` — que seguia o link e restaurava o nome com pontos,
+desfazendo a encenação uma linha depois. Mais uma guarda: zero reads em *todos*
+os loci é erro, não resultado (uma biblioteca que alinhou não conta zero em todo
+lugar). Foi a guarda que expôs o conserto incompleto.
+
+Medido na instalação limpa (Arabidopsis, reads filtrados de ncRNA):
+
+| | |
+|---|---|
+| predições miRDeep-P2 | 87 |
+| validadas pelo miRScore | 56 |
+| das validadas, em miRBase | **56/56 (100%)** |
+| suíte no ambiente novo | 455 passando |
+
 ## Estado atual (PRONTO)
 
 Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master` (local — falta `git push`). **73 testes** passando.

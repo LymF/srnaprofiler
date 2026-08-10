@@ -62,6 +62,14 @@ to completion, writes `end...` in its log, and predicts zero:
 - a missing `rfam_index`, which is a separate download;
 - gzipped input, which it cannot read.
 
+miRScore adds a sixth, and it is the one that bites hardest: it derives the
+library key from the FASTQ name **cut at the first dot** while naming the BAM
+with the whole stem, so `sample.ncrna_filtered.fastq` counts zero reads at every
+locus with the reads sitting aligned in the BAM. That is the name `mapping`
+emits, so chaining the two modules used to yield an empty result and no error.
+The `mirna` module stages the reads under a dot-free name, and treats zero reads
+at *every* locus as a failure rather than a finding.
+
 `setup` handles the first two and the `mirna` module handles the third. The patch
 keeps the original beside it, is idempotent, and **refuses a script whose known
 bug it cannot find** — a later version may fix it differently, and rewriting
