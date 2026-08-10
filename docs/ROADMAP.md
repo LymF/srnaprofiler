@@ -1240,6 +1240,52 @@ sobre métrica que não vale igual para todas as classes derruba a classe pior s
 - Nota: parte do overlap é esperada (esses genes ficam em vizinhança transcrita), então
   nenhum limiar aqui conta como "passar" — os números servem para comparar corridas.
 
+**B-mirna. Qual motor de miRNA por reino — MEDIDO (2026-08-10)**
+
+Mesma biblioteca (Arabidopsis, flor), mesma verdade (326 precursores do miRBase `ath`), de novo:
+
+| ferramenta | precisão | recall |
+|---|---|---|
+| miRDeep2 (animal, aplicado a planta) | 50/94 = **53,2%** | 50/326 = 15,3% |
+| **miRDeep-P2** | **85/85 = 100,0%** | **83/326 = 25,5%** |
+| ShortStack `--dn_mirna` | 45/45 = 100,0% | 45/326 = 13,8% |
+
+**miRDeep-P2 ganha nos dois eixos** — o dobro do recall do ShortStack com a mesma precisão
+perfeita. (ShortStack foi excluído por decisão do autor; fica registrado só como referência.)
+
+*Por que o miRDeep2 falha em planta:* das 94 predições dele, **41 têm maduro de 24 nt**. Ele foi
+desenhado para animal, onde não existe classe de 24 nt dominando a biblioteca; em Arabidopsis
+ele encontra hc-siRNA — 90% dos loci — com estrutura de grampo, score alto e randfold
+significativo. Medido: filtrar por maduro de 20–22 nt mantém 45 das 50 verdadeiras e elimina
+43 das 44 falsas. **Os critérios canônicos do próprio miRDeep2 discriminam pior:** score ≥ 10
+mantém 22 das 44 falsas; randfold significativo mantém 23.
+
+**Decisão: flag `--engine {mirdeep2,shortstack…}` no subcomando `mirna`** — nome do motor, não
+do reino, porque quem decide é o usuário e a documentação diz qual serve para quê. Mesmo
+princípio do `--organelle-contigs`: explícito em vez de adivinhado.
+
+**Validação independente: `miRScore`.** Ferramenta publicada (PLOS Comp Biol, 2025;
+`github.com/Aez35/miRScore`) que valida miRNA anotado contra os critérios de estrutura e de
+expressão — reads do maduro **e** do star, precisão de mapeamento — e devolve pass/fail por
+locus, **para planta e animal**. É a curadoria automática que este item procurava, e ela existe
+fora de qualquer preditor: predição (miRDeep2/miRDeep-P2) → validação (miRScore) → `--mirna-loci`.
+**Não testada ainda.** O teste decisivo está pronto: as 94 predições do miRDeep2 em Arabidopsis,
+onde 50 são verdadeiras e 44 falsas por miRBase.
+
+**As quatro armadilhas do miRDeep-P2** (três silenciosas — rodam até o fim, escrevem `end...` e
+entregam **zero** predições):
+
+1. não cria o diretório de saída (essa falha alto);
+2. **não lê `.gz`**;
+3. **`rfam_index` vem em download separado** (`ncRNA_rfam.tar.gz`) — e o nosso índice de Rfam
+   serve, via symlink, evitando baixar duas vezes;
+4. **bug de caminho no próprio script** (`miRDP2-v1.1.4_pipeline.bash:101-102`): grava
+   `$out/$name/$name.ori.fa` e lê `$out/$name.ori.fa`. Corrigido aqui com patch de uma linha
+   (original preservado em `.orig`); o `setup` terá de aplicá-lo e **verificar a saída**.
+
+*E o SourceForge:* o link "latest/download" serve **dado de teste**, não o programa, e o
+espelho padrão recusa conexão — só `cfhcable.dl.sourceforge.net` funcionou.
+
 **B0. Módulo `setup` — instalação e preparo de dados (desenhado 2026-08-10)**
 
 Hoje instalar a tool é seguir uma lista no README, e três dependências falham de formas
