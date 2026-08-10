@@ -251,3 +251,12 @@ def test_no_config_is_an_empty_mapping_not_a_crash(tmp_path, monkeypatch):
 def test_the_config_lives_where_setup_writes_it(monkeypatch):
     monkeypatch.delenv("SRNAPROFILER_CONFIG", raising=False)
     assert str(config_path()).endswith("srnaprofiler/paths.yaml")
+
+
+def test_validation_can_be_switched_off_but_is_not_by_default():
+    import subprocess, sys
+    h = subprocess.run([sys.executable, "srnaprofiler.py", "mirna", "--help"],
+                       capture_output=True, text=True).stdout
+    assert "--no-validate" in h
+    # nothing in the help offers to turn it *on*: it already is
+    assert "--validate " not in h

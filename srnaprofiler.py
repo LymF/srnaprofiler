@@ -12,6 +12,7 @@ from qc import run_qc
 from mapping import run_mapping
 from clusters import run_clusters
 from mirna import run_mirna_analysis
+from setup_module import run_check
 from utils import (
     log, which, 
     DEFAULT_MIN_LEN, DEFAULT_QTRIM,
@@ -195,6 +196,18 @@ For more information on each module:
     
     qc_parser.set_defaults(func=run_qc)
     
+    # ==================== Setup Module ====================
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Verify and prepare an installation",
+        description="Check that a run will work here, and prepare the "
+                    "reference data the pipeline needs")
+    setup_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Report what each module needs and whether it can run here")
+    setup_parser.set_defaults(func=lambda a: sys.exit(run_check(a)))
+
     # ==================== Mapping Module ====================
     map_parser = subparsers.add_parser(
         "mapping",
@@ -558,6 +571,13 @@ Examples:
         help="Species name for miRNA annotation"
     )
     mirna_parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Skip miRScore validation. On by default: an unvalidated false "
+             "prediction becomes a carved locus with miRNA asserted over it, "
+             "while a missed one merely falls into the ordinary classes"
+    )
+    mirna_parser.add_argument(
         "--mirdp2",
         help="Path to miRDP2-v1.1.4_pipeline.bash. Only needed if "
              "`srnaprofiler setup` has not recorded it"
@@ -833,8 +853,11 @@ def main():
     # Run the selected module
     try:
         log(f"Starting {args.subcmd} module", "INFO")
-        log(f"Output directory: {args.outdir}", "INFO")
-        log(f"Project prefix: {args.prefix}", "INFO")
+        # setup has neither: it inspects the installation, it produces no run
+        if hasattr(args, "outdir"):
+            log(f"Output directory: {args.outdir}", "INFO")
+        if hasattr(args, "prefix"):
+            log(f"Project prefix: {args.prefix}", "INFO")
         
         args.func(args)
         log(f"{args.subcmd} module completed successfully", "INFO")

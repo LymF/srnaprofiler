@@ -488,7 +488,9 @@ def finish_mirna(predictions, args, mirna_dir, reads):
     """Validate, write the BED that feeds --mirna-loci, and say what happened."""
     kingdom = "plant" if args.engine == "mirdeep-p2" else "animal"
     passing = None
-    if getattr(args, "genome", None):
+    if getattr(args, "no_validate", False):
+        log("--no-validate: writing predictions without miRScore", "WARN")
+    elif getattr(args, "genome", None):
         passing = validate_with_mirscore(
             predictions, args.genome, reads, kingdom,
             Path(mirna_dir) / "validation", threads=getattr(args, "threads", 1))
