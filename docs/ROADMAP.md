@@ -1240,6 +1240,59 @@ sobre métrica que não vale igual para todas as classes derruba a classe pior s
 - Nota: parte do overlap é esperada (esses genes ficam em vizinhança transcrita), então
   nenhum limiar aqui conta como "passar" — os números servem para comparar corridas.
 
+**B0. Módulo `setup` — instalação e preparo de dados (desenhado 2026-08-10)**
+
+Hoje instalar a tool é seguir uma lista no README, e três dependências falham de formas
+que não parecem falha: o `RNAfold` que o miRDeep procura no `PATH`, o link "latest" do
+SourceForge que serve dado de teste em vez do programa, e o miRDeep-P2 que roda até o fim
+com entrada `.gz` e produz **zero** predições. Um módulo resolve isso porque pode
+**verificar**, não só instruir.
+
+**Instalação da tool em si** (antes do `setup`): `pip install srnaprofiler` dentro de um
+ambiente conda já criado. O `pyproject.toml`/entry point ainda não existem — hoje se roda
+`python3 srnaprofiler.py`. Talvez também receita conda depois; pip primeiro, que é menos
+trabalho e cobre o caso comum.
+
+**Desenho proposto do subcomando:**
+
+| chamada | o que faz |
+|---|---|
+| `srnaprofiler setup --check` | verifica cada dependência **no ambiente atual** e imprime a tabela do README, executável em vez de escrita. Sem instalar nada. |
+| `srnaprofiler setup --tools` | instala no ambiente conda ativo (`bowtie`, `samtools`, `fastp`, `fastqc`, `viennarna`, `r-base`, `mirdeep2`) e busca o miRDeep-P2 do espelho versionado do SourceForge |
+| `srnaprofiler setup --data --rfam-dir DIR` | baixa as 829 famílias do Rfam, roda `bowtie-build`, e **grava o caminho** num arquivo de config |
+| `srnaprofiler setup --data --mirbase SPECIES` | baixa `<sp>.gff3` + `hairpin.fa` e roda o `check_mirbase_assembly.py` contra o genoma informado |
+
+**Onde guardar o caminho do índice de ncRNA.** Um arquivo de config do usuário
+(`~/.config/srnaprofiler/paths.yaml`), escrito pelo `setup --data` e lido pelo `mapping`.
+
+**Como o filtro de Rfam deve entrar no `mapping` — proposta e o porquê.**
+
+Hoje é `--ncrna-db PATH`, explícito. A proposta é: se o config tiver o caminho, o `mapping`
+**filtra por padrão**, com `--no-ncrna-filter` para desligar. O argumento é assimetria de
+dano, medida: rodar **sem** o filtro deixa 31–56% das reads (RNA estrutural) entrarem na
+clusterização, e 36,5% da massa de loci em Arabidopsis vem daí. Rodar **com** o filtro num
+caso onde não deveria custa reads que não são small RNA de via nenhuma. O silêncio perigoso
+é o da omissão, não o da ação.
+
+Para isso não virar mágica, duas regras:
+1. **O log sempre diz qual banco foi usado e quanta read saiu** — já faz isso.
+2. **Sem config, o `mapping` avisa em WARN** que não está filtrando, com o número medido, em
+   vez de seguir calado. É o mesmo padrão do `-g/--genome` ausente, que já avisa que o nulo
+   da base 5' cai para 0,25.
+
+*Alternativa considerada:* manter tudo explícito, como o `--organelle-contigs`. A diferença é
+que lá o dano de errar é afirmar biologia falsa sobre um contig; aqui é deixar de limpar
+degradação. Não é o mesmo tipo de erro.
+
+**Limpeza de intermediários.** O SAM é subproduto: uma vez ordenado em BAM, ninguém o lê.
+Nesta sessão foram **24 GB** de SAM apagados à mão. Proposta: `mapping` remove o SAM depois de
+gerar o BAM ordenado com sucesso, e `--keep-sam` preserva. Mesma ideia para o FASTQ filtrado
+de ncRNA (1,6 GB por corrida) e para os intermediários do miRDeep. Nunca apagar antes do
+artefato final existir e ser verificado, e nunca apagar o que o usuário trouxe.
+
+*Precisa de spec própria antes de implementar* — em especial a parte de instalar pacotes, que
+mexe no ambiente do usuário e é a única do projeto com efeito fora do diretório de trabalho.
+
 **B. Features maiores, cada uma com spec própria**
 
 4. **Módulo pós-miRDeep** (item 7 do Tier 3): curar `result_*.csv`, isomiRs, alimentar

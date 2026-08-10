@@ -22,7 +22,7 @@ says which module breaks without each one, so you can install only what you use.
 | **R** + `Rscript` | `plots` | those plots are skipped |
 | **ViennaRNA** (`RNAfold`) | `mirna` (any engine) | miRNA prediction |
 | **miRDeep2** | `mirna`, arthropod engine | that engine only |
-| **ShortStack ≥ 4** | `mirna`, plant engine | that engine only |
+| **miRDeep-P2** | `mirna`, plant engine | that engine only |
 
 `classify` is the exception: it needs only the Python packages plus samtools, so
 a run that starts from an existing BAM has almost no external dependency.
@@ -67,25 +67,7 @@ pip install -r requirements.txt
 `viennarna` provides `RNAfold`, which both miRNA engines need. It is easy to
 miss because the failure appears inside the other tool, not at install time.
 
-### 3. ShortStack (plant miRNA engine)
-
-Not on bioconda in a version that matches; install from source:
-
-```bash
-git clone https://github.com/MikeAxtell/ShortStack.git
-# it is a single executable; put it on PATH or call it by full path
-./ShortStack/ShortStack --version        # expect 4.x
-```
-
-ShortStack calls `RNAfold` from `PATH`, so run it with the conda environment
-active. It also refuses a genome whose filename does not end in `.fa`/`.fasta` --
-a symlink is enough:
-
-```bash
-ln -s GCF_000001735.4_TAIR10.1_genomic.fna tair10.fa
-```
-
-### 4. miRDeep-P2 (alternative plant engine)
+### 3. miRDeep-P2 (plant miRNA engine)
 
 Distributed on SourceForge, and the "latest/download" link serves the test data,
 not the program. Take the versioned file, and a named mirror if the default one
@@ -99,10 +81,17 @@ tar -xzf miRDP2.tar.gz          # gives 1.1.4/miRDP2-v1.1.4_pipeline.bash
 
 It needs only `bowtie`, `RNAfold` and `perl` -- the BioPerl/blast/DESeq2 list in
 its own README belongs to the annotation and differential-expression steps, which
-this pipeline does not use. **Create the output directory yourself**: the script
-does not, and fails with a `mkdir` error followed by a hundred confusing lines.
+this pipeline does not use.
 
-### 5. Verify
+Two ways it fails without saying so:
+
+- **Create the output directory yourself.** The script does not, and fails with a
+  `mkdir` error followed by a hundred confusing lines.
+- **Give it uncompressed FASTQ.** With a `.gz` it runs to completion, writes
+  `end...` in its progress log, and produces **zero** predictions -- a result that
+  looks like an answer.
+
+### 4. Verify
 
 ```bash
 pytest -q                        # all tests should pass
