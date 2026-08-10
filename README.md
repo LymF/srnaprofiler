@@ -9,72 +9,77 @@ analysis).
 
 ## Installation
 
-Everything the pipeline needs, in one environment. Verified: the 398 tests pass
-in it and both miRNA engines run in it.
-
-### 1. Code and environment
-
 ```bash
 git clone git@github.com:LymF/srnaprofiler.git
 cd srnaprofiler
 conda env create -f environment.yml
 conda activate srnaprofiler
-pytest -q                    # 398 passed
+
+python3 srnaprofiler.py setup --tools                       # toolchain
+python3 srnaprofiler.py setup --data --rfam-dir ~/ncrna_db  # references
+python3 srnaprofiler.py setup --check                       # verify
 ```
 
-`environment.yml` pins **python=3.13** deliberately: miRScore imports ViennaRNA's
-*Python binding* (`import RNA`), not only the `RNAfold` binary the miRDeep tools
-call, and that binding is not built for 3.14. On 3.14 conda installs `viennarna`
-without complaint and `import RNA` still fails. The pin is what lets one
+That is the whole installation. What each step does, and why it is a command
+rather than a list of instructions, follows.
+
+### `setup --check`
+
+Reports, per module, whether a run would work here — and checks each requirement
+through **the interface that actually breaks**, which is not the same as asking
+whether a package is installed:
+
+```
+mirna
+  [ok  ] bowtie       .../bin/bowtie
+  [ok  ] RNAfold      .../bin/RNAfold
+  [ok  ] viennarna    .../python3.13/site-packages/RNA/__init__.py
+  [warn] miRScore     optional: validation is skipped without it
+
+modules that can run here:
+  classify   yes
+  mirna      yes
+```
+
+`RNAfold` and `viennarna` are two rows for one package on purpose: the miRDeep
+engines call the **binary**, miRScore imports the **Python binding**, and
+`conda install viennarna` on Python 3.14 gives you the first without the second.
+That is why `environment.yml` pins **python=3.13** — it is what lets one
 environment serve every module.
 
-### 2. The two tools conda cannot install
+It touches nothing, so it is safe to run at any time.
 
-Only needed for the `mirna` module; skip if you do not use it.
+### `setup --tools`
 
-**miRDeep-P2** (plant engine). The SourceForge "latest/download" link serves the
-*test data*, not the program, and the default mirror often refuses connections:
+Installs the toolchain into the **active** conda environment (it refuses when
+none is active, rather than writing into `base`), fetches miRDeep-P2 into
+`./tools` beside the code, patches it, and finishes by running `--check`.
 
-```bash
-curl -L -o miRDP2.tar.gz \
-  "https://cfhcable.dl.sourceforge.net/project/mirdp2/version%201.1.4/miRDP2-v1.1.4.tar.gz"
-tar -xzf miRDP2.tar.gz       # gives 1.1.4/miRDP2-v1.1.4_pipeline.bash
-```
+miRDeep-P2 needs three fixes, and all three fail **silently** — the pipeline runs
+to completion, writes `end...` in its log, and predicts zero:
 
-It then needs three fixes, all of which fail **silently** -- the pipeline runs to
-completion, writes `end...` in its log, and emits zero predictions:
+- a path bug in its own script (writes `$out/$n/$n.ori.fa`, reads `$out/$n.ori.fa`);
+- a missing `rfam_index`, which is a separate download;
+- gzipped input, which it cannot read.
 
-1. **A path bug in the script itself.** Line 102 reads `$out/$name.ori.fa` while
-   line 101 wrote `$out/$name/$name.ori.fa`:
-   ```bash
-   sed -i '102s|${filename}.ori.fa|${filename}/${filename}.ori.fa|' \
-     1.1.4/miRDP2-v1.1.4_pipeline.bash
-   ```
-2. **A missing Rfam index.** It ships `mature_index` but not `rfam_index`, which
-   is a separate download. The index built by `extras/fetch_ncrna_db.sh` covers
-   it, and is larger (829 families):
-   ```bash
-   for e in 1 2 3 4 rev.1 rev.2; do
-     ln -sf <rfam-dir>/ncrna.$e.ebwt 1.1.4/scripts/index/rfam_index.$e.ebwt
-   done
-   ```
-3. **It does not read `.gz`** and does not create its own output directory.
+`setup` handles the first two and the `mirna` module handles the third. The patch
+keeps the original beside it, is idempotent, and **refuses a script whose known
+bug it cannot find** — a later version may fix it differently, and rewriting
+third-party code on a guess is worse than stopping.
 
-**miRScore** (validation, both kingdoms):
+### `setup --data`
 
-```bash
-conda install -c bioconda miRScore     # into the environment above
-```
+Builds the Rfam structural RNA index (~1.8 GB downloaded, then `bowtie-build`;
+skipped if already built), links it into miRDeep-P2 so the 2.9 GB is not held
+twice, and records the paths in `~/.config/srnaprofiler/paths.yaml`. After this
+`mapping` and `mirna` find their references with no flags.
 
-### 3. Reference data
+### Reference data you provide
 
-Downloaded once, not installed:
-
-| data | used by | how | size |
-|---|---|---|---|
-| Rfam structural RNA index | `mapping --ncrna-db` | `bash extras/fetch_ncrna_db.sh <dir>` | 1.8 GB FASTA, 2.9 GB index |
-| miRBase GFF3 + hairpin | `classify --mirna-loci` | `mirbase.org/download/<sp>.gff3` | KB |
-| genome FASTA + bowtie index | `mapping`, `classify` | your assembly | — |
+| data | used by | note |
+|---|---|---|
+| genome FASTA + bowtie index | `mapping`, `classify`, `mirna` | your assembly |
+| miRBase GFF3 + hairpin | `classify --mirna-loci` | when the species has one |
 
 **Check that a miRBase annotation belongs to your genome before using it.**
 miRBase publishes each species against whatever assembly it used, and mixing
@@ -84,24 +89,6 @@ asserted over them, and every validation still returns a number.
 ```bash
 python3 extras/check_mirbase_assembly.py genome.fa osa.gff3 hairpin.fa osa
 ```
-
-### 4. What each module needs
-
-Install only what you use -- the table says what breaks without each piece.
-
-| tool | needed by | breaks if missing |
-|---|---|---|
-| python + `environment.yml` | everything | import error |
-| bowtie, samtools | `mapping`, `classify`, `mirna` | refuses to start |
-| fastp *or* cutadapt | `qc` | refuses to start |
-| FastQC | `qc` | skipped with a warning |
-| R + `Rscript` | `plots` | those plots are skipped |
-| ViennaRNA | `mirna` | prediction and validation |
-| miRDeep2 / miRDeep-P2 | `mirna` | the chosen engine only |
-| miRScore | `mirna` validation | validation step only |
-
-`classify` is the exception: Python packages plus samtools, so a run starting
-from an existing BAM has almost no external dependency.
 
 ## Modules
 
