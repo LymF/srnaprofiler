@@ -9,16 +9,42 @@ analysis).
 
 ## Requirements
 
-- **Python ≥ 3.9**
-- **Python packages** (see `requirements.txt`): `pysam`, `pyyaml`, `biopython`, `pytest`
-- **External tools** (only needed for the full pipeline; the `classify` module
-  needs just the Python packages above):
-  - [Bowtie 1](https://bowtie-bio.sourceforge.net/index.shtml) and `bowtie-build`
-  - [SAMtools](http://www.htslib.org/)
-  - [fastp](https://github.com/OpenGene/fastp) **or** [cutadapt](https://cutadapt.readthedocs.io/) (read trimming)
-  - [FastQC](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/) (optional QC report)
-  - [R](https://www.r-project.org/) with `Rscript` (plots)
-  - [miRDeep2](https://github.com/rajewsky-lab/mirdeep2) (miRNA module)
+Each module needs a different set of tools. Nothing here is guessed -- the table
+says which module breaks without each one, so you can install only what you use.
+
+| tool | needed by | breaks if missing |
+|---|---|---|
+| Python ≥ 3.9 + `requirements.txt` | everything | import error |
+| **bowtie 1** + `bowtie-build` | `mapping`, `mirna` | mapping refuses to start |
+| **samtools** | `mapping`, `classify` | BAM sorting/indexing |
+| **fastp** *or* **cutadapt** | `qc` | trimming refuses to start |
+| **FastQC** | `qc` | skipped with a warning, run continues |
+| **R** + `Rscript` | `plots` | those plots are skipped |
+| **ViennaRNA** (`RNAfold`) | `mirna` (any engine) | miRNA prediction |
+| **miRDeep2** | `mirna`, arthropod engine | that engine only |
+| **ShortStack ≥ 4** | `mirna`, plant engine | that engine only |
+
+`classify` is the exception: it needs only the Python packages plus samtools, so
+a run that starts from an existing BAM has almost no external dependency.
+
+### Reference data
+
+Two modules take reference files that are downloaded once, not installed:
+
+| data | used by | how to get it | size |
+|---|---|---|---|
+| Rfam structural RNA index | `mapping --ncrna-db` | `bash extras/fetch_ncrna_db.sh <dir>` | 1.8 GB FASTA, 2.9 GB index |
+| miRBase GFF3 / hairpin | `classify --mirna-loci` | `mirbase.org/download/<species>.gff3` | KB |
+| genome FASTA + bowtie index | `mapping`, `classify` | your assembly | — |
+
+**Check the miRBase annotation belongs to your genome before using it.** miRBase
+publishes each species against whatever assembly it used, and mixing assemblies
+fails silently -- loci are carved at the wrong coordinates, miRNA is asserted on
+them, and every validation still returns a number:
+
+```bash
+python3 extras/check_mirbase_assembly.py genome.fa osa.gff3 hairpin.fa osa
+```
 
 ## Installation
 
@@ -29,31 +55,62 @@ git clone git@github.com:LymF/srnaprofiler.git
 cd srnaprofiler
 ```
 
-### 2. Python environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows (PowerShell): .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-### 3. External tools (recommended via conda / bioconda)
+### 2. Everything that conda can install
 
 ```bash
 conda create -n srnaprofiler -c bioconda -c conda-forge \
-    bowtie samtools fastp fastqc mirdeep2 r-base
+    python=3.11 bowtie samtools fastp fastqc viennarna r-base mirdeep2
 conda activate srnaprofiler
 pip install -r requirements.txt
 ```
 
-### 4. Verify the installation
+`viennarna` provides `RNAfold`, which both miRNA engines need. It is easy to
+miss because the failure appears inside the other tool, not at install time.
+
+### 3. ShortStack (plant miRNA engine)
+
+Not on bioconda in a version that matches; install from source:
 
 ```bash
-# run the test suite (all tests should pass)
-pytest -q
+git clone https://github.com/MikeAxtell/ShortStack.git
+# it is a single executable; put it on PATH or call it by full path
+./ShortStack/ShortStack --version        # expect 4.x
+```
 
-# show the command-line help
+ShortStack calls `RNAfold` from `PATH`, so run it with the conda environment
+active. It also refuses a genome whose filename does not end in `.fa`/`.fasta` --
+a symlink is enough:
+
+```bash
+ln -s GCF_000001735.4_TAIR10.1_genomic.fna tair10.fa
+```
+
+### 4. miRDeep-P2 (alternative plant engine)
+
+Distributed on SourceForge, and the "latest/download" link serves the test data,
+not the program. Take the versioned file, and a named mirror if the default one
+times out:
+
+```bash
+curl -L -o miRDP2.tar.gz \
+  "https://cfhcable.dl.sourceforge.net/project/mirdp2/version%201.1.4/miRDP2-v1.1.4.tar.gz"
+tar -xzf miRDP2.tar.gz          # gives 1.1.4/miRDP2-v1.1.4_pipeline.bash
+```
+
+It needs only `bowtie`, `RNAfold` and `perl` -- the BioPerl/blast/DESeq2 list in
+its own README belongs to the annotation and differential-expression steps, which
+this pipeline does not use. **Create the output directory yourself**: the script
+does not, and fails with a `mkdir` error followed by a hundred confusing lines.
+
+### 5. Verify
+
+```bash
+pytest -q                        # all tests should pass
 python3 srnaprofiler.py --help
+
+# each external tool, one line each
+bowtie --version | head -1; samtools --version | head -1
+fastp --version; RNAfold --version; Rscript --version
 ```
 
 ## Modules
