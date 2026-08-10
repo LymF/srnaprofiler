@@ -1286,9 +1286,15 @@ degradação. Não é o mesmo tipo de erro.
 
 **Limpeza de intermediários.** O SAM é subproduto: uma vez ordenado em BAM, ninguém o lê.
 Nesta sessão foram **24 GB** de SAM apagados à mão. Proposta: `mapping` remove o SAM depois de
-gerar o BAM ordenado com sucesso, e `--keep-sam` preserva. Mesma ideia para o FASTQ filtrado
-de ncRNA (1,6 GB por corrida) e para os intermediários do miRDeep. Nunca apagar antes do
-artefato final existir e ser verificado, e nunca apagar o que o usuário trouxe.
+gerar o BAM ordenado com sucesso, e `--keep-sam` preserva.
+
+**O FASTQ filtrado de ncRNA fica** (decisão de 2026-08-10), mesmo custando 1,6 GB por corrida:
+diferente do SAM, ele é **reaproveitável** — permite re-mapear com outros parâmetros sem
+refazer o filtro, que leva ~6 min e exige o índice de 2,9 GB carregado. O critério de apagar
+não é o tamanho, é se o arquivo volta a ser entrada de alguma coisa.
+
+Duas regras para qualquer limpeza: nunca apagar antes do artefato final existir e ser
+verificado, e nunca apagar o que o usuário trouxe.
 
 *Precisa de spec própria antes de implementar* — em especial a parte de instalar pacotes, que
 mexe no ambiente do usuário e é a única do projeto com efeito fora do diretório de trabalho.
