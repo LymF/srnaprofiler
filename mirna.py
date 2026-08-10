@@ -783,3 +783,37 @@ def mirdeep_p2_command(pipeline, genome, index, reads, outdir, threads=1):
             f"completion and predict nothing. Decompress it first.")
     return ["bash", str(pipeline), "-g", str(genome), "-x", str(index),
             "-q", "-i", str(reads), "-p", str(threads), "-o", str(outdir)]
+
+
+# The line miRDeep-P2 1.1.4 ships broken: it writes the collapsed reads to
+# $out/$name/$name.ori.fa and then reads them from $out/$name.ori.fa.
+_MIRDP2_PATH_BUG = 'seq="$results_folder/${filename}.ori.fa"'
+
+
+def check_mirdeep_p2_install(pipeline):
+    """Refuse a miRDeep-P2 install that would predict nothing and call it success.
+
+    Three of its failure modes are silent -- the pipeline writes `end...` in its
+    progress log and emits zero predictions -- so they are checked here, before
+    a run, instead of being discovered in an empty result. Fixing them is
+    `srnaprofiler setup`'s job: an analysis should not patch third-party code.
+    """
+    pipeline = Path(pipeline)
+    if not pipeline.exists():
+        raise RuntimeError(f"miRDeep-P2 not found at {pipeline}. Install it and "
+                           f"prepare it with `srnaprofiler setup`.")
+
+    if _MIRDP2_PATH_BUG in pipeline.read_text():
+        raise RuntimeError(
+            f"{pipeline.name} still carries the 1.1.4 path bug: it writes "
+            f"$out/$name/$name.ori.fa and reads $out/$name.ori.fa, so it runs to "
+            f"completion and predicts nothing. Run `srnaprofiler setup` to patch it.")
+
+    index = pipeline.parent / "scripts" / "index"
+    missing = [e for e in ("1", "2", "3", "4", "rev.1", "rev.2")
+               if not (index / f"rfam_index.{e}.ebwt").exists()]
+    if missing:
+        raise RuntimeError(
+            f"miRDeep-P2's rfam_index is missing from {index} (it ships only "
+            f"mature_index). Without it the run predicts nothing. `srnaprofiler "
+            f"setup` links it to the Rfam index built for --ncrna-db.")

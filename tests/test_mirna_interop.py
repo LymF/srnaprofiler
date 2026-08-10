@@ -114,3 +114,42 @@ def test_gzipped_input_is_refused_rather_than_run(tmp_path):
     with pytest.raises(ValueError, match="gzip"):
         mirdeep_p2_command("p.bash", "g.fa", "idx", "reads.fastq.gz", "out",
                            threads=1)
+
+
+# --- the miRDeep-P2 install, checked before it can fail silently ---------
+
+from mirna import check_mirdeep_p2_install
+
+BUGGY = 'seq="$results_folder/${filename}.ori.fa"\n'
+FIXED = 'seq="$results_folder/${filename}/${filename}.ori.fa"\n'
+
+
+def _install(tmp_path, line, with_rfam=True):
+    root = tmp_path / "1.1.4"
+    (root / "scripts" / "index").mkdir(parents=True)
+    (root / "miRDP2-v1.1.4_pipeline.bash").write_text("#!/bin/bash\n" + line)
+    if with_rfam:
+        for e in ("1", "2", "3", "4", "rev.1", "rev.2"):
+            (root / "scripts" / "index" / f"rfam_index.{e}.ebwt").write_text("x")
+    return root / "miRDP2-v1.1.4_pipeline.bash"
+
+
+def test_a_patched_install_passes(tmp_path):
+    check_mirdeep_p2_install(_install(tmp_path, FIXED))
+
+
+def test_the_path_bug_is_refused_with_a_pointer_to_setup(tmp_path):
+    """Unpatched it runs to completion and predicts zero -- worse than an error."""
+    with pytest.raises(RuntimeError, match="setup"):
+        check_mirdeep_p2_install(_install(tmp_path, BUGGY))
+
+
+def test_a_missing_rfam_index_is_refused(tmp_path):
+    """Same silent failure: it ships mature_index but not rfam_index."""
+    with pytest.raises(RuntimeError, match="rfam"):
+        check_mirdeep_p2_install(_install(tmp_path, FIXED, with_rfam=False))
+
+
+def test_a_missing_install_says_where_it_looked(tmp_path):
+    with pytest.raises(RuntimeError, match="not found"):
+        check_mirdeep_p2_install(tmp_path / "nope" / "pipeline.bash")
