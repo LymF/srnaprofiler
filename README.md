@@ -7,100 +7,101 @@ analysis).
 > This README covers **installation only**, so the tool can be installed and
 > tested on real data.
 
-## Requirements
+## Installation
 
-Each module needs a different set of tools. Nothing here is guessed -- the table
-says which module breaks without each one, so you can install only what you use.
+Everything the pipeline needs, in one environment. Verified: the 398 tests pass
+in it and both miRNA engines run in it.
 
-| tool | needed by | breaks if missing |
-|---|---|---|
-| Python ≥ 3.9 + `requirements.txt` | everything | import error |
-| **bowtie 1** + `bowtie-build` | `mapping`, `mirna` | mapping refuses to start |
-| **samtools** | `mapping`, `classify` | BAM sorting/indexing |
-| **fastp** *or* **cutadapt** | `qc` | trimming refuses to start |
-| **FastQC** | `qc` | skipped with a warning, run continues |
-| **R** + `Rscript` | `plots` | those plots are skipped |
-| **ViennaRNA** (`RNAfold`) | `mirna` (any engine) | miRNA prediction |
-| **miRDeep2** | `mirna`, arthropod engine | that engine only |
-| **miRDeep-P2** | `mirna`, plant engine | that engine only |
+### 1. Code and environment
 
-`classify` is the exception: it needs only the Python packages plus samtools, so
-a run that starts from an existing BAM has almost no external dependency.
+```bash
+git clone git@github.com:LymF/srnaprofiler.git
+cd srnaprofiler
+conda env create -f environment.yml
+conda activate srnaprofiler
+pytest -q                    # 398 passed
+```
 
-### Reference data
+`environment.yml` pins **python=3.13** deliberately: miRScore imports ViennaRNA's
+*Python binding* (`import RNA`), not only the `RNAfold` binary the miRDeep tools
+call, and that binding is not built for 3.14. On 3.14 conda installs `viennarna`
+without complaint and `import RNA` still fails. The pin is what lets one
+environment serve every module.
 
-Two modules take reference files that are downloaded once, not installed:
+### 2. The two tools conda cannot install
 
-| data | used by | how to get it | size |
+Only needed for the `mirna` module; skip if you do not use it.
+
+**miRDeep-P2** (plant engine). The SourceForge "latest/download" link serves the
+*test data*, not the program, and the default mirror often refuses connections:
+
+```bash
+curl -L -o miRDP2.tar.gz \
+  "https://cfhcable.dl.sourceforge.net/project/mirdp2/version%201.1.4/miRDP2-v1.1.4.tar.gz"
+tar -xzf miRDP2.tar.gz       # gives 1.1.4/miRDP2-v1.1.4_pipeline.bash
+```
+
+It then needs three fixes, all of which fail **silently** -- the pipeline runs to
+completion, writes `end...` in its log, and emits zero predictions:
+
+1. **A path bug in the script itself.** Line 102 reads `$out/$name.ori.fa` while
+   line 101 wrote `$out/$name/$name.ori.fa`:
+   ```bash
+   sed -i '102s|${filename}.ori.fa|${filename}/${filename}.ori.fa|' \
+     1.1.4/miRDP2-v1.1.4_pipeline.bash
+   ```
+2. **A missing Rfam index.** It ships `mature_index` but not `rfam_index`, which
+   is a separate download. The index built by `extras/fetch_ncrna_db.sh` covers
+   it, and is larger (829 families):
+   ```bash
+   for e in 1 2 3 4 rev.1 rev.2; do
+     ln -sf <rfam-dir>/ncrna.$e.ebwt 1.1.4/scripts/index/rfam_index.$e.ebwt
+   done
+   ```
+3. **It does not read `.gz`** and does not create its own output directory.
+
+**miRScore** (validation, both kingdoms):
+
+```bash
+conda install -c bioconda miRScore     # into the environment above
+```
+
+### 3. Reference data
+
+Downloaded once, not installed:
+
+| data | used by | how | size |
 |---|---|---|---|
 | Rfam structural RNA index | `mapping --ncrna-db` | `bash extras/fetch_ncrna_db.sh <dir>` | 1.8 GB FASTA, 2.9 GB index |
-| miRBase GFF3 / hairpin | `classify --mirna-loci` | `mirbase.org/download/<species>.gff3` | KB |
+| miRBase GFF3 + hairpin | `classify --mirna-loci` | `mirbase.org/download/<sp>.gff3` | KB |
 | genome FASTA + bowtie index | `mapping`, `classify` | your assembly | — |
 
-**Check the miRBase annotation belongs to your genome before using it.** miRBase
-publishes each species against whatever assembly it used, and mixing assemblies
-fails silently -- loci are carved at the wrong coordinates, miRNA is asserted on
-them, and every validation still returns a number:
+**Check that a miRBase annotation belongs to your genome before using it.**
+miRBase publishes each species against whatever assembly it used, and mixing
+assemblies fails silently: loci are carved at the wrong coordinates, miRNA is
+asserted over them, and every validation still returns a number.
 
 ```bash
 python3 extras/check_mirbase_assembly.py genome.fa osa.gff3 hairpin.fa osa
 ```
 
-## Installation
+### 4. What each module needs
 
-### 1. Get the code
+Install only what you use -- the table says what breaks without each piece.
 
-```bash
-git clone git@github.com:LymF/srnaprofiler.git
-cd srnaprofiler
-```
+| tool | needed by | breaks if missing |
+|---|---|---|
+| python + `environment.yml` | everything | import error |
+| bowtie, samtools | `mapping`, `classify`, `mirna` | refuses to start |
+| fastp *or* cutadapt | `qc` | refuses to start |
+| FastQC | `qc` | skipped with a warning |
+| R + `Rscript` | `plots` | those plots are skipped |
+| ViennaRNA | `mirna` | prediction and validation |
+| miRDeep2 / miRDeep-P2 | `mirna` | the chosen engine only |
+| miRScore | `mirna` validation | validation step only |
 
-### 2. Everything that conda can install
-
-```bash
-conda create -n srnaprofiler -c bioconda -c conda-forge \
-    python=3.11 bowtie samtools fastp fastqc viennarna r-base mirdeep2
-conda activate srnaprofiler
-pip install -r requirements.txt
-```
-
-`viennarna` provides `RNAfold`, which both miRNA engines need. It is easy to
-miss because the failure appears inside the other tool, not at install time.
-
-### 3. miRDeep-P2 (plant miRNA engine)
-
-Distributed on SourceForge, and the "latest/download" link serves the test data,
-not the program. Take the versioned file, and a named mirror if the default one
-times out:
-
-```bash
-curl -L -o miRDP2.tar.gz \
-  "https://cfhcable.dl.sourceforge.net/project/mirdp2/version%201.1.4/miRDP2-v1.1.4.tar.gz"
-tar -xzf miRDP2.tar.gz          # gives 1.1.4/miRDP2-v1.1.4_pipeline.bash
-```
-
-It needs only `bowtie`, `RNAfold` and `perl` -- the BioPerl/blast/DESeq2 list in
-its own README belongs to the annotation and differential-expression steps, which
-this pipeline does not use.
-
-Two ways it fails without saying so:
-
-- **Create the output directory yourself.** The script does not, and fails with a
-  `mkdir` error followed by a hundred confusing lines.
-- **Give it uncompressed FASTQ.** With a `.gz` it runs to completion, writes
-  `end...` in its progress log, and produces **zero** predictions -- a result that
-  looks like an answer.
-
-### 4. Verify
-
-```bash
-pytest -q                        # all tests should pass
-python3 srnaprofiler.py --help
-
-# each external tool, one line each
-bowtie --version | head -1; samtools --version | head -1
-fastp --version; RNAfold --version; Rscript --version
-```
+`classify` is the exception: Python packages plus samtools, so a run starting
+from an existing BAM has almost no external dependency.
 
 ## Modules
 

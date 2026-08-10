@@ -1,0 +1,46 @@
+# One environment for every module, verified: 398 tests pass here and both miRNA
+# engines plus miRScore run in it.
+#
+#     conda env create -f environment.yml
+#     conda activate srnaprofiler
+#
+# python=3.13 is pinned for a reason. miRScore imports ViennaRNA's *Python
+# binding* (`import RNA`), not just the `RNAfold` binary the miRDeep tools call,
+# and that binding is not built for 3.14 -- on 3.14 conda installs viennarna
+# happily and `import RNA` still fails. Pinning 3.13 is what lets everything
+# share one environment instead of one per tool.
+#
+# Not here, because conda cannot install them (see README):
+#   - miRDeep-P2  : SourceForge tarball, needs a one-line patch and a separate
+#                   Rfam index, which the Rfam index built by srnaprofiler covers
+#   - miRScore    : `conda create -n mirscore miRScore` works, but it can also be
+#                   installed into this environment with `conda install miRScore`
+name: srnaprofiler
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.13
+  # pipeline
+  - bowtie          # mapping, and every miRNA engine
+  - samtools        # BAM sorting/indexing
+  - fastp           # trimming
+  - fastqc          # optional QC report
+  - bedtools        # pybedtools backend
+  - viennarna       # RNAfold binary AND the Python binding
+  - mirdeep2        # arthropod miRNA engine
+  # python
+  - pysam
+  - pyyaml
+  - biopython
+  - pandas
+  - numpy
+  - scipy
+  - matplotlib
+  - pybedtools
+  - tqdm
+  - pytest
+  - pip
+  - pip:
+      - logomaker   # sequence logos in classplots
