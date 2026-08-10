@@ -1262,8 +1262,29 @@ trabalho e cobre o caso comum.
 | `srnaprofiler setup --data --rfam-dir DIR` | baixa as 829 famílias do Rfam, roda `bowtie-build`, e **grava o caminho** num arquivo de config |
 | `srnaprofiler setup --data --mirbase SPECIES` | baixa `<sp>.gff3` + `hairpin.fa` e roda o `check_mirbase_assembly.py` contra o genoma informado |
 
+**Requisito que atravessa tudo: reprodutível em qualquer máquina.** O `setup` tem de ser
+idempotente (rodar duas vezes não quebra), registrar o que instalou e de onde, e verificar cada
+peça em vez de supor. Nada de passo manual escondido — se uma etapa precisa de symlink, patch ou
+espelho alternativo, ela é do `setup`, não do README.
+
 **Onde guardar o caminho do índice de ncRNA.** Um arquivo de config do usuário
 (`~/.config/srnaprofiler/paths.yaml`), escrito pelo `setup --data` e lido pelo `mapping`.
+
+**O miRDeep-P2 é a dependência mais frágil do projeto, e isso precisa ser encarado no desenho:**
+
+1. **Tem um bug de caminho** (`miRDP2-v1.1.4_pipeline.bash:101-102`): grava
+   `$out/$name/$name.ori.fa` e lê `$out/$name.ori.fa` — falta um `/${filename}`. Sem esse
+   arquivo, tudo a jusante roda vazio e o pipeline termina anunciando `end...` com **zero**
+   predições.
+2. **O `rfam_index` vem em download separado** e sem ele o mesmo silêncio acontece.
+3. **Não lê `.gz`** — com entrada comprimida, idem.
+4. **O SourceForge recusa conexão com frequência**; o link "latest" serve dado de teste, não o
+   programa; só espelho nomeado (`cfhcable`) funcionou.
+
+Três modos de falhar em silêncio na mesma ferramenta. O `setup` tem de **verificar a saída**,
+não o código de retorno: rodar o teste que vem com o pacote e conferir que o número de
+predições é maior que zero. Se não for, falhar alto na instalação em vez de na análise do
+usuário.
 
 **Como o filtro de Rfam deve entrar no `mapping` — proposta e o porquê.**
 
