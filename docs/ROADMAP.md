@@ -584,6 +584,44 @@ Drosophila) e deixou os dois picos de Dicer **enriquecidos**:
 Juntos, 21+24 vão de 38,7% para **70,1%** da biblioteca. Se estivesse cortando sinal, os picos
 cairiam junto.
 
+**RETRATAÇÃO (2026-08-09): o controle de especificidade abaixo estava errado.**
+A afirmação "zero loci em Arabidopsis" saiu de uma **simulação**, feita com o
+`extras/simulate_rules.py` antes de ele passar `phase_number` — sem esse campo, o modo
+`phase_on: cycles` lia zero e a classe **não podia ganhar nunca**. A corrida real dá **3.514
+loci e 46,4% da massa** em Arabidopsis, com `phase_pvalue` mediano **1,000**: são os loci de
+hc-siRNA mais profundos (318 reads contra 90), porque `e_phase` conta ciclos e ciclos crescem
+com a cobertura. É a saturação por ocupação que a `FORMULAS.md` registrava como ressalva
+teórica — não era teórica.
+
+*Resolvido* com `enabled: false` no `rules.plant.yaml`: 24-nt reprodutivo é via de
+**monocotiledônea** (DCL5), ausente em Arabidopsis, então a classe não pertence ao config
+genérico de planta. Verificado: desligada, Arabidopsis volta a 28.754 loci e zero
+`phasiRNA24`; ligada, arroz mantém 442.
+
+*Descoberta colateral:* a janela de uma classe alimenta `clustering._same_size_group`, então
+**acrescentar uma classe muda a clusterização** — a `{24,24}` levou Arabidopsis de 28.754 para
+32.992 loci sem mais nada mudar. A flag desliga a classe também de lá.
+
+*Exigência dura medida e não adotada* (fica registrada caso alguém ligue a classe em espécie
+sem a via), tudo em não-review:
+
+| exigência | arroz n | precisão | recall | Arabidopsis falsos |
+|---|---|---|---|---|
+| nenhuma | 259 | 92,3% | 218/804 | **2.037** |
+| p ≤ 0,01 | 47 | 95,7% | 43 | 22 |
+| `phase_ratio` ≥ 0,4 | **133** | **97,7%** | **125** | 62 |
+| p ≤ 0,01 + ratio ≥ 0,4 | 41 | 97,6% | 39 | **0** |
+
+O `phase_ratio` é o melhor eixo isolado, e não por acaso: é exatamente a quantidade que o
+`e_phase` ignora.
+
+**Lição de método:** foi a única mudança da sessão validada por **simulação** em vez de corrida
+real, e a única que passou errada. Classe nova exige rodar de verdade numa espécie que **não**
+tem a via.
+
+**O que continua válido abaixo:** os números de arroz (precisão, recall) e o controle `eat1`,
+medidos em corridas reais.
+
 **A classe `phasiRNA24` fecha o par de controles.**
 
 | classe | não-review | em anotação | precisão | fundo | enriquecimento |
