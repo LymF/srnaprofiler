@@ -725,3 +725,61 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# --- interop with the external miRNA tools -------------------------------
+#
+# Each function here exists because a third-party tool fails silently without
+# it: it runs to completion, reports success, and produces nothing or garbage.
+
+_COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+
+
+def _revcomp(seq: str) -> str:
+    return seq.translate(_COMPLEMENT)[::-1]
+
+
+def hairpin_with_flank(genome, chrom, start, end, mature, flank=25):
+    """Precursor re-cut from the genome so the mature is not at either edge.
+
+    miRDeep2 reports the precursor flush against the mature, and miRScore
+    refuses that -- it needs context on both sides to judge the fold. The
+    coordinates are miRDeep2's own (1-based, inclusive); only the flanks are
+    added. Returns None when the mature is on neither strand of the region,
+    which means the two do not describe the same locus and no hairpin should be
+    invented for them.
+    """
+    lo = max(0, start - 1 - flank)
+    hi = min(genome.get_reference_length(chrom), end + flank)
+    seq = genome.fetch(chrom, lo, hi).upper()
+    mature = mature.upper().replace("U", "T")
+    for candidate in (seq, _revcomp(seq)):
+        i = candidate.find(mature)
+        if 0 < i and i + len(mature) < len(candidate):
+            return candidate
+    return None
+
+
+def relative_to(path, workdir):
+    """Path as miRScore needs it: relative to the directory it runs in.
+
+    miRScore chdirs into its output directory and prefixes `../` to the reads
+    path. An absolute path becomes `..//abs/path`, bowtie finds nothing, the BAM
+    comes out empty, and the run only fails later, in samtools sort.
+    """
+    return Path(os.path.relpath(Path(path).resolve(), Path(workdir).resolve()))
+
+
+def mirdeep_p2_command(pipeline, genome, index, reads, outdir, threads=1):
+    """The miRDeep-P2 invocation, with the two inputs it silently mishandles.
+
+    Gzipped reads are refused here rather than passed on: given a `.gz` the
+    pipeline runs to completion, writes `end...` in its progress log and emits
+    zero predictions. The output directory has to exist before it starts -- it
+    does not create its own -- and that is the caller's job.
+    """
+    if str(reads).endswith(".gz"):
+        raise ValueError(
+            f"miRDeep-P2 cannot read gzipped input ({reads}): it would run to "
+            f"completion and predict nothing. Decompress it first.")
+    return ["bash", str(pipeline), "-g", str(genome), "-x", str(index),
+            "-q", "-i", str(reads), "-p", str(threads), "-o", str(outdir)]
