@@ -264,9 +264,10 @@ tiny-count e o modo `f` do ShortStack. O modo `u` do ShortStack (colocação gui
 Johnson et al. 2016, https://doi.org/10.1534/g3.116.030452) é o que foi avaliado e
 descartado acima.
 
-**Pendência achada na corrida:** `evidence.py:18` emite
-`RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estoura antes
-do `min` com o teto). Não altera resultado; limpar.
+**Pendência achada na corrida — CORRIGIDA (`7ef5dfc`).** `evidence.py` emitia
+`RuntimeWarning: overflow encountered in scalar divide` quando p ≈ 0 (o `1/p` estourava antes
+do `min` com o teto). `score_from_p` passou a calcular `-log10(p)`, que é a mesma quantidade
+sem o recíproco. Não alterou resultado nenhum.
 
 ---
 
@@ -385,9 +386,10 @@ deixa pouco espaço; o piRNA tem a rota `1u OU pingpong`. O score está dizendo 
 de hc-siRNA é mais fraca — verdade que a escala de p-valor escondia.
 
 **Também endurecido:** `defining_scores` devolvia 0,0 em silêncio para nome de evidência
-desconhecido; agora `RuleScorer` recusa o config na construção. *Pendência:* `KNOWN_EVIDENCE`
-ainda aceita `fractop` e `fractop_bal`, que não têm `e_*` — um config com esses nomes passa
-e pontua 0,0, exatamente o furo que a guarda queria fechar.
+desconhecido; agora `RuleScorer` recusa o config na construção. *O furo que sobrava foi
+fechado em `b9c9acf`:* `KNOWN_EVIDENCE` ainda aceitava `fractop` e `fractop_bal`, que não têm
+`e_*`, então um config com esses nomes passava na guarda e pontuava 0,0. A lista agora é
+exatamente `1u, 5a, fractop_bid, pingpong, phase, size` — as evidências que existem.
 
 **A-5p. Base 5' com nulo genômico — FEITO (2026-08-07)**
 
@@ -741,8 +743,9 @@ achamos o que outro anotou, e o outro pode estar errado; aqui a chamada **respon
 perturbação genética da via**, na direção prevista, com a classe irmã imóvel.
 
 *Ressalva:* uma réplica por genótipo, então não há teste estatístico sobre a diferença — a
-inferência se apoia no controle interno, não em n. As outras duas réplicas de cada genótipo
-estão no ENA se valer a pena fechar isso.
+inferência se apoia no controle interno, não em n. **Não é item de backlog** (decidido): as
+outras réplicas estão no ENA, mas a dissociação entre as duas vias já é o resultado, e
+repetí-la com n=3 não muda nenhuma decisão sobre a tool.
 
 **A-classes. Todas as classes de planta testadas em arroz, sem anotação nova (2026-08-09)**
 
@@ -1409,15 +1412,17 @@ mexe no ambiente do usuário e é a única do projeto com efeito fora do diretó
 
 **B. Features maiores, cada uma com spec própria**
 
-4. **Módulo pós-miRDeep** (item 7 do Tier 3): curar `result_*.csv`, isomiRs, alimentar
-   `--mirna-loci`.
+4. ~~**Módulo pós-miRDeep** (item 7 do Tier 3)~~ — a curadoria é do miRScore e o `--mirna-loci`
+   já sai validado. Sobra o perfil de isomiR, com escopo por decidir.
 5. **`MLDecider`** (item 9): RandomForest/XGBoost sobre o `.clusters.tsv`, SHAP. Precisa de
    loci rotulados.
 
 **C. Encerrados nesta rodada** — alocação única de multi-read (descartada com evidência,
-seção "Multimapeamento"); PHAS do sRNAanno (feito, `extras/validate_phas.py`); DBSCAN
+seção "Multimapeamento") e, com ela, o **read representante estilo piRAT** (item 11), que é a
+mesma ideia com outro nome; PHAS do sRNAanno (feito, `extras/validate_phas.py`); DBSCAN
 (item 10) perdeu a motivação: existia para o caso de as ilhas fragmentarem clusters
-grandes, que era o problema resolvido em 2026-08-06.
+grandes, que era o problema resolvido em 2026-08-06. Fora do backlog também as réplicas
+extras do `eat1` — o controle interno já sustenta a conclusão, e n=3 não muda decisão de tool.
 
 ### Pendências menores
 
@@ -1653,13 +1658,16 @@ Fluxo correto: **`qc -g` → `mapping` → `mirna` → `classify --mirna-loci`**
 
 ### Achados operacionais desta rodada
 
-15. **`--create-bam` não dimensiona a memória do `samtools sort`.** `mapping.convert_sam_to_bam` não passa
-    `-m`, então usa o default de 768 MB **por thread**: `--threads 12` pede 9,2 GB e morre com
-    "couldn't allocate memory for bam_mem" em máquina de 8 GB, em qualquer disco. O que ele produz está
-    correto (BAM `SO:coordinate` + `.bai`, verificado) — o defeito é só o dimensionamento.
-16. **O `classify` também não tem teto de memória.** Cada thread carrega os alinhamentos de um cromossomo
-    inteiro; com 4 threads em Arabidopsis o processo é morto pelo OOM killer numa máquina de 8 GB
-    (`--threads 1` usa ~4 GB de pico). Vale um aviso ou um teto automático.
+15. ~~**`--create-bam` não dimensiona a memória do `samtools sort`.**~~ **FEITO (`096aa51`).**
+    `convert_sam_to_bam` não passava `-m`, então usava o default de 768 MB **por thread** — que não é
+    orçamento nenhum, cresce com `--threads`: 12 threads pediam 9,2 GB e morriam com "couldn't allocate
+    memory for bam_mem" em máquina de 8 GB, em qualquer disco. Agora `sort_memory_per_thread_mb` gasta
+    no máximo metade da memória livre (teto de 4 GB, acima disso compra pouco) e divide pelas threads.
+16. ~~**O `classify` também não tem teto de memória.**~~ **FEITO (`096aa51`).** Cada worker carrega os
+    alinhamentos de um cromossomo inteiro e o pico é a **soma** deles, então com 4 threads em Arabidopsis
+    o OOM killer levava o processo numa máquina de 8 GB. `safe_thread_count` soma as N maiores
+    referências e mantém o maior N que cabe em 80% da memória livre. Ele **limita em vez de avisar**:
+    passar do teto não é lentidão, é perder a corrida inteira.
 17. **O `/mnt/d` (drvfs) NÃO quebra o `samtools sort`** — testado forçando spill com `-m 40M`: criou 7
     temporários no D:, mesclou e terminou íntegro. A nota antiga do ROADMAP não se sustentou no teste.
     O workaround de manter o BAM em disco Linux talvez seja desnecessário; falta testar o `classify`
@@ -1693,8 +1701,24 @@ Plano: `docs/superpowers/plans/2026-08-02-evidence-scores.md`. Branch `evidence-
 
 ### Tier 3 — features maiores (specs próprios)
 
-7. **Módulo pós-miRDeep (rota miRNA).**
-   - Escopo: curar `result_*.csv` do miRDeep2 (score, star>0, randfold p, descartar rfam alert; MFEI/AMFE via RNAfold), isomiRs, e **alimentar `--mirna-loci`** do classify (reusa `mirna_filter.py` por overlap). miRDeep2 continua o motor; nós curamos/integramos.
+7. ~~**Módulo pós-miRDeep (rota miRNA).**~~ **FEITO, e por outro caminho que o previsto.**
+   - O escopo original era curar o `result_*.csv` do miRDeep2 com heurística nossa — score,
+     star > 0, randfold, alerta de rfam, mais MFE/AMFE/MFEI via RNAfold. **Nada disso foi
+     escrito, e não deve ser:** o miRScore faz a curadoria inteira com critérios publicados
+     (Axtell & Meyers 2018) e leva a precisão de 53,2% para **97,1%**, eliminando 43 dos 44
+     falsos. Heurística própria por cima disputaria **1 locus falso entre 34** e arriscaria os
+     33 verdadeiros.
+   - **Sobre MFE/AMFE/MFEI especificamente:** o miRScore *calcula* a MFE (`miRScore:679`, `:944`,
+     `:1369`) e **descarta** — só a dot-bracket é usada. Não é esquecimento: os critérios dele
+     são a **geometria do dúplex** maduro/star (≤5 mismatches, bojos assimétricos, tamanhos),
+     e um precursor pode ter MFEI ótima com o dúplex mal pareado, que é justamente o caso a
+     rejeitar. O sumário energético do grampo inteiro é dominado pelo critério local. Além
+     disso, estrutura sozinha como critério é o modo de errar que os critérios de 2018 vieram
+     corrigir.
+   - **`--mirna-loci` já é alimentado** (`mirna.py:501-512`): o BED sai das predições aprovadas
+     pelo miRScore, e sem `-g/--genome` ele avisa em WARN que está escrevendo loci **não
+     validados** — porque uma predição falsa vira locus recortado com miRNA afirmado em cima.
+   - **Fica aberto só o perfil de isomiR** (escopo por decidir — ver discussão de 2026-08-10).
    - Ver decisões em `srnaprofiler-tools-research` (memória).
 
 8. **Plots por classe no reporter.** Implementado via subcomando `classplots` (distribuição de tamanho, ping-pong, phasing, logos de sequência e cobertura por classe, reutilizando `plots.py`/R); também inclui resumo QC em matplotlib.
@@ -1704,7 +1728,7 @@ Plano: `docs/superpowers/plans/2026-08-02-evidence-scores.md`. Branch `evidence-
 
 10. **Clustering por DBSCAN (fonte plugável alternativa).** Se as ilhas de cobertura fragmentarem clusters grandes/esparsos de piRNA. `clustering.py` já é a fonte; adicionar DBSCAN por parâmetro.
 
-11. **Alternativa de multimapeador estilo piRAT (read representante por locus).** Além do 1/NH (feito). Relevante porque o NH via XM é capado no `-k` (peso aproximado quando a multiplicidade real > k). Baixa prioridade.
+11. ~~**Alternativa de multimapeador estilo piRAT (read representante por locus).**~~ **DESCARTADO.** É a mesma família da alocação única já reprovada por medição (seção "Multimapeamento"): eleger um representante exige sinal único como guia, e **57,3% dos loci de piRNA têm zero reads únicas**. O teto do `-k`, que era a motivação, adiciona **ruído e não viés** — a biblioteca ponderada é idêntica com `-k` 5 e 20.
 
 ---
 
