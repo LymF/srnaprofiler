@@ -244,3 +244,26 @@ def test_data_links_the_index_into_an_already_installed_mirdeep_p2(tmp_path,
 
     linked = pipeline.parent / "scripts" / "index" / "rfam_index.1.ebwt"
     assert linked.is_symlink()
+
+
+def test_the_r_packages_the_plot_scripts_import_are_checked(monkeypatch):
+    """Rscript on PATH says nothing about ggplot2 being installed, and the
+    plot scripts fail at `library(ggplot2)` -- after the run has done its work."""
+    names = [c["name"] for c in MODULE_TOOLS["plots"]]
+    for pkg in ("ggplot2", "reshape2", "plyr"):
+        assert pkg in names
+
+
+def test_a_missing_r_package_is_reported_not_raised():
+    from setup_module import check_r_package
+    r = check_r_package("definitelyNotAnRPackageXyz")
+    assert r["ok"] is False
+
+
+def test_r_is_part_of_the_environment_recipe():
+    """It was absent, and `plots` only worked where the system happened to
+    have R -- the one module that would not install on a clean machine."""
+    recipe = Path(__file__).resolve().parent.parent / "environment.yml"
+    text = recipe.read_text()
+    for pkg in ("r-base", "r-ggplot2", "r-reshape2", "r-plyr"):
+        assert pkg in text

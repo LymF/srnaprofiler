@@ -30,6 +30,11 @@ dependencies:
   - bedtools        # pybedtools backend
   - viennarna       # RNAfold binary AND the Python binding
   - mirdeep2        # arthropod miRNA engine
+  # plots: the R scripts import these three by name
+  - r-base
+  - r-ggplot2
+  - r-reshape2
+  - r-plyr
   # python
   - pysam
   - pyyaml

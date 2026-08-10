@@ -62,6 +62,10 @@ MODULE_TOOLS = {
     ],
     "plots": [
         _tool("Rscript"),
+        # Rscript on PATH says nothing about the libraries the scripts import.
+        {"kind": "r", "name": "ggplot2"},
+        {"kind": "r", "name": "reshape2"},
+        {"kind": "r", "name": "plyr"},
         _pkg("matplotlib"),
     ],
 }
@@ -83,6 +87,22 @@ def check_python_package(import_name):
                 "detail": f"cannot import {import_name}: {exc}"}
     return {"name": import_name, "ok": True,
             "detail": getattr(mod, "__file__", "") or "built-in"}
+
+
+def check_r_package(name):
+    """Is an R library installed -- asked of R, the only authority on that."""
+    if not shutil.which("Rscript"):
+        return {"name": name, "ok": False, "detail": "no Rscript to ask"}
+    probe = f"quit(status = if (requireNamespace('{name}', quietly=TRUE)) 0 else 1)"
+    try:
+        done = subprocess.run(["Rscript", "-e", probe], capture_output=True,
+                              timeout=60)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return {"name": name, "ok": False, "detail": str(exc)[:80]}
+    if done.returncode == 0:
+        return {"name": name, "ok": True, "detail": "installed"}
+    return {"name": name, "ok": False,
+            "detail": f"R library {name} is missing; `setup --tools` installs it"}
 
 
 def check_mirdeep_p2():
@@ -113,6 +133,8 @@ def check_module(module):
     for req in MODULE_TOOLS[module]:
         if req["kind"] == "tool":
             r = check_tool(req["name"])
+        elif req["kind"] == "r":
+            r = check_r_package(req["name"])
         elif req["kind"] == "mirdeep_p2":
             r = check_mirdeep_p2()
         else:
@@ -302,6 +324,7 @@ def run_data(args):
 CONDA_PACKAGES = [
     "bowtie", "samtools", "fastp", "fastqc", "bedtools",
     "viennarna", "mirdeep2", "mirscore",
+    "r-base", "r-ggplot2", "r-reshape2", "r-plyr",
     "pysam", "pyyaml", "biopython", "pandas", "numpy", "scipy",
     "matplotlib", "pybedtools", "tqdm", "pytest",
 ]
