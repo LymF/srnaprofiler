@@ -1505,7 +1505,7 @@ três FASTA e as linhas `Pass` são o mesmo conjunto; 87 plots (56+31); **BED id
 byte** ao anterior e **56/56 dos validados sobre miRNA anotado do miRBase**. Os 31 descartes
 que o BED nunca conseguiu explicar: **27 por "No mature or star reads detected"**, 1 por
 precisão < 75%, 1 por multimapeamento no grampo, 1 por <10 reads, 1 por star de 23/24 nt.
-508 testes passando.
+540 testes passando.
 
 **Três defeitos achados no caminho, todos no plano e não na execução:**
 
@@ -1523,6 +1523,28 @@ precisão < 75%, 1 por multimapeamento no grampo, 1 por <10 reads, 1 por star de
 `mirdeep_rows` não era passado. A `estimated probability` do miRDeep2 vem **vazia nas 94
 linhas** — ele só a calcula com referência para calibrar —, então `mirdeep_prob` é `NA` na
 prática, e isso é dele, não fiação quebrada.
+
+**A revisão do branch inteiro achou quatro defeitos que as revisões por tarefa não podiam ver**,
+porque cada uma via uma fatia: (i) as colunas do miRDeep2 podiam vir de um `result_*.csv`
+diferente do que deu as coordenadas — os serials do `provisional id` são por corrida, então o
+mesmo id significa loci diferentes; (ii) zero predições no motor **animal** não escrevia
+entregável nenhum e anunciava "completed successfully", enquanto o de planta escrevia tabela
+vazia e `run.json` honesto; (iii) um re-run que não validasse deixava os FASTA antigos ao lado
+de um BED novo, e um locus que trocasse de veredito aparecia em `passed/` **e** `failed/`;
+(iv) o `collect_structures` devolvia 0 em silêncio quando a origem existia mas nada casava.
+
+**E uma exposição de segurança que este trabalho criou.** Para não misturar plots de duas
+corridas, o `collect_structures` passou a apagar um diretório — e o caminho dele vem do
+`--prefix`, que **nunca foi validado em lugar nenhum do projeto**. `--prefix ../foo` mirava o
+apagamento fora do `--outdir`. Escrever ali sempre foi inofensivo; apagar não é. Fechado com
+`utils.validate_prefix` (recusa, com o valor na mensagem — não reescreve em silêncio),
+`utils.ensure_within` como fronteira no ponto do delete, e `utils.remove_path`, que testa
+`is_symlink()` **antes** de `is_dir()` para nunca seguir um link e apagar o alvo. Duas brechas
+só apareceram na re-revisão: o `python mirna.py` tem `main()` próprio que não passava pela
+validação, e a guarda original testava `dest.name`, que a normalização do `Path` derrota
+(`Path("/out/../foo.mirna_structures").name` é `"foo.mirna_structures"`). *Fica registrado:*
+os blocos standalone de `clusters.py` e `plots.py` têm a mesma travessia, mas só **escrevem** —
+nenhum delete é mirado pelo prefixo ali.
 
 *Não entrou, com motivo:* isomiR (ferramenta dedicada e formato padrão já existem — mirtop),
 MFE/AMFE/MFEI (o miRScore calcula a MFE e **descarta**: os critérios dele são a geometria do
