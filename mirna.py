@@ -445,15 +445,9 @@ GENOME_SUFFIXES = (".fa", ".fasta", ".fna", ".fas")
 
 
 def find_genome_beside_index(index_prefix: str):
-    """Locate the genome FASTA sitting next to a bowtie index, or None.
-
-    Covers .fna as well as .fa/.fasta: genomes downloaded from NCBI (the common
-    case) use .fna, and missing it aborted the module with the file in plain
-    sight. Compressed FASTA is ignored on purpose — miRDeep2 needs it
-    uncompressed and would fail later, less clearly.
-
-    With several FASTAs in the directory, the one whose name matches the index
-    prefix wins; picking arbitrarily would silently analyse the wrong genome.
+    """Genome FASTA next to a bowtie index, or None. Accepts .fna as well as
+    .fa/.fasta; ignores compressed FASTA, which the engines cannot read. With
+    several candidates the one matching the index prefix wins.
     """
     index_path = Path(index_prefix)
     candidates = [p for p in index_path.parent.iterdir()
@@ -932,14 +926,9 @@ def _revcomp(seq: str) -> str:
 
 
 def hairpin_with_flank(genome, chrom, start, end, mature, flank=25):
-    """Precursor re-cut from the genome so the mature is not at either edge.
-
-    miRDeep2 reports the precursor flush against the mature, and miRScore
-    refuses that -- it needs context on both sides to judge the fold. The
-    coordinates are miRDeep2's own (1-based, inclusive); only the flanks are
-    added. Returns None when the mature is on neither strand of the region,
-    which means the two do not describe the same locus and no hairpin should be
-    invented for them.
+    """Precursor re-cut from the genome with flanks, since miRScore refuses a
+    mature at the hairpin edge. Coordinates are the engine's, 1-based inclusive.
+    None when the mature is on neither strand of the region.
     """
     lo = max(0, start - 1 - flank)
     hi = min(genome.get_reference_length(chrom), end + flank)
@@ -953,15 +942,9 @@ def hairpin_with_flank(genome, chrom, start, end, mature, flank=25):
 
 
 def relative_to(path, workdir):
-    """Path as miRScore needs it: relative to the directory it runs in.
-
-    miRScore chdirs into its output directory and prefixes `../` to the reads
-    path. An absolute path becomes `..//abs/path`, bowtie finds nothing, the BAM
-    comes out empty, and the run only fails later, in samtools sort.
-
-    Absolute, not resolved: the reads are handed over as a symlink named so
-    miRScore can key on it, and resolving it would restore the name we staged
-    away from.
+    """Path relative to `base`, as miRScore needs it: it chdirs and prefixes `../`,
+    so an absolute path aligns nothing and fails later in samtools sort. Not
+    resolved -- that would undo the staged symlink name.
     """
     return Path(os.path.relpath(os.path.abspath(path), os.path.abspath(workdir)))
 

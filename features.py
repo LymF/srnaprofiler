@@ -62,10 +62,8 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     if raw_n == 0:
         return r
 
-    # Multi-mapping reads are counted fractionally by 1/NH: a read mapping to N
-    # places contributes 1/N at each locus, so its total across the genome is 1.
-    # This keeps counts at repetitive loci (e.g. transposon piRNA clusters) honest
-    # instead of inflating them once per reported alignment.
+    # 1/NH: a read mapping to N places contributes 1/N at each locus, so its
+    # total across the genome is 1.
     strand_count = Counter()
     seqs = Counter()
     seq_lens = Counter()
@@ -127,12 +125,9 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)
-    # n = distinct_seqs, not the 1/NH read count: PCR duplicates and stacked
-    # identical reads are not independent trials, so the read count
-    # pseudoreplicates the binomial n. k is scaled to the same denominator.
-    # Null = the locus's own DNA composition: a cut placed at random yields a
-    # 5'U as often as the locus carries T on the read's strand. A fixed 0.25
-    # would call a T-rich transposon 1U-biased with no selection at all.
+    # n = distinct_seqs, not the read count: stacked identical reads are not
+    # independent trials. k is scaled to the same denominator. The null is the
+    # locus's own DNA composition, not a flat 0.25.
     null_u = base_null(locus_seq, "T", r.frac_top) if locus_seq else 0.25
     null_a = base_null(locus_seq, "A", r.frac_top) if locus_seq else 0.25
     r.s_1u = base_bias_score(r.pct_1u * r.distinct_seqs, r.distinct_seqs, null_u)
@@ -165,10 +160,8 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
             phase5 = five
         else:
             five = a.pos + L - 1
-            # 2-nt 3' overhang correction: Dicer's phased products have a
-            # 2-nt 3' overhang, so the 5' end of the - strand sits +2 relative
-            # to the + strand's register at the same cut. Subtract 2 to pool both
-            # strands into the SAME phase register. (-2 sign fixed by biology/test.)
+            # 2-nt 3' overhang: the minus-strand 5' end sits +2 from the plus strand's
+            # register at the same cut, so subtract 2 to pool both into one register.
             phase5 = five - 2
         (plus5 if a.strand == "+" else minus5)[five] += w
         phase_positions.append((phase5, w, L))
@@ -203,23 +196,17 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
         r.phase_score, r.phase_number = res.score, res.number
         r.phase_ratio, r.phase_pvalue = res.ratio, res.pvalue
         r.s_phase = score_from_p(r.phase_pvalue)
-        # Cycles in register, out of the cycles the window can hold. The run's
-        # length is the processive cut's signature; the p-value of the same
-        # count is at chance against size-matched controls, and the abundance
-        # in the register is worse than that.
+        # Cycles in register, out of what the window holds: the run's length is the
+        # processive cut's signature, and it ranks better than the p-value.
         r.e_phase = effect_strength(min(res.number, PHASE_WINDOW_CYCLES),
                                     PHASE_WINDOW_CYCLES, 1 / pl)
     return r
 
 
 def _assign_reads(regions, alns):
-    """Assigns each read to the regions it overlaps BY SPAN, in a single pass.
-
-    Overlap by span: `a.pos < region.end and a.pos + len(a.seq) > region.start`
-    — consistent with the coverage built in `clustering.cluster_regions`.
-    Regions from `cluster_regions` are disjoint and sorted by chromosome, which
-    lets us locate the block of overlapping regions via binary search instead
-    of rescanning every read per region (avoids O(regions × reads)).
+    """Assigns each read to the regions it overlaps by span, in one pass. Regions
+    are disjoint and sorted, so the overlapping block is found by binary search
+    rather than rescanning every read per region.
     """
     buckets = [[] for _ in regions]
     per_chrom = defaultdict(list)   # chrom -> [(start, end, orig_index)] sorted by start

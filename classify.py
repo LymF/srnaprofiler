@@ -49,16 +49,9 @@ def mincov_to_depth(mincov_rpm, lib_size):
 
 
 def safe_thread_count(requested, ref_alignments, available_mb, headroom=0.8):
-    """Threads that fit in memory, given one whole reference per worker.
-
-    `extract_by_chrom` uses a multiprocessing Pool, so N workers hold N whole
-    references at once and the peak is their SUM. Sizing by the largest
-    reference alone would be far too pessimistic on a genome with one big
-    chromosome and several small ones, so this adds up the N largest and keeps
-    the biggest N that fits.
-
-    It caps rather than warns because overshooting is not a slowdown: the OOM
-    killer takes the process out, losing the whole run.
+    """Threads that fit in memory: each worker holds one whole reference, so the
+    peak is their sum. Caps rather than warns -- overshooting means the OOM
+    killer, not a slowdown.
     """
     if isinstance(ref_alignments, int):        # a single count: treat as one reference
         ref_alignments = [ref_alignments]

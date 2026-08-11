@@ -22,15 +22,9 @@ def score_from_p(p):
 
 
 def effect_strength(k, n, p0, conf=0.95):
-    """How far the effect clears its null, conservatively, in [0, 1].
-
-    Wilson lower bound of k/n at `conf`, rescaled by the room the null leaves:
-    (L - p0) / (1 - p0). Unlike -log10(p) this does not grow with n -- it grows
-    with precision and saturates at the observed effect -- so the same biology
-    scores the same in a small locus and a large one.
-
-    Wilson rather than the normal approximation: our proportions run extreme and
-    our samples are often small, where the normal interval leaves [0, 1].
+    """How far the effect clears its null, in [0, 1]: Wilson lower bound of k/n at
+    `conf`, rescaled as (L - p0) / (1 - p0). Does not grow with n, so the same
+    biology scores the same in a small locus and a large one.
     """
     if p0 is None or n is None:
         return 0.0
@@ -100,13 +94,9 @@ def strand_balance_score(frac_top, n, delta=0.15):
 
 
 def pingpong_score_empirical(counts, target=10, lo=1, hi=20):
-    """Excess at the 10-nt offset over the rate of the locus's OWN other offsets.
-
-    counts: {offset: pairs}. The rate is estimated from offsets lo..hi excluding
-    `target`, so a locus whose pairs pile up everywhere is held to its own
-    standard. Assuming a uniform 1/20 instead treats coverage structure as if it
-    were ping-pong -- the reference implementation estimates the background for
-    the same reason.
+    """Excess at the 10-nt offset over the rate of the locus's own other offsets,
+    estimated from lo..hi excluding `target`. A uniform 1/20 null would read
+    coverage structure as ping-pong.
     """
     if not counts:
         return 0.0
@@ -132,11 +122,8 @@ def pingpong_score(pairs_at_10, total_pairs, n_offsets=20):
 
 
 def density_score(reads, span_bp, lib_reads, genome_bp):
-    # NOT wired into the pipeline. It restated the read count (r = 0.72 with
-    # log reads) and was high by construction, since a locus only exists after
-    # clearing a depth cut -- the same criterion proTRAC uses to CALL loci and
-    # we use as --mincov. Kept because a local-background version, asking
-    # whether a locus stands out from its neighbourhood, would be real evidence.
+    # NOT wired into the pipeline: it restated the read count and was high by
+    # construction, since a locus only exists after clearing --mincov.
     """Read pile-up over what a uniform distribution would put in this span."""
     if span_bp <= 0 or lib_reads <= 0 or genome_bp <= 0 or reads <= 0:
         return 0.0

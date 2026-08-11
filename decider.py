@@ -133,14 +133,8 @@ class RuleScorer:
         size = self._size(record)
         edge = self.shape.get("size_edge", 3.0)
         sigma = self.shape.get("fractop_sigma", 0.15)
-        # Size gate: every evidence term is multiplied by it, so a signal only
-        # counts where the size already fits the class. Ping-pong and phasing
-        # were gated from the start -- dual-strand 21-nt loci hit the 10-nt
-        # overlap by geometry -- but 5'U, 5'A and the dual-strand term were not,
-        # and each of them was carrying loci into a class whose window they sit
-        # outside: 14.5% of Drosophila piRNA (675 of them at 18-20 nt, held by a
-        # 5'U alone), 27.3% of rice siRNA, 12.1% of rice hcsiRNA. The one class
-        # whose terms were all gated, phasiRNA24, sat at 0.5%.
+        # Size gate: every evidence term is multiplied by it, so a signature only
+        # counts where the size already fits the class.
         gate = (_window(size, spec["size"]["lo"], spec["size"]["hi"], edge=edge)
                 if "size" in spec else 1.0)
         s = 0.0
@@ -169,10 +163,8 @@ class RuleScorer:
             # Size-gated like ping-pong: phasing only counts where the size fits,
             # which is what lets one config serve plants and arthropods.
             if spec.get("phase_on", "score") == "cycles":
-                # The run in register, with no abundance in it. phase_score
-                # carries a ln(mass) factor, and measured on a 24-nt class in
-                # Arabidopsis -- which has no DCL5 -- it selected loci 5x deeper
-                # with phase_pvalue 1.000: depth, not phasing.
+                # The run in register, with no abundance in it: phase_score's ln(mass)
+                # factor selects depth in a class that dominates the genome.
                 signal = self.phase_cycle_strength(record)
             else:
                 # phase_score is unbounded (ratio*number*log(abun)); saturate to [0,1].
@@ -184,14 +176,9 @@ class RuleScorer:
         return s, terms
 
     def defining_scores(self, spec, record):
-        """Evidence scores the class is defined by, in config order.
-
-        A nested list is an OR slot: score it as the max over its members
-        (e.g. piRNA is size + (5'U OR ping-pong)). A plain string is AND, as before.
-
-        Reads the `e_*` effect strengths (in [0,1]), not the `s_*` p-value
-        scores. A record without the strength attribute (e.g. the raw-feature
-        stand-ins built by extras/simulate_rules.py) defaults to 0.0.
+        """Evidence scores the class is defined by, in config order. A nested list is
+        an OR slot, scored as the max over its members; a plain string is AND.
+        Reads the `e_*` effect strengths, not the `s_*` p-values.
         """
         scores = []
         for name in spec.get("defining_evidence", []):
@@ -236,17 +223,13 @@ class RuleScorer:
             or record.dicer_call == "N"
         )
         if self._outside_window(self.cfg["classes"][top_name], record):
-            # The winner's own size window does not contain this locus, so its
-            # definition does not hold here -- and with every term size-gated an
-            # "N" scores zero everywhere, which would make the argmax the config's
-            # first key. Report the size verdict instead of a class, keep the
-            # nearest one in the trail, and leave review to mean what it means.
+            # No class window contains this locus. With every term size-gated an "N"
+            # scores zero everywhere, so the argmax would be the config's first key.
+            # Report the size verdict instead, keeping the nearest class in the trail.
             record.cls = self.AMBIGUOUS
             record.score = None
-            # review stays True: it means "do not trust this call, look at it",
-            # and a locus whose size fits no class is exactly that. Clearing it
-            # would let ambiguous loci pass any `review == False` filter as if
-            # they were confident calls.
+            # review stays True: a locus whose size fits no class is exactly what it
+            # means, and clearing it would let these pass a `review == False` filter.
             record.review = True
             record.evidence = f"nearest={top_name}; " + record.evidence
         return record

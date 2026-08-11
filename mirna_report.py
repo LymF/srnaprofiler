@@ -193,13 +193,9 @@ def write_fasta(records, path, field):
 
 
 def collect_structures(mirscore_out, records, dest, outdir):
-    """miRScore's plots, split by verdict, where the user will look.
-
-    strucVis draws read depth on the fold and is the one worth looking at;
-    RNAplots is the plain structure and stands in when strucVis did not run.
-
-    `outdir` is the boundary the delete may not cross; the name check alone
-    cannot see a `..` because Path has already normalised it away.
+    """miRScore's plots, split by verdict. Prefers strucVis, which draws read depth
+    on the fold, over RNAplots. `outdir` bounds the delete: the name check alone
+    cannot see a `..` that Path has normalised away.
     """
     mirscore_out, dest = Path(mirscore_out), Path(dest)
     # Belt and braces before a delete: only the directory this function fills,

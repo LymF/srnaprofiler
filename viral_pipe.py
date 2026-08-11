@@ -30,17 +30,7 @@ class ViralSRNAPipeline:
     
     def __init__(self, output_dir, host_genome, bacterial_refseq=None, 
                  transposon_db=None, threads=4, viralquest_params=None):
-        """
-        Initialize the pipeline
-        
-        Args:
-            output_dir: Output directory
-            host_genome: Host reference genome
-            bacterial_refseq: Bacterial RefSeq (optional)
-            transposon_db: Transposon database (optional)
-            threads: Number of threads
-            viralquest_params: Dictionary with ViralQuest parameters (optional)
-        """
+        """Initialize the pipeline"""
         self.output_dir = Path(output_dir)
         self.host_genome = Path(host_genome)
         self.bacterial_refseq = Path(bacterial_refseq) if bacterial_refseq else None
@@ -52,12 +42,7 @@ class ViralSRNAPipeline:
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def setup_sample_directories(self, sample_name):
-        """
-        Create directory structure for a sample
-        
-        Args:
-            sample_name: Name of the sample
-        """
+        """Create directory structure for a sample"""
         sample_dir = self.output_dir / sample_name
         sample_dir.mkdir(exist_ok=True)
         
@@ -80,16 +65,7 @@ class ViralSRNAPipeline:
         }
     
     def run_cutadapt(self, input_fastq, dirs):
-        """
-        Step 1: Trimming with cutadapt (automatic adapter detection)
-        
-        Args:
-            input_fastq: Input FASTQ file
-            dirs: Dictionary with sample directories
-        
-        Returns:
-            Path to trimmed FASTQ file
-        """
+        """Step 1: Trimming with cutadapt (automatic adapter detection)"""
         logger.info("=" * 60)
         logger.info("STEP 1: Trimming with cutadapt")
         logger.info("=" * 60)
@@ -121,18 +97,7 @@ class ViralSRNAPipeline:
         return output_fastq
     
     def map_to_reference_bowtie1(self, input_fastq, reference, ref_name, dirs):
-        """
-        Map reads against a reference genome with 0 mismatches using Bowtie1
-        
-        Args:
-            input_fastq: Input FASTQ file
-            reference: Reference genome
-            ref_name: Reference name (for output files)
-            dirs: Dictionary with sample directories
-            
-        Returns:
-            FASTQ file with unmapped reads
-        """
+        """Map reads against a reference genome with 0 mismatches using Bowtie1"""
         logger.info(f"  Mapping against: {ref_name}")
         
         # Index reference if necessary
@@ -146,11 +111,7 @@ class ViralSRNAPipeline:
         unmapped_fastq = dirs['mapping_dir'] / f"unmapped_{ref_name}.fastq"
         stats_file = dirs['mapping_dir'] / f"{ref_name}_stats.txt"
         
-        # Map with bowtie1 (0 mismatches, -v 0)
-        # -v 0: report alignments with at most 0 mismatches
-        # --un: write unmapped reads to file
-        # -p: number of threads
-        # -S: output in SAM format
+        # bowtie1, exact matches only (-v 0)
         map_cmd = [
             "bowtie",
             "-v", "0",  # 0 mismatches allowed
@@ -175,16 +136,7 @@ class ViralSRNAPipeline:
         return unmapped_fastq
     
     def map_against_all_references(self, input_fastq, dirs):
-        """
-        Step 2: Map against all reference genomes
-        
-        Args:
-            input_fastq: Input FASTQ file
-            dirs: Dictionary with sample directories
-            
-        Returns:
-            FASTQ file with final unmapped reads
-        """
+        """Step 2: Map against all reference genomes"""
         logger.info("=" * 60)
         logger.info("STEP 2: Mapping against reference genomes")
         logger.info("=" * 60)
@@ -217,16 +169,7 @@ class ViralSRNAPipeline:
         return current_fastq
     
     def filter_by_size(self, input_fastq, dirs):
-        """
-        Step 3: Separate reads by size ranges
-        
-        Args:
-            input_fastq: FASTQ file with unmapped reads
-            dirs: Dictionary with sample directories
-            
-        Returns:
-            Tuple with (fastq_20_23, fastq_24_30)
-        """
+        """Step 3: Separate reads by size ranges"""
         logger.info("=" * 60)
         logger.info("STEP 3: Size-based separation")
         logger.info("=" * 60)
@@ -285,17 +228,7 @@ class ViralSRNAPipeline:
         return fastq_20_23, fastq_24_30
     
     def run_metaspades(self, input_fastq, size_range, dirs):
-        """
-        Step 4: Assembly with metaSPAdes
-        
-        Args:
-            input_fastq: Input FASTQ file
-            size_range: String indicating size range (e.g., "20-23")
-            dirs: Dictionary with sample directories
-            
-        Returns:
-            Path to assembled contigs
-        """
+        """Step 4: Assembly with metaSPAdes"""
         logger.info(f"  Assembling {size_range}nt reads with metaSPAdes...")
         
         output_subdir = dirs['assembly_dir'] / f"assembly_{size_range}nt"
@@ -322,17 +255,7 @@ class ViralSRNAPipeline:
         return contigs
     
     def run_viralquest(self, contigs_fasta, size_range, dirs):
-        """
-        Step 5: Viral identification with ViralQuest
-        
-        Args:
-            contigs_fasta: Path to assembled contigs
-            size_range: String indicating size range (e.g., "20-23")
-            dirs: Dictionary with sample directories
-            
-        Returns:
-            Path to ViralQuest output directory
-        """
+        """Step 5: Viral identification with ViralQuest"""
         logger.info(f"  Running ViralQuest for {size_range}nt contigs...")
         
         output_subdir = dirs['viralquest_dir'] / f"viralquest_{size_range}nt"
@@ -370,17 +293,7 @@ class ViralSRNAPipeline:
         return output_subdir
     
     def assemble_all(self, fastq_20_23, fastq_24_30, dirs):
-        """
-        Step 4: Assemble both size ranges
-        
-        Args:
-            fastq_20_23: FASTQ file with 20-23nt reads
-            fastq_24_30: FASTQ file with 24-30nt reads
-            dirs: Dictionary with sample directories
-            
-        Returns:
-            Dictionary with assembly and ViralQuest results
-        """
+        """Step 4: Assemble both size ranges"""
         logger.info("=" * 60)
         logger.info("STEP 4: Assembly with metaSPAdes (k-mer 15)")
         logger.info("=" * 60)
@@ -419,15 +332,7 @@ class ViralSRNAPipeline:
         return results
     
     def process_single_sample(self, input_fastq):
-        """
-        Process a single FASTQ file
-        
-        Args:
-            input_fastq: Input FASTQ file path
-            
-        Returns:
-            Dictionary with results
-        """
+        """Process a single FASTQ file"""
         input_fastq = Path(input_fastq)
         sample_name = input_fastq.stem.replace('.fastq', '').replace('.fq', '')
         
@@ -491,15 +396,7 @@ class ViralSRNAPipeline:
             }
     
     def process_batch(self, input_files):
-        """
-        Process multiple FASTQ files
-        
-        Args:
-            input_files: List of FASTQ file paths
-            
-        Returns:
-            List of result dictionaries
-        """
+        """Process multiple FASTQ files"""
         logger.info("\n" + "=" * 60)
         logger.info("STARTING BATCH PROCESSING")
         logger.info("=" * 60)
@@ -548,15 +445,7 @@ class ViralSRNAPipeline:
 
 
 def find_fastq_files(input_path):
-    """
-    Find all FASTQ files in a directory or return single file
-    
-    Args:
-        input_path: Path to a file or directory
-        
-    Returns:
-        List of FASTQ file paths
-    """
+    """Find all FASTQ files in a directory or return single file"""
     input_path = Path(input_path)
     
     if input_path.is_file():

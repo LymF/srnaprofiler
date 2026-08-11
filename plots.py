@@ -31,13 +31,8 @@ def calculate_base_composition_from_sam(
     min_length: int = 15,
     max_length: int = 35
 ) -> dict:
-    """
-    Calculate first base composition by size from SAM file.
+    """Calculate first base composition by size from SAM file.
     This is what the R scripts expect for base distribution plots.
-    
-    Returns:
-        Dictionary: {size: {'+': {'A': count, 'C': count, 'G': count, 'T': count}, 
-                            '-': {'A': count, ...}}}
     """
     base_comp = {}
     for size in range(min_length, max_length + 1):
@@ -235,19 +230,7 @@ def run_r_script(
     timeout: int = 300,
     cwd: Optional[Path] = None
 ) -> bool:
-    """
-    Run an R script with given arguments.
-    
-    Args:
-        script_name: Name of the R script (e.g., 'plotPattern_publication.R')
-        args: List of arguments to pass to the script
-        r_scripts_path: Path to R scripts directory
-        timeout: Timeout in seconds
-        cwd: Working directory for R script execution
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Run an R script with given arguments."""
     if not which("Rscript"):
         log("Rscript not found in PATH", "ERROR")
         return False
@@ -307,18 +290,7 @@ def generate_base_distribution_plot(
     r_scripts_path: Optional[Path] = None,
     plot_type: str = "per_base"
 ) -> bool:
-    """
-    Generate base distribution plots from TSV file.
-    
-    Args:
-        input_tsv: Path to input TSV file with distribution data
-        output_prefix: Output prefix (without extension)
-        r_scripts_path: Path to R scripts directory
-        plot_type: Type of plot - 'per_base', 'per_base_zoom', or 'sum_strand'
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Generate base distribution plots from TSV file."""
     validate_file_exists(input_tsv, "Distribution TSV file")
     
     # Select appropriate R script
@@ -354,18 +326,7 @@ def generate_pattern_plot(
     r_scripts_path: Optional[Path] = None,
     both_strands: bool = False
 ) -> bool:
-    """
-    Generate pattern plots (Z-score) from matrix file.
-    
-    Args:
-        input_matrix: Path to input matrix CSV file
-        output_prefix: Output prefix (without extension)
-        r_scripts_path: Path to R scripts directory
-        both_strands: If True, plot both strands separately
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Generate pattern plots (Z-score) from matrix file."""
     validate_file_exists(input_matrix, "Pattern matrix file")
     
     # Select appropriate R script
@@ -394,19 +355,7 @@ def generate_all_base_distribution_plots(
     categories: List[str],
     r_scripts_path: Optional[Path] = None
 ) -> Dict[str, bool]:
-    """
-    Generate all base distribution plots for given categories.
-    
-    Args:
-        tables_dir: Directory containing TSV files
-        plots_dir: Output directory for plots
-        prefix: Output file prefix
-        categories: List of categories (e.g., ['putative_siRNA', 'putative_piRNA'])
-        r_scripts_path: Path to R scripts directory
-    
-    Returns:
-        Dictionary mapping plot names to success status
-    """
+    """Generate all base distribution plots for given categories."""
     log("Generating base distribution plots...", "INFO")
     
     # Check R availability
@@ -470,19 +419,7 @@ def generate_all_pattern_plots(
     categories: List[str],
     r_scripts_path: Optional[Path] = None
 ) -> Dict[str, bool]:
-    """
-    Generate all pattern plots for given categories.
-    
-    Args:
-        tables_dir: Directory containing pattern matrix files
-        plots_dir: Output directory for plots
-        prefix: Output file prefix
-        categories: List of categories (e.g., ['putative_siRNA', 'putative_piRNA'])
-        r_scripts_path: Path to R scripts directory
-    
-    Returns:
-        Dictionary mapping plot names to success status
-    """
+    """Generate all pattern plots for given categories."""
     log("Generating pattern plots...", "INFO")
     
     # Check R availability
@@ -542,21 +479,7 @@ def generate_all_plots(
     include_base_distribution: bool = True,
     include_patterns: bool = True
 ) -> Dict[str, Dict[str, bool]]:
-    """
-    Generate all plots (base distribution and patterns).
-    
-    Args:
-        tables_dir: Directory containing data files
-        plots_dir: Output directory for plots
-        prefix: Output file prefix
-        categories: List of categories to plot
-        r_scripts_path: Path to R scripts directory
-        include_base_distribution: Generate base distribution plots
-        include_patterns: Generate pattern plots
-    
-    Returns:
-        Dictionary with 'base_distribution' and 'patterns' keys containing results
-    """
+    """Generate all plots (base distribution and patterns)."""
     log("="*60, "INFO")
     log("Starting plot generation", "INFO")
     log("="*60, "INFO")
@@ -631,21 +554,7 @@ def generate_per_chromosome_plots(
     max_length: int = 35,
     r_scripts_path: Path = None
 ) -> dict:
-    """
-    Generate plots for each chromosome separately.
-    
-    Args:
-        sam_file: Path to SAM file
-        output_dir: Base output directory
-        prefix: Output file prefix
-        chromosomes: List of chromosomes (auto-detect if None)
-        min_length: Minimum read length
-        max_length: Maximum read length
-        r_scripts_path: Path to R scripts
-    
-    Returns:
-        Dictionary with success status for each chromosome
-    """
+    """Generate plots for each chromosome separately."""
     log("="*60, "INFO")
     log("Per-Chromosome Plot Generation", "INFO")
     log("="*60, "INFO")

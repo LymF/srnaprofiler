@@ -208,13 +208,9 @@ def rfam_index_ready(prefix):
 
 
 def link_rfam_for_mirdeep_p2(rfam_prefix, pipeline):
-    """Point miRDeep-P2's rfam_index at the index built for --ncrna-db.
-
-    It ships `mature_index` but not `rfam_index`, which is a separate download,
-    and without it the pipeline runs to completion and predicts nothing. The
-    paths are derived from the script's own directory and have no flag, so a
-    symlink is the way in that survives their updates -- and it avoids holding
-    the same 2.9 GB twice.
+    """Point miRDeep-P2's rfam_index at the index built for --ncrna-db. It ships
+    without one, and then predicts nothing silently. A symlink, since the path
+    has no flag and the index is 2.9 GB.
     """
     rfam_prefix = Path(rfam_prefix)
     if not rfam_index_ready(rfam_prefix):
@@ -241,16 +237,10 @@ _P2_FIX = 'seq="$results_folder/${filename}/${filename}.ori.fa"'
 
 
 def patch_mirdeep_p2(pipeline):
-    """Fix the 1.1.4 path bug, keeping the original beside it.
-
-    The script writes the collapsed reads to `$out/$name/$name.ori.fa` and reads
-    them back from `$out/$name.ori.fa`, so every later step sees an empty file
-    and the run ends with `end...` and zero predictions.
-
-    Returns True if it patched, False if it was already patched. Refuses a
-    script it does not recognise instead of rewriting it: a later version may
-    fix this differently, and editing third-party code on a guess is worse than
-    stopping.
+    """Fix the 1.1.4 path bug -- it writes `$out/$name/$name.ori.fa` and reads
+    `$out/$name.ori.fa`, so every later step sees an empty file. Keeps the
+    original beside it. False if already patched; refuses a script it does not
+    recognise.
     """
     pipeline = Path(pipeline)
     text = pipeline.read_text()

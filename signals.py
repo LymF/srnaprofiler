@@ -24,16 +24,10 @@ def offset_spectrum(a5, b5, lo=1, hi=20):
 
 
 def pingpong_zscore(counts, target=10, lo=1, hi=20, min_bg=3, cap=100.0):
-    """Z-score of the 5'-5' overlap at `target` (default 10 nt) against the background.
-
-    counts: {overlap_length: n_pairs}. Background = offsets in [lo,hi] minus the target.
-
-    Guarded and capped: on a narrow, ultra-dense locus the background collapses to a
-    couple of non-zero offsets, its stdev goes to ~0 and the raw z explodes into the
-    thousands, which is not comparable across loci. We require at least `min_bg`
-    non-zero background offsets for the z to be meaningful, and cap its magnitude at
-    `cap`. (For classification use the bounded `pingpong_frac` instead — this z is a
-    diagnostic.)
+    """Z-score of the 5'-5' overlap at `target` against the background offsets in
+    [lo,hi]. Requires `min_bg` non-zero background offsets and caps the
+    magnitude: on a narrow dense locus the background stdev goes to ~0 and the
+    raw z explodes. Diagnostic only -- classify on `pingpong_frac`.
     """
     background = [counts.get(o, 0) for o in range(lo, hi + 1) if o != target]
     peak = counts.get(target, 0)
@@ -53,13 +47,8 @@ def pingpong_zscore(counts, target=10, lo=1, hi=20, min_bg=3, cap=100.0):
 # test can see, how many are in register".
 PHASE_WINDOW_CYCLES = 11
 
-# phase_score takes the logarithm of the in-register mass, so a deeper library
-# raises it with no change in biology (measured: correlation 0.572 with
-# log(reads), median 0.89 below 50 reads against 10.88 above 5000). The mass is
-# rescaled to this reference size first, as sRNAminer does with
-# `--normLibSize 20000000`. The value is theirs, and it also happens to be where
-# our own calibration sits -- the plant library is 19.93M -- so the shipped
-# `phase_x0` keeps its meaning.
+# phase_score takes ln(in-register mass), so a deeper library raises it with
+# no change in biology. Rescale to this reference size first.
 NORM_LIB_SIZE = 20_000_000
 
 
