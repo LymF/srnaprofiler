@@ -12,6 +12,9 @@ from utils import log
 
 NA = "NA"
 
+# The only directory this module ever clears (see deliverable_paths).
+STRUCTURES_SUFFIX = ".mirna_structures"
+
 MIRNA_COLS = [
     "name", "chrom", "start", "end", "strand", "engine",
     "mature_seq", "mature_len", "star_seq", "star_len",
@@ -196,6 +199,11 @@ def collect_structures(mirscore_out, records, dest):
     RNAplots is the plain structure and stands in when strucVis did not run.
     """
     mirscore_out, dest = Path(mirscore_out), Path(dest)
+    # Belt and braces before a delete: only the directory this function fills,
+    # never whatever a crafted prefix made the path point at.
+    if not dest.name.endswith(STRUCTURES_SUFFIX):
+        raise ValueError(f"refusing to clear {dest}: not a "
+                         f"*{STRUCTURES_SUFFIX} directory")
     if dest.exists():        # a locus that passed then failed would answer twice
         shutil.rmtree(dest)
 

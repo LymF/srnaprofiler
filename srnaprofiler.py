@@ -14,7 +14,7 @@ from clusters import run_clusters
 from mirna import run_mirna_analysis
 from setup_module import run_check, run_data, run_tools
 from utils import (
-    log, which, 
+    log, which, validate_prefix,
     DEFAULT_MIN_LEN, DEFAULT_QTRIM,
     DEFAULT_THREADS, DEFAULT_MISMATCHES, DEFAULT_MAX_ALIGNMENTS,
     DEFAULT_SI_THRESHOLD, DEFAULT_PI_THRESHOLD,
@@ -885,6 +885,8 @@ def main():
         if hasattr(args, "outdir"):
             log(f"Output directory: {args.outdir}", "INFO")
         if hasattr(args, "prefix"):
+            # One seam for every subcommand: they all name files off it.
+            validate_prefix(args.prefix)
             log(f"Project prefix: {args.prefix}", "INFO")
         
         args.func(args)

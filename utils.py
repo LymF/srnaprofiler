@@ -283,6 +283,23 @@ def check_disk_space(path: Path, required_mb: int = 1000) -> bool:
     return True
 
 
+def validate_prefix(prefix: str) -> str:
+    """A prefix names files inside --outdir, so it may not be a path.
+
+    Every subcommand builds `outdir / f"{prefix}.something"`, and the miRNA
+    module deletes one of those paths -- `../foo` would land, and delete,
+    outside --outdir. Refused rather than rewritten: silently stripping the
+    `../` would write where the user did not ask.
+    """
+    bad = (not prefix or prefix in (os.curdir, os.pardir)
+           or os.sep in prefix or (os.altsep and os.altsep in prefix)
+           or Path(prefix).is_absolute())
+    if bad:
+        raise ValueError(
+            f"--prefix must be a plain file prefix, not a path: {prefix!r}")
+    return prefix
+
+
 def validate_arguments(args) -> None:
     """Common argument validation."""
     # Check output directory
