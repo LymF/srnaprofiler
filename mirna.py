@@ -485,35 +485,84 @@ def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
     return input_files
 
 
-def finish_mirna(predictions, args, mirna_dir, reads):
-    """Validate, write the BED that feeds --mirna-loci, and say what happened."""
+def deliverable_paths(outdir, prefix):
+    """Every file this module hands over, named off the prefix in one place."""
+    outdir = Path(outdir)
+    return {
+        "table": outdir / f"{prefix}.mirna.tsv",
+        "bed": outdir / f"{prefix}.mirna_loci.bed",
+        "mature": outdir / f"{prefix}.mirna.mature.fa",
+        "star": outdir / f"{prefix}.mirna.star.fa",
+        "precursor": outdir / f"{prefix}.mirna.precursor.fa",
+        "run_json": outdir / f"{prefix}.mirna.run.json",
+        "structures": outdir / f"{prefix}.mirna_structures",
+    }
+
+
+def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
+    """Validate, write everything the module hands over, and say what happened."""
+    import json
+    from mirna_report import (build_records, write_table, write_bed,
+                              write_fasta, collect_structures, validated)
+
     kingdom = "plant" if args.engine == "mirdeep-p2" else "animal"
-    passing = None
+    result = None
     if getattr(args, "no_validate", False):
         log("--no-validate: writing predictions without miRScore", "WARN")
     elif getattr(args, "genome", None):
-        validation = validate_with_mirscore(
+        result = validate_with_mirscore(
             predictions, args.genome, reads, kingdom,
-            Path(mirna_dir) / "validation", threads=getattr(args, "threads", 1))
-        if validation is not None:
-            passing = {n for n, r in validation.rows.items()
-                       if str(r.get("result", "")).strip().lower().startswith("pass")}
+            Path(work_dir) / "validation", threads=getattr(args, "threads", 1))
     else:
         log("no -g/--genome: skipping miRScore validation, which needs the "
             "genome to re-cut precursors with flanks", "WARN")
 
-    bed = Path(mirna_dir) / f"{args.prefix}.mirna_loci.bed"
-    if passing is None:
-        # Unvalidated predictions are still written, and the log says so: a
-        # false prediction becomes a carved locus with miRNA asserted over it.
-        names = {p["name"] for p in predictions}
-        n = write_mirna_loci_bed(predictions, names, bed)
-        log(f"{n} UNVALIDATED loci written to {bed}", "WARN")
+    records = build_records(
+        predictions, args.engine,
+        mirscore_rows=result.rows if result else None,
+        submitted=result.submitted if result else None,
+        mirdeep_rows=mirdeep_rows)
+
+    paths = deliverable_paths(args.outdir, args.prefix)
+    write_table(records, paths["table"])
+    n_bed = write_bed(records, paths["bed"]) if result else _write_bed_unvalidated(
+        records, paths["bed"])
+    if validated(records):
+        for key, field in (("mature", "mature_seq"), ("star", "star_seq"),
+                           ("precursor", "precursor_seq")):
+            write_fasta(records, paths[key], field)
+    if result:
+        collect_structures(Path(work_dir) / "validation" / "mirscore", records,
+                           paths["structures"])
+
+    counts = {"predicted": len(records),
+              "submitted": len(result.submitted) if result else 0,
+              "passed": sum(1 for r in records if r.result == "Pass"),
+              "failed": sum(1 for r in records if r.result == "Fail"),
+              "not_scored": sum(1 for r in records if r.result == "NotScored")}
+    paths["run_json"].write_text(json.dumps(
+        {"engine": args.engine, "kingdom": kingdom,
+         "validated": result is not None, "counts": counts}, indent=2))
+
+    if result:
+        log(f"{n_bed} validated loci written to {paths['bed']} "
+            f"(of {len(records)} predicted)", "INFO")
     else:
-        n = write_mirna_loci_bed(predictions, passing, bed)
-        log(f"{n} validated loci written to {bed} "
-            f"(of {len(predictions)} predicted)", "INFO")
-    return bed
+        log(f"{n_bed} UNVALIDATED loci written to {paths['bed']}", "WARN")
+    log(f"table: {paths['table']}", "INFO")
+    return paths["bed"]
+
+
+def _write_bed_unvalidated(records, path):
+    """Without miRScore there is no pass set, so every prediction is written.
+
+    A false prediction becomes a carved locus with miRNA asserted over it --
+    which is what the WARN in the caller is about.
+    """
+    with open(path, "w") as fh:
+        for r in records:
+            fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.name}\n")
+    return len(records)
 
 
 def run_mirna_analysis(args):
@@ -1006,21 +1055,6 @@ def no_reads_counted(reads_csv):
     with open(reads_csv) as fh:
         rows = list(_csv.DictReader(fh))
     return bool(rows) and all(float(r.get("allReads") or 0) == 0 for r in rows)
-
-
-def write_mirna_loci_bed(predictions, passing, path):
-    """The deliverable: a BED of validated precursors, ready for --mirna-loci.
-
-    The engines report 1-based inclusive coordinates; BED is 0-based half-open.
-    """
-    n = 0
-    with open(path, "w") as out:
-        for p in predictions:
-            if p["name"] not in passing:
-                continue
-            out.write(f"{p['chrom']}\t{p['start'] - 1}\t{p['end']}\t{p['name']}\n")
-            n += 1
-    return n
 
 
 def run_mirdeep_p2(args, reads, outdir):
