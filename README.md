@@ -18,10 +18,6 @@ conda env create -f environment.yml
 conda activate srnaprofiler
 ```
 
-The `python=3.13` pin is deliberate. miRScore imports ViennaRNA's Python binding
-(`import RNA`), which is not built for 3.14: conda installs viennarna happily and the import
-still fails.
-
 Two tools conda cannot install are handled by the `setup` module:
 
 ```bash
@@ -44,9 +40,11 @@ qc -g genome.fa  →  mapping  →  mirna  →  classify --mirna-loci <BED>  →
 `qc -g` is **not optional**: it standardizes FASTA headers and maps IUPAC codes to N. The
 miRNA engines reject a genome with either, and NCBI genomes have both.
 
-`mirna` is optional, and skipping it costs more than a missing class. Without `--mirna-loci`
-every covered precursor is labelled siRNA, piRNA or phasiRNA instead, and in plants about a
-fifth of the phasiRNA class lands on annotated miRNA.
+`classify` has no miRNA class of its own: miRNA loci come from the BED passed to
+`--mirna-loci`. A precursor that is not in that BED is classified by its signature like any
+other locus, and since miRNAs share their size range and 5' bias with other pathways, it may
+be assigned to a neighbouring class. Passing a curated annotation, or the validated
+predictions from `mirna`, is what keeps them labelled correctly.
 
 ---
 
@@ -164,21 +162,3 @@ are larger by the multiplicity factor, 3.19× in one Drosophila library.
 `score` and the `s_*` columns answer different questions: `s_*` say how surprising a signature
 is, which grows with depth; `score` says how strong the effect is, which does not. Use `score`
 to compare loci.
-
-`mirna` writes `<prefix>.mirna.tsv` (one row per prediction, with the miRScore verdict and the
-reason for each rejection), `<prefix>.mirna_loci.bed` (the validated loci, for
-`classify --mirna-loci`), the mature/star/precursor FASTAs of the validated set, and
-secondary-structure PDFs split into `passed/` and `failed/`.
-
----
-
-## Notes
-
-- `/mnt/...` drvfs paths: run `samtools sort` on a local disk; only final tables need to live
-  on the mounted drive.
-- `classify` caps its own thread count to the memory available, since each worker holds one
-  whole chromosome.
-- Read counts, RPM and every threshold in the config are on the weighted scale described
-  above.
-
-**Author:** Lucas
