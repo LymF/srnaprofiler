@@ -15,7 +15,8 @@ from typing import Optional, Dict, List
 from collections import defaultdict
 from dataclasses import dataclass
 
-from utils import log, ensure_outdir, validate_file_exists, which, run_command
+from utils import (log, ensure_outdir, validate_file_exists, which, run_command,
+                   ensure_within, remove_path, validate_prefix)
 
 
 def check_mirdeep2_dependencies():
@@ -506,20 +507,20 @@ def deliverable_paths(outdir, prefix):
     }
 
 
-def drop_validated_deliverables(paths):
+def drop_validated_deliverables(paths, outdir):
     """Remove what only a validated run may leave behind, and say so.
 
     An unvalidated run writes no FASTA and no plots; leaving the previous
     run's would make the outdir claim a validated set this BED contradicts.
+    These are deletes aimed by the prefix, so each one is confined to
+    `outdir` before it happens.
     """
-    for key in ("mature", "star", "precursor"):
-        if paths[key].exists():
-            paths[key].unlink()
+    for key in ("mature", "star", "precursor", "structures"):
+        ensure_within(outdir, paths[key])
+    for key in ("mature", "star", "precursor", "structures"):
+        if paths[key].exists() or paths[key].is_symlink():
+            remove_path(paths[key])
             log(f"removed stale {paths[key]}: this run did not validate", "WARN")
-    if paths["structures"].exists():
-        shutil.rmtree(paths["structures"])
-        log(f"removed stale {paths['structures']}: this run did not validate",
-            "WARN")
 
 
 NA = "NA"
@@ -583,10 +584,10 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
             write_fasta(records, paths[key], field)
         n_plots = collect_structures(
             Path(work_dir) / "validation" / "mirscore", records,
-            paths["structures"])
+            paths["structures"], args.outdir)
         log(f"{n_plots} structure plots in {paths['structures']}", "INFO")
     else:
-        drop_validated_deliverables(paths)
+        drop_validated_deliverables(paths, args.outdir)
 
     counts = {"predicted": len(records),
               "submitted": len(result.submitted) if result else "NA",
@@ -884,6 +885,13 @@ def main():
     )
     
     args = parser.parse_args()
+    # This entry point does not go through srnaprofiler.main(), where every
+    # other prefix is checked, and the run below deletes paths named off it.
+    try:
+        validate_prefix(args.prefix)
+    except ValueError as e:
+        log(str(e), "ERROR")
+        sys.exit(1)
     run_mirna_analysis(args)
 
 

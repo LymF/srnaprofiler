@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from reporter import _cell          # one definition of how a field is serialized
-from utils import log
+from utils import ensure_within, log, remove_path
 
 NA = "NA"
 
@@ -192,20 +192,25 @@ def write_fasta(records, path, field):
     return n
 
 
-def collect_structures(mirscore_out, records, dest):
+def collect_structures(mirscore_out, records, dest, outdir):
     """miRScore's plots, split by verdict, where the user will look.
 
     strucVis draws read depth on the fold and is the one worth looking at;
     RNAplots is the plain structure and stands in when strucVis did not run.
+
+    `outdir` is the boundary the delete may not cross; the name check alone
+    cannot see a `..` because Path has already normalised it away.
     """
     mirscore_out, dest = Path(mirscore_out), Path(dest)
     # Belt and braces before a delete: only the directory this function fills,
-    # never whatever a crafted prefix made the path point at.
+    # inside the outdir this run was given.
     if not dest.name.endswith(STRUCTURES_SUFFIX):
         raise ValueError(f"refusing to clear {dest}: not a "
                          f"*{STRUCTURES_SUFFIX} directory")
-    if dest.exists():        # a locus that passed then failed would answer twice
-        shutil.rmtree(dest)
+    ensure_within(outdir, dest)
+    # A locus that passed then failed would answer twice; and a stale file or
+    # symlink here must not abort a run that already wrote its table and BED.
+    remove_path(dest)
 
     verdicts = {"Pass": "passed", "Fail": "failed"}
     scored = [r for r in records if r.result in verdicts]

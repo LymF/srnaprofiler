@@ -300,6 +300,37 @@ def validate_prefix(prefix: str) -> str:
     return prefix
 
 
+def ensure_within(base: Path, path: Path) -> Path:
+    """Confine a path a caller is about to DELETE to somewhere inside base.
+
+    `Path` normalises components, so a name check alone passes for
+    `outdir/../foo.mirna_structures`. Only the resolved location answers.
+    The last component is not followed: a symlink there is judged by where
+    it sits, so it can be unlinked without reaching its target.
+    """
+    base = Path(base).resolve()
+    path = Path(path)
+    resolved = path.parent.resolve() / path.name
+    if base not in resolved.parents:
+        raise ValueError(f"refusing to touch {path}: it resolves to "
+                         f"{resolved}, outside {base}")
+    return resolved
+
+
+def remove_path(path: Path) -> None:
+    """Clear a stale output, whatever it turned out to be.
+
+    rmtree raises on a file or a symlink, and it would abort a run that has
+    already written its table and BED.
+    """
+    import shutil
+    path = Path(path)
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
 def validate_arguments(args) -> None:
     """Common argument validation."""
     # Check output directory
