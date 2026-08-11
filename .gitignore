@@ -19,12 +19,6 @@ venv/
 .Rhistory
 
 # large data / example inputs / run outputs (kept on disk, not versioned)
-files/*.fastq.gz
-files/*.fq.gz
-files/*.fa
-files/*.fasta
-files/*.sam
-files/*.bam
 plots/
 *.zip
 
