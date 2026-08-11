@@ -268,13 +268,18 @@ def mirdeep2_novel_rows(path):
 
 
 def parse_mirdeep2_novel(path):
-    """miRDeep2's novel predictions, in the shape the engines share."""
+    """miRDeep2's novel predictions, in the shape the engines share.
+
+    The coordinate carries the strand (`NC_003074.8:3366348..3366411:-`) and it
+    used to be dropped for a hardcoded dot.
+    """
     out = []
     for d in mirdeep2_novel_rows(path):
-        m = re.match(r"(\S+):(\d+)\.\.(\d+)", d.get("precursor coordinate", ""))
+        m = re.match(r"(\S+):(\d+)\.\.(\d+)(?::([+-]))?", d.get("precursor coordinate", ""))
         if not m:
             continue
-        out.append({"chrom": m.group(1), "strand": ".", "name": d["provisional id"],
+        out.append({"chrom": m.group(1), "strand": m.group(4) or ".",
+                    "name": d["provisional id"],
                     "start": int(m.group(2)), "end": int(m.group(3)),
                     "mature": d["consensus mature sequence"].strip().upper().replace("U", "T")})
     return out
