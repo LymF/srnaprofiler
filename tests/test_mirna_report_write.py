@@ -55,6 +55,17 @@ def test_the_three_fastas_and_the_bed_are_the_same_set(tmp_path):
         assert got == names
 
 
+def test_a_pass_without_a_sequence_is_skipped_and_reported(tmp_path, capsys):
+    """`>p1\\nNA` would be a two-base record that no one asked for."""
+    r = recs()
+    r[0].star_seq = "NA"
+    p = tmp_path / "at.star.fa"
+    assert write_fasta(r, p, "star_seq") == 0
+    assert p.read_text() == ""
+    err = capsys.readouterr().err
+    assert "WARN" in err and "p1" in err and "star_seq" in err
+
+
 def test_the_fasta_holds_the_sequence_of_the_requested_field(tmp_path):
     """And in DNA -- miRScore answered in RNA."""
     p = tmp_path / "at.star.fa"

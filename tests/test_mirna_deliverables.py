@@ -54,3 +54,40 @@ def test_the_run_json_records_what_ran(tmp_path):
     assert meta["validated"] is False
     assert meta["counts"]["predicted"] == 2
     assert meta["counts"]["passed"] == 0
+
+
+def validated_args(tmp_path):
+    return SimpleNamespace(prefix="at", outdir=str(tmp_path), engine="mirdeep-p2",
+                           genome="genome.fa", no_validate=False, threads=1)
+
+
+def fake_validation(monkeypatch, verdict):
+    """miRScore's answer for p1, without miRScore: it lives in another env."""
+    from mirna import Validation
+    rows = {"p1": {"result": verdict, "msSeq": "GUUCC", "precSeq": "UUCUUGG",
+                   "flags": "NA"}}
+    monkeypatch.setattr(
+        "mirna.validate_with_mirscore",
+        lambda *a, **k: Validation(rows=rows, submitted={"p1", "p2"}))
+
+
+def test_a_rerun_that_validates_nothing_leaves_no_fasta_from_the_old_one(
+        tmp_path, monkeypatch):
+    """The four files describe one set, so an empty FASTA beats a stale one."""
+    fake_validation(monkeypatch, "Pass")
+    finish_mirna(PREDS, validated_args(tmp_path), tmp_path / "work", reads=None)
+    p = deliverable_paths(tmp_path, "at")
+    assert ">p1" in p["mature"].read_text()
+
+    fake_validation(monkeypatch, "Fail")
+    finish_mirna(PREDS, validated_args(tmp_path), tmp_path / "work", reads=None)
+    assert p["bed"].read_text() == ""
+    for key in ("mature", "star", "precursor"):
+        assert p[key].read_text() == "", f"{key} still claims the old pass set"
+
+
+def test_nothing_submitted_is_NA_and_not_a_measured_zero(tmp_path):
+    import json
+    finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)
+    meta = json.loads(deliverable_paths(tmp_path, "at")["run_json"].read_text())
+    assert meta["counts"]["submitted"] == "NA"

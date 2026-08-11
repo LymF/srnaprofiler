@@ -173,7 +173,12 @@ def write_fasta(records, path, field):
     n = 0
     with open(path, "w") as fh:
         for r in validated(records):
-            fh.write(f">{r.name}\n{getattr(r, field)}\n")
+            seq = getattr(r, field)
+            if not seq or seq == NA:      # `>name\nNA` would be a 2-base record
+                log(f"{r.name} passed but has no {field}; leaving it out of "
+                    f"{Path(path).name}", "WARN")
+                continue
+            fh.write(f">{r.name}\n{seq}\n")
             n += 1
     return n
 
@@ -185,6 +190,12 @@ def collect_structures(mirscore_out, records, dest):
     RNAplots is the plain structure and stands in when strucVis did not run.
     """
     mirscore_out, dest = Path(mirscore_out), Path(dest)
+    if dest.exists():        # a locus that passed then failed would answer twice
+        shutil.rmtree(dest)
+
+    verdicts = {"Pass": "passed", "Fail": "failed"}
+    scored = [r for r in records if r.result in verdicts]
+
     source = next((s for s in ("strucVis", "RNAplots")
                    if (mirscore_out / s).is_dir()), None)
     if source is None:
@@ -192,15 +203,18 @@ def collect_structures(mirscore_out, records, dest):
             f"RNAplots/. Is strucVis on PATH?", "WARN")
         return 0
 
-    verdicts = {"Pass": "passed", "Fail": "failed"}
     n = 0
-    for r in records:
-        sub = verdicts.get(r.result)
-        if sub is None:                      # NotScored/NotValidated: no plot exists
-            continue
+    covered = set()
+    for r in scored:
+        sub = verdicts[r.result]
         for plot in sorted((mirscore_out / source / sub).glob(f"{r.name}.*")) or \
                     sorted((mirscore_out / source / sub).glob(f"{r.name}_*")):
             (dest / sub).mkdir(parents=True, exist_ok=True)
             shutil.copy2(plot, dest / sub / plot.name)
+            covered.add(r.name)
             n += 1
+    if len(covered) < len(scored):
+        log(f"{source}/ has plots for {len(covered)} of the {len(scored)} "
+            f"predictions miRScore scored; the rest have no structure to audit",
+            "WARN")
     return n

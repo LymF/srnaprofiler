@@ -510,7 +510,7 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
     """Validate, write everything the module hands over, and say what happened."""
     import json
     from mirna_report import (build_records, write_table, write_bed,
-                              write_fasta, collect_structures, validated)
+                              write_fasta, collect_structures)
 
     kingdom = "plant" if args.engine == "mirdeep-p2" else "animal"
     result = None
@@ -534,16 +534,19 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
     write_table(records, paths["table"])
     n_bed = write_bed(records, paths["bed"]) if result else _write_bed_unvalidated(
         records, paths["bed"])
-    if validated(records):
+    if result:
+        # Written whenever validation ran: an empty FASTA is a truthful answer,
+        # and one left from a previous run would contradict this BED.
         for key, field in (("mature", "mature_seq"), ("star", "star_seq"),
                            ("precursor", "precursor_seq")):
             write_fasta(records, paths[key], field)
-    if result:
-        collect_structures(Path(work_dir) / "validation" / "mirscore", records,
-                           paths["structures"])
+        n_plots = collect_structures(
+            Path(work_dir) / "validation" / "mirscore", records,
+            paths["structures"])
+        log(f"{n_plots} structure plots in {paths['structures']}", "INFO")
 
     counts = {"predicted": len(records),
-              "submitted": len(result.submitted) if result else 0,
+              "submitted": len(result.submitted) if result else "NA",
               "passed": sum(1 for r in records if r.result == "Pass"),
               "failed": sum(1 for r in records if r.result == "Fail"),
               "not_scored": sum(1 for r in records if r.result == "NotScored")}
@@ -570,6 +573,35 @@ def _write_bed_unvalidated(records, path):
         for r in records:
             fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.name}\n")
     return len(records)
+
+
+def novel_with_rows(results_dir):
+    """The novel predictions and their raw row, from ONE result_*.csv.
+
+    miRDeep2 names the file `result_DD_MM_YYYY_t_HH_MM_SS.csv`, so sorting by
+    name orders by day of the month; and `provisional id` serials restart every
+    run. Mixing two files puts one run's coordinates beside another's score.
+    """
+    for csv_path in sorted(Path(results_dir).glob("result_*.csv")):
+        novel = parse_mirdeep2_novel(csv_path)
+        if novel:
+            return novel, {r["provisional id"]: r
+                           for r in mirdeep2_novel_rows(csv_path)}
+    return [], {}
+
+
+def finish_animal_run(results_dir, args, work_root, reads):
+    """Step 7, run whether or not there were predictions.
+
+    Zero predictions is a result, and it is reported in the table and the
+    run.json -- not by leaving the output directory empty.
+    """
+    novel, rows = novel_with_rows(results_dir)
+    if novel:
+        log(f"Step 7: validating {len(novel)} novel predictions...", "INFO")
+    else:
+        log("no novel predictions: writing an empty table, not nothing", "WARN")
+    return finish_mirna(novel, args, work_root, reads, mirdeep_rows=rows)
 
 
 def run_mirna_analysis(args):
@@ -748,20 +780,7 @@ def run_mirna_analysis(args):
     generate_mirna_report(results, work["root"], args.prefix)
 
     # Step 7: validate the novel predictions and emit the BED for --mirna-loci
-    novel = []
-    for csv_path in sorted(results_dir.glob("result_*.csv")):
-        novel = parse_mirdeep2_novel(csv_path)
-        if novel:
-            break
-    if novel:
-        log(f"Step 7: validating {len(novel)} novel predictions...", "INFO")
-        rows = {r["provisional id"]: r
-                for csv_path in sorted(results_dir.glob("result_*.csv"))
-                for r in mirdeep2_novel_rows(csv_path)}
-        finish_mirna(novel, args, work["root"], input_files["reads"],
-                     mirdeep_rows=rows)
-    else:
-        log("no novel predictions to validate", "INFO")
+    finish_animal_run(results_dir, args, work["root"], input_files["reads"])
 
     log("=" * 60, "INFO")
     log(f"miRNA analysis completed successfully!", "INFO")

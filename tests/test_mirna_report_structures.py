@@ -72,6 +72,28 @@ def test_no_plot_source_is_a_warning_not_a_crash(tmp_path):
     assert collect_structures(tmp_path / "mirscore", recs(), dest) == 0
 
 
+def test_a_plot_from_a_previous_run_does_not_survive_this_one(tmp_path):
+    """A locus that passed then failed would answer twice, once per directory."""
+    dest = tmp_path / "at.mirna_structures"
+    (dest / "passed").mkdir(parents=True)
+    (dest / "passed" / f"{P2}.ps.pdf").write_text("stale verdict")
+
+    out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
+    collect_structures(out, recs(), dest)
+    assert not (dest / "passed" / f"{P2}.ps.pdf").exists()
+    assert (dest / "failed" / f"{P2}.ps.pdf").exists()
+
+
+def test_a_scored_prediction_without_a_plot_is_reported(tmp_path, capsys):
+    """The source exists and copies nothing for P2: silence would hide it."""
+    out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
+    (out / "strucVis" / "failed" / f"{P2}.ps.pdf").unlink()
+    assert collect_structures(out, recs(), tmp_path / "at.mirna_structures") == 1
+    err = capsys.readouterr().err
+    assert "WARN" in err
+    assert "1" in err and "2" in err
+
+
 def test_a_never_scored_prediction_has_no_plot(tmp_path):
     """P3 never reached miRScore, so there is nothing to copy for it."""
     out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
