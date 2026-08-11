@@ -1546,6 +1546,36 @@ validação, e a guarda original testava `dest.name`, que a normalização do `P
 os blocos standalone de `clusters.py` e `plots.py` têm a mesma travessia, mas só **escrevem** —
 nenhum delete é mirado pelo prefixo ali.
 
+**Rodada ponta a ponta depois da mescla (2026-08-11), com as duas ferramentas de verdade:**
+87 predições, 56 `Pass`, 31 `Fail`, 56/56 dos validados sobre miRBase, 87 plots (56+31), os
+quatro arquivos com o mesmo conjunto, FASTA em DNA. 547 testes.
+
+**Ela achou o quarto modo de falha silenciosa do miRDeep-P2.** `run_mirdeep_p2` passava
+`args.index_prefix` direto para o `-x`; sem a flag, o argumento virava a string `"None"`, o
+bowtie não alinhava nada, todos os `.bst` saíam com 0 byte e o pipeline terminava com `end...`
+e **zero predições, com código de saída de sucesso**. Cinco minutos de corrida que pareciam
+uma corrida. Fechado com `require_bowtie_index`, que recusa índice ausente, caminho sem
+índice ao lado e índice pela metade (`bowtie-build` morto no meio), aceitando `.ebwt` e
+`.ebwtl`. Os outros três modos já eram barrados pelo `check_mirdeep_p2_install`; este passava
+por fora porque o índice não é do install, é da invocação.
+
+*O que a saída nova fez certo nessa corrida quebrada:* escreveu a tabela com cabeçalho, um
+`run.json` com `"predicted": 0` e `"validated": false`, e dois WARN. A corrida vazia era
+legível pelos artefatos, sem abrir log de Perl — que é exatamente o achado 2 da revisão final
+funcionando na prática.
+
+**O BED não é byte-reproduzível entre corridas do mesmo insumo, e a causa é a montante.**
+Comparadas duas corridas idênticas, 86 das 87 predições batem linha a linha; em
+`NC_003071.7_546` o miRDeep-P2 elegeu uma **read representante diferente com abundância
+idêntica** (`read04651952_x15` × `read01737815_x15`), e o precursor saiu com 83 bp em vez de
+81. É um empate desempatado de forma diferente dentro dele. Quem comparar corridas precisa
+saber disso antes de atribuir a diferença ao nosso código.
+
+**Ressalva de ambiente:** o `mirna` **não roda** num env de Python 3.14 — o binding
+`import RNA` do ViennaRNA, que o miRScore usa, não é construído para 3.14, e o `setup --check`
+reporta `mirna no`. O `environment.yml` já fixa `python=3.13` justamente por isso; envs
+criados antes desse pin precisam ser recriados.
+
 *Não entrou, com motivo:* isomiR (ferramenta dedicada e formato padrão já existem — mirtop),
 MFE/AMFE/MFEI (o miRScore calcula a MFE e **descarta**: os critérios dele são a geometria do
 dúplex, mais específica que o sumário do grampo inteiro) e match nosso contra o miRBase (o do

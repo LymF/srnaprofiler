@@ -194,6 +194,27 @@ def check_bowtie_index(index_prefix: str) -> bool:
     return True
 
 
+def require_bowtie_index(index_prefix):
+    """The index miRDeep-P2 needs, or a loud refusal.
+
+    Its `-x` took whatever it was given: omitted, the argument became the string
+    "None", bowtie aligned nothing, every intermediate came out empty, and the
+    pipeline still finished with `end...` and zero predictions. That is its
+    fourth silent failure, and the only one that looked like a real run.
+    """
+    if not index_prefix:
+        raise RuntimeError(
+            "miRDeep-P2 needs --index-prefix. Without it bowtie aligns nothing "
+            "and the pipeline reports success with zero predictions.")
+    if not check_bowtie_index(index_prefix):
+        raise RuntimeError(
+            f"no bowtie index at {index_prefix} -- looked for .1.ebwt and its "
+            f"siblings (or .ebwtl). miRDeep-P2 would align nothing and predict "
+            f"nothing without failing. Build one with `bowtie-build`, or point "
+            f"--index-prefix at the index the mapping module used.")
+    return index_prefix
+
+
 def build_bowtie_index(genome_path: Path, index_prefix: Path) -> bool:
     """Build Bowtie index for genome."""
     try:
@@ -1151,7 +1172,9 @@ def run_mirdeep_p2(args, reads, outdir):
             shutil.copyfileobj(src, dst)
         reads = plain
 
-    cmd = mirdeep_p2_command(pipeline, args.genome, args.index_prefix, reads,
+    index = require_bowtie_index(getattr(args, "index_prefix", None))
+
+    cmd = mirdeep_p2_command(pipeline, args.genome, index, reads,
                              outdir, threads=getattr(args, "threads", 1))
     log("Running miRDeep-P2...", "INFO")
     subprocess.run(cmd, check=True)
