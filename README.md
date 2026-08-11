@@ -182,6 +182,36 @@ ambiguity codes to N. miRDeep2 rejects a genome that has either ("not allowed
 whitespaces in its first identifier", "allowed only to comprise characters
 [ACGTNacgtn]"), and NCBI genomes have both.
 
+### What `mirna` writes
+
+Deliverables land in `--outdir` named off `--prefix`, like every other subcommand;
+the raw third-party output goes under one work tree whose shape does not depend on
+`--engine`:
+
+    outdir/
+    |-- at.mirna.tsv            one row per prediction, with its verdict
+    |-- at.mirna_loci.bed       the validated loci -> classify --mirna-loci
+    |-- at.mirna.mature.fa      |
+    |-- at.mirna.star.fa        |- the validated set, same names as the BED
+    |-- at.mirna.precursor.fa   |
+    |-- at.mirna.run.json       engine, kingdom, whether it was validated, counts
+    |-- at.mirna_structures/    secondary-structure PDFs, passed/ and failed/
+    `-- at.mirna_work/          engine/ and validation/, raw
+
+The table carries every prediction, not only the ones that passed: `result` is
+`Pass`, `Fail`, `NotScored` (never reached miRScore) or `NotValidated` (miRScore
+did not run at all), and `flags` says why a locus was dropped. Sequences are DNA
+in all four files — miRScore answers in RNA and the conversion happens once.
+
+The structure plots come from miRScore, not from the predictor, so both engines
+have them. `strucVis` draws read depth on the fold and is preferred; `RNAplots` is
+the fallback.
+
+Measured on Arabidopsis flower buds (ncRNA-filtered reads, miRDeep-P2 + miRScore):
+87 predictions, 56 `Pass`, 31 `Fail`, and all 56 validated loci overlap an
+annotated miRBase precursor. Of the 31 rejections, 27 are "No mature or star reads
+detected" — the evidence criterion, not the structural one.
+
 `classify` has no miRNA class of its own — miRNA loci come from `--mirna-loci`,
 and each interval given there is **carved out of the cluster around it** before
 the class is decided. A hairpin is ~90 bp and a locus is 600–1000 bp, so without

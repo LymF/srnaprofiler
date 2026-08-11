@@ -1475,6 +1475,85 @@ Medido na instalação limpa (Arabidopsis, reads filtrados de ncRNA):
 | das validadas, em miRBase | **56/56 (100%)** |
 | suíte no ambiente novo | 455 passando |
 
+## Saída do módulo `mirna` — FEITO (2026-08-10)
+
+Spec `2026-08-10-mirna-output-design.md`, plano `2026-08-10-mirna-output.md`, 9 tarefas na
+branch `mirna-output`. O módulo entregava **um arquivo** (o BED do `--mirna-loci`) e escondia
+o resto numa árvore cuja forma dependia do `--engine`.
+
+**O que estava enterrado e agora é entregue:** o `miRScore_results.csv` traz 20 colunas de
+evidência mas suas coordenadas são **dentro do grampo** e ele não sabe cromossomo nem fita;
+nossas predições têm as coordenadas genômicas e nenhuma evidência. Nenhum dos dois lados é
+utilizável sozinho — o `mirna_report.build_records` é a junção, uma linha por predição.
+
+| entregável | conteúdo |
+|---|---|
+| `<prefix>.mirna.tsv` | 30 colunas, **todas** as predições com veredito e motivo |
+| `<prefix>.mirna_loci.bed` | só as validadas (inalterado byte a byte) |
+| `.mature.fa` / `.star.fa` / `.precursor.fa` | o conjunto validado, mesmos nomes do BED |
+| `<prefix>.mirna_structures/` | PDFs de estrutura, `passed/` e `failed/` |
+| `<prefix>.mirna.run.json` | motor, reino, se validou, contagens |
+
+**`result` tem quatro valores e nenhum é vazio** — `Pass`, `Fail`, `NotScored` (não chegou ao
+miRScore) e `NotValidated` (o miRScore não rodou). É o anti-padrão que este documento já
+registrava três vezes (o `0.0` do `pingpong_frac`, o score de miRNA, o `NaN` da `auc()`)
+sendo fechado na origem em vez de depois.
+
+**Medido contra a corrida de referência** (Arabidopsis, `mirna_fresh`, funções de produção
+sobre as saídas reais das duas ferramentas): 87 predições, **56 `Pass`**, 31 `Fail`; BED, os
+três FASTA e as linhas `Pass` são o mesmo conjunto; 87 plots (56+31); **BED idêntico byte a
+byte** ao anterior e **56/56 dos validados sobre miRNA anotado do miRBase**. Os 31 descartes
+que o BED nunca conseguiu explicar: **27 por "No mature or star reads detected"**, 1 por
+precisão < 75%, 1 por multimapeamento no grampo, 1 por <10 reads, 1 por star de 23/24 nt.
+540 testes passando.
+
+**Três defeitos achados no caminho, todos no plano e não na execução:**
+
+1. **`parse_mirdeep2_novel` descartava a fita.** O `precursor coordinate` traz
+   `NC_003074.8:3366348..3366411:-` e as 94 linhas têm fita (53 `+`, 41 `-`); o parser fixava
+   `"."`. Só apareceu porque a saída real foi lida em vez de suposta.
+2. **Os três FASTA sairiam com alfabetos misturados** — o miRScore responde em RNA e as
+   predições chegam em DNA. Tudo sai em DNA, que é o que casa com o genoma e o BED.
+3. **`submitted=None` fazia o oposto do contrato documentado**, atribuindo "precursor não pôde
+   ser recortado" a loci onde isso nunca aconteceu. Inalcançável pelo chamador real, mas era a
+   função mentindo sobre o próprio motivo.
+
+*Corrigido de passagem:* as colunas exclusivas do miRDeep2 (`mirdeep_score`, `rfam_alert`,
+`randfold`, `mirbase_hit`, `mirbase_same_seed`) nunca chegavam a ser preenchidas porque
+`mirdeep_rows` não era passado. A `estimated probability` do miRDeep2 vem **vazia nas 94
+linhas** — ele só a calcula com referência para calibrar —, então `mirdeep_prob` é `NA` na
+prática, e isso é dele, não fiação quebrada.
+
+**A revisão do branch inteiro achou quatro defeitos que as revisões por tarefa não podiam ver**,
+porque cada uma via uma fatia: (i) as colunas do miRDeep2 podiam vir de um `result_*.csv`
+diferente do que deu as coordenadas — os serials do `provisional id` são por corrida, então o
+mesmo id significa loci diferentes; (ii) zero predições no motor **animal** não escrevia
+entregável nenhum e anunciava "completed successfully", enquanto o de planta escrevia tabela
+vazia e `run.json` honesto; (iii) um re-run que não validasse deixava os FASTA antigos ao lado
+de um BED novo, e um locus que trocasse de veredito aparecia em `passed/` **e** `failed/`;
+(iv) o `collect_structures` devolvia 0 em silêncio quando a origem existia mas nada casava.
+
+**E uma exposição de segurança que este trabalho criou.** Para não misturar plots de duas
+corridas, o `collect_structures` passou a apagar um diretório — e o caminho dele vem do
+`--prefix`, que **nunca foi validado em lugar nenhum do projeto**. `--prefix ../foo` mirava o
+apagamento fora do `--outdir`. Escrever ali sempre foi inofensivo; apagar não é. Fechado com
+`utils.validate_prefix` (recusa, com o valor na mensagem — não reescreve em silêncio),
+`utils.ensure_within` como fronteira no ponto do delete, e `utils.remove_path`, que testa
+`is_symlink()` **antes** de `is_dir()` para nunca seguir um link e apagar o alvo. Duas brechas
+só apareceram na re-revisão: o `python mirna.py` tem `main()` próprio que não passava pela
+validação, e a guarda original testava `dest.name`, que a normalização do `Path` derrota
+(`Path("/out/../foo.mirna_structures").name` é `"foo.mirna_structures"`). *Fica registrado:*
+os blocos standalone de `clusters.py` e `plots.py` têm a mesma travessia, mas só **escrevem** —
+nenhum delete é mirado pelo prefixo ali.
+
+*Não entrou, com motivo:* isomiR (ferramenta dedicada e formato padrão já existem — mirtop),
+MFE/AMFE/MFEI (o miRScore calcula a MFE e **descarta**: os critérios dele são a geometria do
+dúplex, mais específica que o sumário do grampo inteiro) e match nosso contra o miRBase (o do
+miRDeep2 é lookup de seed 2–8 contra espécies relacionadas, conceito animal que não serve em
+planta — as colunas são repasse).
+
+---
+
 ## Estado atual (PRONTO)
 
 Motor **classify** v1 completo + subcomando **`classplots`**, na branch `master` (local — falta `git push`). **73 testes** passando.

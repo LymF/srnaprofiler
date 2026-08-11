@@ -40,13 +40,18 @@ import pytest
 
 from mirna import read_mirscore_rows, parse_mirscore_results
 
+# Header and rows copied verbatim from a real miRScore_results.csv
+# (/mnt/d/srnaprofiler-teste/plant/mirna_fresh/mirna/validation/mirscore).
 HEADER = ("name,mSeq,mLen,mStart,mStop,msSeq,msLen,msStart,msStop,precSeq,"
           "precLen,result,flags,mismatches,bulges,mReads,msReads,totReads,"
           "numLibraries,precision\n")
-ROWS = ("ath-1,TGGACTGAAGGGAGCTCCCTT,21,15,35,GGGGAATGAAGCCTGGTCCGA,21,60,80,"
-        "ACGT,120,Pass,NA,1,0,8214,112,8500,1,0.98\n"
-        "ath-2,TTGACAGAAGATAGAGAGCAC,21,20,40,NA,NA,NA,NA,ACGT,110,Fail,"
-        "Star not detected,3,1,4401,0,4500,1,0.91\n")
+ROWS = ("NC_003070.9_1420,CUGAAGUGUUUGGGGGAACUC,21,74.0,94.0,"
+        "GUUCCUCUGAGCACUUCAUUG,21.0,24.0,44.0,UUCUUGGUUGGAUGUCUCCUAG,121,"
+        "Pass,NA,1.0,0.0,545.0,3.0,550.0,1.0,99.64\n"
+        "NC_003074.8_111,CAUGUCGUAAUAGUAGUCACGU,22,25.0,46.0,"
+        "GCGAUUUCUAUUAUGACAUAAA,22.0,86.0,107.0,AAGUGAUGAUCAGCUAUCGUAU,133,"
+        "Fail,No mature or star reads detected,3.0,0.0,149.0,0.0,164.0,1.0,"
+        "90.85\n")
 
 
 def write_csv(tmp_path, text):
@@ -57,9 +62,10 @@ def write_csv(tmp_path, text):
 
 def test_rows_are_keyed_by_name_and_keep_every_column(tmp_path):
     rows = read_mirscore_rows(write_csv(tmp_path, HEADER + ROWS))
-    assert set(rows) == {"ath-1", "ath-2"}
-    assert rows["ath-1"]["msSeq"] == "GGGGAATGAAGCCTGGTCCGA"
-    assert rows["ath-2"]["flags"] == "Star not detected"
+    assert set(rows) == {"NC_003070.9_1420", "NC_003074.8_111"}
+    assert rows["NC_003070.9_1420"]["msSeq"] == "GUUCCUCUGAGCACUUCAUUG"
+    assert rows["NC_003074.8_111"]["flags"] == "No mature or star reads detected"
+    assert rows["NC_003070.9_1420"]["precision"] == "99.64"
 
 
 def test_a_missing_required_column_fails_loud(tmp_path):
@@ -70,7 +76,8 @@ def test_a_missing_required_column_fails_loud(tmp_path):
 
 
 def test_passing_names_still_come_out_of_the_same_read(tmp_path):
-    assert parse_mirscore_results(write_csv(tmp_path, HEADER + ROWS)) == {"ath-1"}
+    got = parse_mirscore_results(write_csv(tmp_path, HEADER + ROWS))
+    assert got == {"NC_003070.9_1420"}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -130,6 +137,17 @@ git commit -m "feat(mirna): read miRScore's results as rows, failing on a rename
 
 The `mirdeep2`-only columns (score, rfam alert, randfold, miRBase hit) live in the same CSV that `parse_mirdeep2_novel` already walks, and are thrown away.
 
+**And so is the strand.** Checked against a real run
+(`/mnt/d/srnaprofiler-teste/plant/mirna/mirna/results/result_02_08_2026_t_15_06_43.csv`, 94
+novel rows): `precursor coordinate` reads `NC_003074.8:3366348..3366411:-` and **all 94 rows
+carry the strand** (53 `+`, 41 `-`), but the parser hardcodes `"."`. That reaches the BED and
+the table's `strand` column. Fixing it is part of this task.
+
+Two more facts from that file, so nobody re-derives them: the header has **17 columns**, and
+`estimated probability that the miRNA candidate is a true positive` is **empty in all 94
+rows** — miRDeep2 only fills it when it has a reference set to calibrate against. `mirdeep_prob`
+being `NA` is the normal case, not broken wiring.
+
 **Files:**
 - Modify: `mirna.py:897-920` (`parse_mirdeep2_novel`)
 - Test: `tests/test_mirna_report_rows.py` (append)
@@ -142,19 +160,36 @@ The `mirdeep2`-only columns (score, rfam alert, randfold, miRBase hit) live in t
 
 Append to `tests/test_mirna_report_rows.py`:
 
+The header and the two data rows below are the real ones, copied from the run cited above —
+17 columns, lowercase RNA sequences, an empty probability field, and the strand on the
+coordinate.
+
 ```python
 from mirna import mirdeep2_novel_rows, parse_mirdeep2_novel
 
+HDR = ["provisional id", "miRDeep2 score",
+       "estimated probability that the miRNA candidate is a true positive",
+       "rfam alert", "total read count", "mature read count",
+       "loop read count", "star read count",
+       "significant randfold p-value", "miRBase miRNA",
+       "example miRBase miRNA with the same seed", "UCSC browser",
+       "NCBI blastn", "consensus mature sequence", "consensus star sequence",
+       "consensus precursor sequence", "precursor coordinate"]
+
 NOVEL = "\n".join([
     "some preamble line",
-    "\t".join(["provisional id", "miRDeep2 score", "rfam alert",
-               "significant randfold p-value", "miRBase miRNA",
-               "example miRBase miRNA with the same seed",
-               "consensus mature sequence", "precursor coordinate"]),
-    "\t".join(["nov-1", "96.3", "-", "yes", "-", "ath-miR166a",
-               "uggacugaagggagcucccuu", "Chr1:1234..1325"]),
-    "\t".join(["nov-2", "10.0", "rRNA/tRNA", "no", "-", "-",
-               "uugacagaagauagagagcac", "Chr2:88100..88190"]),
+    "novel miRNAs predicted by miRDeep2",
+    "\t".join(HDR),
+    "\t".join(["NC_003074.8_25650", "5610.4", "", "-", "11002", "3337", "0",
+               "7665", "yes", "-", "-", "-", "-",
+               "cuuugucuacaauuuuggaaa", "ucccaaauguagacaaagca",
+               "cuuugucuacaauuuuggaaaaagugaugacgccauugcucuuucccaaauguagacaaa",
+               "NC_003074.8:3366348..3366411:-"]),
+    "\t".join(["NC_003070.9_1025", "10.0", "", "rRNA/tRNA", "500", "300", "0",
+               "20", "no", "-", "ath-miR166a", "-", "-",
+               "uggacugaagggagcucccuu", "agggaugucuuuuugcaccu",
+               "uggacugaagggagcucccuuaaaaagggaugucuuuuugcaccu",
+               "NC_003070.9:1234..1325:+"]),
     "",
 ]) + "\n"
 
@@ -163,18 +198,44 @@ def test_raw_novel_rows_keep_the_mirdeep_only_columns(tmp_path):
     p = tmp_path / "result_01_01_2026.csv"
     p.write_text(NOVEL)
     rows = mirdeep2_novel_rows(p)
-    assert [r["provisional id"] for r in rows] == ["nov-1", "nov-2"]
-    assert rows[0]["example miRBase miRNA with the same seed"] == "ath-miR166a"
+    assert [r["provisional id"] for r in rows] == ["NC_003074.8_25650",
+                                                   "NC_003070.9_1025"]
+    assert rows[1]["example miRBase miRNA with the same seed"] == "ath-miR166a"
     assert rows[1]["rfam alert"] == "rRNA/tRNA"
+    assert rows[0]["miRDeep2 score"] == "5610.4"
 
 
-def test_predictions_are_unchanged_by_the_refactor(tmp_path):
+def test_the_empty_probability_column_stays_empty_rather_than_guessed(tmp_path):
+    """miRDeep2 leaves it blank without a reference set; that is its answer."""
+    p = tmp_path / "result_01_01_2026.csv"
+    p.write_text(NOVEL)
+    rows = mirdeep2_novel_rows(p)
+    key = "estimated probability that the miRNA candidate is a true positive"
+    assert rows[0][key] == ""
+
+
+def test_the_strand_is_read_from_the_precursor_coordinate(tmp_path):
+    """It is right there in the coordinate and was being replaced with a dot."""
     p = tmp_path / "result_01_01_2026.csv"
     p.write_text(NOVEL)
     preds = parse_mirdeep2_novel(p)
-    assert preds[0] == {"chrom": "Chr1", "strand": ".", "name": "nov-1",
-                        "start": 1234, "end": 1325,
+    assert [x["strand"] for x in preds] == ["-", "+"]
+
+
+def test_predictions_keep_their_shape(tmp_path):
+    p = tmp_path / "result_01_01_2026.csv"
+    p.write_text(NOVEL)
+    preds = parse_mirdeep2_novel(p)
+    assert preds[1] == {"chrom": "NC_003070.9", "strand": "+",
+                        "name": "NC_003070.9_1025", "start": 1234, "end": 1325,
                         "mature": "TGGACTGAAGGGAGCTCCCTT"}
+
+
+def test_a_coordinate_without_a_strand_is_still_read(tmp_path):
+    """Older miRDeep2 output omits it; a missing strand is '.', not a crash."""
+    p = tmp_path / "result_01_01_2026.csv"
+    p.write_text(NOVEL.replace("NC_003070.9:1234..1325:+", "NC_003070.9:1234..1325"))
+    assert parse_mirdeep2_novel(p)[1]["strand"] == "."
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -207,13 +268,18 @@ def mirdeep2_novel_rows(path):
 
 
 def parse_mirdeep2_novel(path):
-    """miRDeep2's novel predictions, in the shape the engines share."""
+    """miRDeep2's novel predictions, in the shape the engines share.
+
+    The coordinate carries the strand (`NC_003074.8:3366348..3366411:-`) and it
+    used to be dropped for a hardcoded dot.
+    """
     out = []
     for d in mirdeep2_novel_rows(path):
-        m = re.match(r"(\S+):(\d+)\.\.(\d+)", d.get("precursor coordinate", ""))
+        m = re.match(r"(\S+):(\d+)\.\.(\d+)(?::([+-]))?", d.get("precursor coordinate", ""))
         if not m:
             continue
-        out.append({"chrom": m.group(1), "strand": ".", "name": d["provisional id"],
+        out.append({"chrom": m.group(1), "strand": m.group(4) or ".",
+                    "name": d["provisional id"],
                     "start": int(m.group(2)), "end": int(m.group(3)),
                     "mature": d["consensus mature sequence"].strip().upper().replace("U", "T")})
     return out
@@ -265,19 +331,25 @@ PREDS = [
      "mature": "TAAGGGATCTTACAGGTAACG"},
 ]
 
+# Values copied from a real miRScore_results.csv: RNA sequences, numeric fields
+# as float-formatted strings, precision on a 0-100 scale.
 SCORE_ROWS = {
-    "p1": {"name": "p1", "mSeq": "TGGACTGAAGGGAGCTCCCTT", "msSeq": "GGGGAATGAAGCC",
-           "msLen": "13", "precSeq": "ACGTACGT", "precLen": "120",
-           "mStart": "15", "mStop": "35", "msStart": "60", "msStop": "80",
-           "result": "Pass", "flags": "NA", "mismatches": "1", "bulges": "0",
-           "mReads": "8214", "msReads": "112", "totReads": "8500",
-           "precision": "0.98"},
-    "p2": {"name": "p2", "mSeq": "TTGACAGAAGATAGAGAGCAC", "msSeq": "NA",
-           "msLen": "NA", "precSeq": "ACGT", "precLen": "110",
-           "mStart": "20", "mStop": "40", "msStart": "NA", "msStop": "NA",
-           "result": "Fail", "flags": "Star not detected", "mismatches": "3",
-           "bulges": "1", "mReads": "4401", "msReads": "0", "totReads": "4500",
-           "precision": "0.91"},
+    "p1": {"name": "p1", "mSeq": "CUGAAGUGUUUGGGGGAACUC", "mLen": "21",
+           "msSeq": "GUUCCUCUGAGCACUUCAUUG", "msLen": "21.0",
+           "precSeq": "UUCUUGGUUGGAUGUCUCCUAGAGUUCCUCUGAGCACUUCAUUG",
+           "precLen": "121", "mStart": "74.0", "mStop": "94.0",
+           "msStart": "24.0", "msStop": "44.0",
+           "result": "Pass", "flags": "NA", "mismatches": "1.0", "bulges": "0.0",
+           "mReads": "545.0", "msReads": "3.0", "totReads": "550.0",
+           "precision": "99.64"},
+    "p2": {"name": "p2", "mSeq": "CAUGUCGUAAUAGUAGUCACGU", "mLen": "22",
+           "msSeq": "GCGAUUUCUAUUAUGACAUAAA", "msLen": "22.0",
+           "precSeq": "AAGUGAUGAUCAGCUAUCGUAUUUCAUGUCGUAAUAGUAGUCACGU",
+           "precLen": "133", "mStart": "25.0", "mStop": "46.0",
+           "msStart": "86.0", "msStop": "107.0",
+           "result": "Fail", "flags": "No mature or star reads detected",
+           "mismatches": "3.0", "bulges": "0.0", "mReads": "149.0",
+           "msReads": "0.0", "totReads": "164.0", "precision": "90.85"},
 }
 
 
@@ -310,13 +382,29 @@ def test_submitted_but_absent_from_the_results_is_not_a_failure():
     assert recs[2].flags == "absent from miRScore results"
 
 
+def test_without_a_submitted_set_every_prediction_counts_as_submitted():
+    """`submitted=None` means 'all of them', so no locus is blamed on the re-cut."""
+    recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS)
+    assert recs[2].result == "NotScored"
+    assert recs[2].flags == "absent from miRScore results"
+
+
 def test_evidence_columns_come_from_mirscore():
     recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS, submitted={"p1", "p2"})
-    assert recs[0].star_seq == "GGGGAATGAAGCC"
-    assert recs[0].star_len == "13"
-    assert recs[0].mature_reads == "8214"
-    assert recs[0].precision == "0.98"
+    assert recs[0].star_len == "21.0"        # miRScore's own float string, kept
+    assert recs[0].mature_reads == "545.0"
+    assert recs[0].precision == "99.64"      # 0-100, not 0-1
     assert recs[0].mature_len == 21          # ours, from the prediction
+
+
+def test_mirscore_sequences_are_converted_to_dna():
+    """miRScore answers in RNA; the mature comes from the prediction in DNA.
+
+    Mixing them would give a mature.fa in T and a star.fa in U.
+    """
+    recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS, submitted={"p1", "p2"})
+    assert recs[0].star_seq == "GTTCCTCTGAGCACTTCATTG"
+    assert "U" not in recs[0].precursor_seq
 
 
 def test_mirdeep_only_columns_are_na_for_the_plant_engine():
@@ -380,6 +468,10 @@ MIRNA_COLS = [
     "mirdeep_score", "mirdeep_prob", "rfam_alert", "randfold",
     "mirbase_hit", "mirbase_same_seed",
 ]
+
+# miRScore answers in RNA and the predictions arrive in DNA; one alphabet wins,
+# and it is the genome's, so the FASTAs and the BED describe the same thing.
+_SEQUENCE_FIELDS = ("star_seq", "precursor_seq")
 
 # miRScore column -> our column. Ours are snake_case and say what they hold.
 _FROM_MIRSCORE = {
@@ -474,8 +566,11 @@ def build_records(predictions, engine, mirscore_rows=None, submitted=None,
             if row is not None:
                 rec.result = _verdict(row)
                 for src, dst in _FROM_MIRSCORE.items():
-                    setattr(rec, dst, row.get(src, NA) or NA)
-            elif submitted is not None and p["name"] in submitted:
+                    val = row.get(src, NA) or NA
+                    if dst in _SEQUENCE_FIELDS and val != NA:
+                        val = val.upper().replace("U", "T")
+                    setattr(rec, dst, val)
+            elif submitted is None or p["name"] in submitted:
                 rec.result = "NotScored"
                 rec.flags = "absent from miRScore results"
             else:
@@ -531,10 +626,11 @@ PREDS = [
      "mature": "TTGACAGAAGATAGAGAGCAC"},
 ]
 ROWS = {
-    "p1": {"result": "Pass", "msSeq": "GGGGAATGAAGCC", "precSeq": "ACGTACGT",
-           "flags": "NA"},
-    "p2": {"result": "Fail", "msSeq": "NA", "precSeq": "ACGT",
-           "flags": "Star not detected"},
+    "p1": {"result": "Pass", "msSeq": "GUUCCUCUGAGCACUUCAUUG",
+           "precSeq": "UUCUUGGUUGGAUGUCUCCUAG", "flags": "NA"},
+    "p2": {"result": "Fail", "msSeq": "GCGAUUUCUAUUAUGACAUAAA",
+           "precSeq": "AAGUGAUGAUCAGCUAUCGUAU",
+           "flags": "No mature or star reads detected"},
 }
 
 
@@ -577,9 +673,10 @@ def test_the_three_fastas_and_the_bed_are_the_same_set(tmp_path):
 
 
 def test_the_fasta_holds_the_sequence_of_the_requested_field(tmp_path):
+    """And in DNA -- miRScore answered in RNA."""
     p = tmp_path / "at.star.fa"
     write_fasta(recs(), p, "star_seq")
-    assert p.read_text() == ">p1\nGGGGAATGAAGCC\n"
+    assert p.read_text() == ">p1\nGTTCCTCTGAGCACTTCATTG\n"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -651,6 +748,17 @@ git commit -m "feat(mirna): the table, the BED and the three FASTAs, one set bet
 
 They already exist, four levels down, produced by miRScore for both engines.
 
+Checked against the real run (`/mnt/d/srnaprofiler-teste/plant/mirna_fresh/mirna/validation/mirscore`):
+both directories hold **PDFs**, not PostScript — `strucVis/{passed,failed}/<name>.ps.pdf` and
+`RNAplots/{passed,failed}/<name>_plot.pdf`. Counts on that run: strucVis **56 + 31 = 87**,
+one per prediction; RNAplots **56 + 30 = 86**, missing the locus whose hairpin structure was
+invalid. That coverage difference is the second reason to prefer strucVis, on top of it
+drawing read depth on the fold.
+
+Names contain dots and underscores (`NC_003070.9_1420`), so the two globs below are anchored
+on the separator that follows the name and cannot collide with a longer sibling: `NC_..._107.*`
+does not match `NC_..._1075.ps.pdf`.
+
 **Files:**
 - Modify: `mirna_report.py`
 - Test: `tests/test_mirna_report_structures.py` (create)
@@ -667,54 +775,68 @@ from pathlib import Path
 
 from mirna_report import build_records, collect_structures
 
+# Real-shaped names: dots and underscores inside, and a longer sibling that a
+# careless glob would sweep up with p1.
+P1, P2, P3 = "NC_003070.9_142", "NC_003070.9_1420", "NC_003070.9_1484"
+
 PREDS = [
-    {"chrom": "Chr1", "strand": "+", "name": "p1", "start": 10, "end": 100,
+    {"chrom": "NC_003070.9", "strand": "+", "name": P1, "start": 10, "end": 100,
      "mature": "TGGACTGAAG"},
-    {"chrom": "Chr1", "strand": "+", "name": "p2", "start": 200, "end": 300,
+    {"chrom": "NC_003070.9", "strand": "+", "name": P2, "start": 200, "end": 300,
      "mature": "TTGACAGAAG"},
-    {"chrom": "Chr1", "strand": "+", "name": "p3", "start": 400, "end": 500,
+    {"chrom": "NC_003070.9", "strand": "+", "name": P3, "start": 400, "end": 500,
      "mature": "TAAGGGATCT"},
 ]
-ROWS = {"p1": {"result": "Pass"}, "p2": {"result": "Fail"}}
+ROWS = {P1: {"result": "Pass"}, P2: {"result": "Fail"}}
 
 
 def recs():
-    return build_records(PREDS, "mirdeep-p2", ROWS, submitted={"p1", "p2"})
+    return build_records(PREDS, "mirdeep-p2", ROWS, submitted={P1, P2})
 
 
-def make_mirscore_out(tmp_path, subdir, ext):
+def make_mirscore_out(tmp_path, subdir, suffix):
+    """The two real layouts: strucVis writes <name>.ps.pdf, RNAplots <name>_plot.pdf."""
     out = tmp_path / "mirscore"
     for verdict in ("passed", "failed"):
         (out / subdir / verdict).mkdir(parents=True)
-    (out / subdir / "passed" / f"p1{ext}").write_text("plot p1")
-    (out / subdir / "failed" / f"p2{ext}").write_text("plot p2")
+    (out / subdir / "passed" / f"{P1}{suffix}").write_text("plot p1")
+    (out / subdir / "failed" / f"{P2}{suffix}").write_text("plot p2")
     return out
 
 
 def test_strucvis_plots_are_split_by_verdict(tmp_path):
-    out = make_mirscore_out(tmp_path, "strucVis", ".ps")
+    out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
     dest = tmp_path / "at.mirna_structures"
     assert collect_structures(out, recs(), dest) == 2
-    assert (dest / "passed" / "p1.ps").read_text() == "plot p1"
-    assert (dest / "failed" / "p2.ps").read_text() == "plot p2"
+    assert (dest / "passed" / f"{P1}.ps.pdf").read_text() == "plot p1"
+    assert (dest / "failed" / f"{P2}.ps.pdf").read_text() == "plot p2"
 
 
 def test_rnaplots_are_the_fallback_when_strucvis_is_absent(tmp_path):
-    out = make_mirscore_out(tmp_path, "RNAplots", "_ss.eps")
+    out = make_mirscore_out(tmp_path, "RNAplots", "_plot.pdf")
     dest = tmp_path / "at.mirna_structures"
     assert collect_structures(out, recs(), dest) == 2
-    assert (dest / "passed" / "p1_ss.eps").exists()
+    assert (dest / "passed" / f"{P1}_plot.pdf").exists()
+
+
+def test_a_longer_name_is_not_swept_up_by_a_shorter_one(tmp_path):
+    """NC_003070.9_142 must not collect NC_003070.9_1420's plot."""
+    out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
+    (out / "strucVis" / "passed" / f"{P2}.ps.pdf").write_text("plot p2 passed")
+    dest = tmp_path / "at.mirna_structures"
+    collect_structures(out, recs(), dest)
+    assert not (dest / "passed" / f"{P2}.ps.pdf").exists()
 
 
 def test_strucvis_wins_when_both_exist(tmp_path):
-    out = make_mirscore_out(tmp_path, "strucVis", ".ps")
+    out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
     for verdict in ("passed", "failed"):
         (out / "RNAplots" / verdict).mkdir(parents=True)
-    (out / "RNAplots" / "passed" / "p1_ss.eps").write_text("worse plot")
+    (out / "RNAplots" / "passed" / f"{P1}_plot.pdf").write_text("worse plot")
     dest = tmp_path / "at.mirna_structures"
     collect_structures(out, recs(), dest)
-    assert (dest / "passed" / "p1.ps").exists()
-    assert not (dest / "passed" / "p1_ss.eps").exists()
+    assert (dest / "passed" / f"{P1}.ps.pdf").exists()
+    assert not (dest / "passed" / f"{P1}_plot.pdf").exists()
 
 
 def test_no_plot_source_is_a_warning_not_a_crash(tmp_path):
@@ -723,11 +845,11 @@ def test_no_plot_source_is_a_warning_not_a_crash(tmp_path):
 
 
 def test_a_never_scored_prediction_has_no_plot(tmp_path):
-    """p3 never reached miRScore, so there is nothing to copy for it."""
-    out = make_mirscore_out(tmp_path, "strucVis", ".ps")
+    """P3 never reached miRScore, so there is nothing to copy for it."""
+    out = make_mirscore_out(tmp_path, "strucVis", ".ps.pdf")
     dest = tmp_path / "at.mirna_structures"
     collect_structures(out, recs(), dest)
-    assert not list(dest.rglob("p3*"))
+    assert not list(dest.rglob(f"{P3}*"))
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -796,22 +918,104 @@ git commit -m "feat(mirna): the structure plots become a deliverable, split by v
 
 - [ ] **Step 1: Write the failing test**
 
+miRScore lives in its own conda env, so `shutil.which("miRScore")` is None in the env the
+suite runs in. A `skipif` test would skip silently exactly where it matters, so the tool call
+is monkeypatched and everything around it is exercised for real: the re-cut of each
+precursor, the `submitted` set, reading the results, the zero-reads guard, the return value.
+The real tool is covered by the end-to-end run in Task 9.
+
 ```python
-"""Validation carries what was submitted, not only what passed."""
-from mirna import Validation
+"""Validation carries what was submitted, not only what passed.
+
+miRScore itself is monkeypatched: it is installed in another conda env, so the
+suite cannot call it, and a skipif test would skip in the very environment
+where the suite runs. Everything around the call is real.
+"""
+import pytest
+
+import mirna
+from mirna import Validation, validate_with_mirscore
+
+#   0         1         2         3         4
+#   0123456789012345678901234567890123456789012345
+SEQ = "AAAACCCCGGGGTTTTACGTACGTACGTTTTTGGGGCCCCAAAAGG"
 
 
-def test_validation_holds_rows_and_the_submitted_set():
-    v = Validation(rows={"p1": {"result": "Pass"}}, submitted={"p1", "p2"})
+class FakeGenome:
+    def fetch(self, chrom, start, end):
+        return SEQ[start:end]
+
+    def get_reference_length(self, chrom):
+        return len(SEQ)
+
+
+PREDS = [
+    # inside the contig with room for flanks: gets re-cut and submitted
+    {"chrom": "chr1", "strand": "+", "name": "p1", "start": 17, "end": 24,
+     "mature": SEQ[16:24]},
+    # mature absent from the genome there: hairpin_with_flank returns None
+    {"chrom": "chr1", "strand": "+", "name": "p2", "start": 17, "end": 24,
+     "mature": "GGGGGGGG"},
+]
+
+# The real header, and a row in the real shape: float-formatted numbers,
+# precision on 0-100, sequences in RNA.
+RESULTS = ("name,mSeq,mLen,mStart,mStop,msSeq,msLen,msStart,msStop,precSeq,"
+           "precLen,result,flags,mismatches,bulges,mReads,msReads,totReads,"
+           "numLibraries,precision\n"
+           "p1,ACGUACGU,8,9.0,16.0,UUUUGGGG,8.0,25.0,32.0,ACGU,24,Pass,NA,"
+           "0.0,0.0,900.0,80.0,1000.0,1.0,99.64\n")
+
+
+@pytest.fixture
+def fake_mirscore(monkeypatch, tmp_path):
+    """Stands in for the tool: writes the results file its caller expects."""
+    monkeypatch.setattr(mirna.shutil, "which", lambda name: "/fake/miRScore")
+    monkeypatch.setattr(mirna, "pysam", None, raising=False)
+
+    def fake_run(cmd, **kwargs):
+        out = Path(kwargs["cwd"]) / cmd[cmd.index("-out") + 1]
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "miRScore_results.csv").write_text(RESULTS)
+        return None
+
+    monkeypatch.setattr(mirna.subprocess, "run", fake_run)
+    monkeypatch.setattr(mirna, "open_genome", lambda path: FakeGenome(),
+                        raising=False)
+
+
+def test_submitted_holds_the_predictions_that_survived_the_re_cut(fake_mirscore, tmp_path):
+    """p2's mature is not in the genome there, so it never reaches miRScore."""
+    v = validate_with_mirscore(PREDS, "genome.fa", tmp_path / "reads.fastq",
+                               "plant", tmp_path / "work", flank=8)
+    assert isinstance(v, Validation)
+    assert v.submitted == {"p1"}
+
+
+def test_rows_carry_mirscores_verdict(fake_mirscore, tmp_path):
+    v = validate_with_mirscore(PREDS, "genome.fa", tmp_path / "reads.fastq",
+                               "plant", tmp_path / "work", flank=8)
     assert v.rows["p1"]["result"] == "Pass"
-    assert "p2" in v.submitted
+    assert v.rows["p1"]["msSeq"] == "UUUUGGGG"   # raw here; DNA happens in build_records
 
 
-def test_a_submitted_name_missing_from_rows_is_visible():
-    """This is the difference between 'rejected' and 'never got there'."""
-    v = Validation(rows={"p1": {"result": "Pass"}}, submitted={"p1", "p2"})
-    assert v.submitted - set(v.rows) == {"p2"}
+def test_nothing_re_cuttable_means_no_validation_at_all(fake_mirscore, tmp_path):
+    """None means 'did not run', which is not the same as 'rejected everything'."""
+    bad = [{"chrom": "chr1", "strand": "+", "name": "x", "start": 17, "end": 24,
+            "mature": "GGGGGGGG"}]
+    assert validate_with_mirscore(bad, "genome.fa", tmp_path / "reads.fastq",
+                                  "plant", tmp_path / "work", flank=8) is None
+
+
+def test_a_missing_miRScore_binary_is_not_validation(monkeypatch, tmp_path):
+    monkeypatch.setattr(mirna.shutil, "which", lambda name: None)
+    assert validate_with_mirscore(PREDS, "genome.fa", tmp_path / "reads.fastq",
+                                  "plant", tmp_path / "work") is None
 ```
+
+Note for the implementer: `validate_with_mirscore` currently opens the genome inline with
+`pysam.FastaFile(str(genome_path))`. Extract that one call into a module-level
+`open_genome(path)` so the test can substitute it; keep the body identical.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1189,11 +1393,19 @@ wc -l < at.mirna_loci.bed                                       # expect 56
 for f in mature star precursor; do grep -c '^>' at.mirna.$f.fa; done   # 56 each
 diff <(cut -f4 at.mirna_loci.bed | sort) \
      <(awk -F'\t' 'NR>1 && $17=="Pass" {print $1}' at.mirna.tsv | sort)
-ls at.mirna_structures/passed | wc -l
+ls at.mirna_structures/passed | wc -l      # expect 56
+ls at.mirna_structures/failed | wc -l      # expect 31 (strucVis covers all 87)
+grep -c 'U' at.mirna.star.fa || echo "no U: sequences are DNA"
 python3 -c "import json;print(json.load(open('at.mirna.run.json'))['counts'])"
 ```
 
-Expected: 87 rows, 56 passes, 56 BED lines, 56 records in each FASTA, an empty `diff`, and `counts` agreeing with all of it.
+Expected: 87 rows, 56 passes, 56 BED lines, 56 records in each FASTA, an empty `diff`, 56+31
+plots, no `U` in any FASTA, and `counts` agreeing with all of it.
+
+These are the numbers of the run already sitting in
+`/mnt/d/srnaprofiler-teste/plant/mirna_fresh/` — 87 predictions, 56 Pass, 31 Fail, strucVis
+with 56+31 and RNAplots with 56+30. If the new run disagrees with them, the change moved
+something it should not have.
 
 - [ ] **Step 3: Confirm the biology did not move**
 

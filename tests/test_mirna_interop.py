@@ -168,7 +168,7 @@ def test_the_engine_must_be_declared():
 # --- parsing each engine into one shape, and the final BED ---------------
 
 from mirna import (parse_mirdeep_p2_predictions, mirscore_command,
-                   parse_mirscore_results, write_mirna_loci_bed)
+                   parse_mirscore_results)
 
 P2_LINE = ("NC_003070.9\t+\tread04305100_x40\tNC_003070.9_102\t"
            "10227086..10227107\t10227086..10227186\tGGGTAAGATCTCTATTGGCAGG\t"
@@ -208,27 +208,18 @@ def test_the_mirscore_command_uses_relative_paths(tmp_path):
 
 def test_mirscore_results_are_read_as_the_set_that_passed(tmp_path):
     f = tmp_path / "miRScore_results.csv"
-    f.write_text("name,mSeq,result\na,ACGT,Pass\nb,ACGT,Fail\nc,ACGT,Pass\n")
+    header = ("name,mSeq,msSeq,msLen,precSeq,precLen,mStart,mStop,msStart,"
+               "msStop,result,flags,mismatches,bulges,mReads,msReads,"
+               "totReads,precision\n")
+    row = ",".join(["{}", "ACGT", "ACGT", "4", "ACGT", "4", "1", "4", "1",
+                     "4", "{}", "NA", "0", "0", "1", "1", "2", "99.0"]) + "\n"
+    f.write_text(header + row.format("a", "Pass") + row.format("b", "Fail")
+                 + row.format("c", "Pass"))
     assert parse_mirscore_results(f) == {"a", "c"}
 
 
-def test_the_final_bed_holds_only_what_passed(tmp_path):
-    preds = [dict(chrom="c1", start=101, end=200, name="a", strand="+"),
-             dict(chrom="c1", start=301, end=400, name="b", strand="-")]
-    out = tmp_path / "loci.bed"
-    n = write_mirna_loci_bed(preds, {"a"}, out)
-    assert n == 1
-    line = out.read_text().strip().split("\t")
-    assert line[0] == "c1" and line[3] == "a"
-
-
-def test_the_final_bed_is_zero_based_half_open(tmp_path):
-    """--mirna-loci reads BED; the engines report 1-based inclusive."""
-    preds = [dict(chrom="c1", start=101, end=200, name="a", strand="+")]
-    out = tmp_path / "loci.bed"
-    write_mirna_loci_bed(preds, {"a"}, out)
-    f = out.read_text().strip().split("\t")
-    assert (int(f[1]), int(f[2])) == (100, 200)
+# the final BED (only-what-passed, zero-based half-open) is now written by
+# mirna_report.write_bed off MirnaRecord -- see test_mirna_report_write.py
 
 
 # --- the paths setup records, so the flags become optional ---------------

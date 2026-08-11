@@ -13,8 +13,10 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, List
 from collections import defaultdict
+from dataclasses import dataclass
 
-from utils import log, ensure_outdir, validate_file_exists, which, run_command
+from utils import (log, ensure_outdir, validate_file_exists, which, run_command,
+                   ensure_within, remove_path, validate_prefix)
 
 
 def check_mirdeep2_dependencies():
@@ -484,32 +486,156 @@ def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
     return input_files
 
 
-def finish_mirna(predictions, args, mirna_dir, reads):
-    """Validate, write the BED that feeds --mirna-loci, and say what happened."""
+def work_paths(outdir, prefix):
+    """Where the raw third-party output lands, same tree for every engine."""
+    root = Path(outdir) / f"{prefix}.mirna_work"
+    return {"root": root, "engine": root / "engine",
+            "validation": root / "validation"}
+
+
+def deliverable_paths(outdir, prefix):
+    """Every file this module hands over, named off the prefix in one place."""
+    outdir = Path(outdir)
+    return {
+        "table": outdir / f"{prefix}.mirna.tsv",
+        "bed": outdir / f"{prefix}.mirna_loci.bed",
+        "mature": outdir / f"{prefix}.mirna.mature.fa",
+        "star": outdir / f"{prefix}.mirna.star.fa",
+        "precursor": outdir / f"{prefix}.mirna.precursor.fa",
+        "run_json": outdir / f"{prefix}.mirna.run.json",
+        "structures": outdir / f"{prefix}.mirna_structures",
+    }
+
+
+def drop_validated_deliverables(paths, outdir):
+    """Remove what only a validated run may leave behind, and say so.
+
+    An unvalidated run writes no FASTA and no plots; leaving the previous
+    run's would make the outdir claim a validated set this BED contradicts.
+    These are deletes aimed by the prefix, so each one is confined to
+    `outdir` before it happens.
+    """
+    for key in ("mature", "star", "precursor", "structures"):
+        ensure_within(outdir, paths[key])
+    for key in ("mature", "star", "precursor", "structures"):
+        if paths[key].exists() or paths[key].is_symlink():
+            remove_path(paths[key])
+            log(f"removed stale {paths[key]}: this run did not validate", "WARN")
+
+
+NA = "NA"
+
+# A tool's own version flag. miRDeep-P2 ships none, so it answers NA rather
+# than a number nobody printed.
+_ENGINE_VERSION_CMD = {"mirdeep2": ["miRDeep2.pl", "--version"]}
+
+
+def tool_version(argv):
+    """What the tool says its version is, or NA -- never a guess."""
+    if not shutil.which(argv[0]):
+        return NA
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return NA
+    m = re.search(r"\d+\.\d+(?:\.\d+)*", (proc.stdout or "") + (proc.stderr or ""))
+    return m.group(0) if m else NA
+
+
+def engine_version(engine):
+    cmd = _ENGINE_VERSION_CMD.get(engine)
+    return tool_version(cmd) if cmd else NA
+
+
+def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
+    """Validate, write everything the module hands over, and say what happened."""
+    import json
+    from mirna_report import (build_records, write_table, write_bed,
+                              write_bed_unvalidated, write_fasta,
+                              collect_structures)
+
     kingdom = "plant" if args.engine == "mirdeep-p2" else "animal"
-    passing = None
+    result = None
     if getattr(args, "no_validate", False):
         log("--no-validate: writing predictions without miRScore", "WARN")
     elif getattr(args, "genome", None):
-        passing = validate_with_mirscore(
+        result = validate_with_mirscore(
             predictions, args.genome, reads, kingdom,
-            Path(mirna_dir) / "validation", threads=getattr(args, "threads", 1))
+            Path(work_dir) / "validation", threads=getattr(args, "threads", 1))
     else:
         log("no -g/--genome: skipping miRScore validation, which needs the "
             "genome to re-cut precursors with flanks", "WARN")
 
-    bed = Path(mirna_dir) / f"{args.prefix}.mirna_loci.bed"
-    if passing is None:
-        # Unvalidated predictions are still written, and the log says so: a
-        # false prediction becomes a carved locus with miRNA asserted over it.
-        names = {p["name"] for p in predictions}
-        n = write_mirna_loci_bed(predictions, names, bed)
-        log(f"{n} UNVALIDATED loci written to {bed}", "WARN")
+    records = build_records(
+        predictions, args.engine,
+        mirscore_rows=result.rows if result else None,
+        submitted=result.submitted if result else None,
+        mirdeep_rows=mirdeep_rows)
+
+    paths = deliverable_paths(args.outdir, args.prefix)
+    write_table(records, paths["table"])
+    n_bed = write_bed(records, paths["bed"]) if result else write_bed_unvalidated(
+        records, paths["bed"])
+    if result:
+        # Written whenever validation ran: an empty FASTA is a truthful answer,
+        # and one left from a previous run would contradict this BED.
+        for key, field in (("mature", "mature_seq"), ("star", "star_seq"),
+                           ("precursor", "precursor_seq")):
+            write_fasta(records, paths[key], field)
+        n_plots = collect_structures(
+            Path(work_dir) / "validation" / "mirscore", records,
+            paths["structures"], args.outdir)
+        log(f"{n_plots} structure plots in {paths['structures']}", "INFO")
     else:
-        n = write_mirna_loci_bed(predictions, passing, bed)
-        log(f"{n} validated loci written to {bed} "
-            f"(of {len(predictions)} predicted)", "INFO")
-    return bed
+        drop_validated_deliverables(paths, args.outdir)
+
+    counts = {"predicted": len(records),
+              "submitted": len(result.submitted) if result else "NA",
+              "passed": sum(1 for r in records if r.result == "Pass"),
+              "failed": sum(1 for r in records if r.result == "Fail"),
+              "not_scored": sum(1 for r in records if r.result == "NotScored")}
+    paths["run_json"].write_text(json.dumps(
+        {"engine": args.engine, "engine_version": engine_version(args.engine),
+         "kingdom": kingdom, "validated": result is not None,
+         "mirscore_version": tool_version(["miRScore", "--version"]) if result else NA,
+         "counts": counts}, indent=2))
+
+    if result:
+        log(f"{n_bed} validated loci written to {paths['bed']} "
+            f"(of {len(records)} predicted)", "INFO")
+    else:
+        log(f"{n_bed} UNVALIDATED loci written to {paths['bed']}", "WARN")
+    log(f"table: {paths['table']}", "INFO")
+    return paths["bed"]
+
+
+def novel_with_rows(results_dir):
+    """The novel predictions and their raw row, from ONE result_*.csv.
+
+    miRDeep2 names the file `result_DD_MM_YYYY_t_HH_MM_SS.csv`, so sorting by
+    name orders by day of the month; and `provisional id` serials restart every
+    run. Mixing two files puts one run's coordinates beside another's score.
+    """
+    for csv_path in sorted(Path(results_dir).glob("result_*.csv")):
+        novel = parse_mirdeep2_novel(csv_path)
+        if novel:
+            return novel, {r["provisional id"]: r
+                           for r in mirdeep2_novel_rows(csv_path)}
+    return [], {}
+
+
+def finish_animal_run(results_dir, args, work_root, reads):
+    """Step 7, run whether or not there were predictions.
+
+    Zero predictions is a result, and it is reported in the table and the
+    run.json -- not by leaving the output directory empty.
+    """
+    novel, rows = novel_with_rows(results_dir)
+    if novel:
+        log(f"Step 7: validating {len(novel)} novel predictions...", "INFO")
+    else:
+        log("no novel predictions: writing an empty table, not nothing", "WARN")
+    return finish_mirna(novel, args, work_root, reads, mirdeep_rows=rows)
 
 
 def run_mirna_analysis(args):
@@ -517,9 +643,9 @@ def run_mirna_analysis(args):
     
     if getattr(args, "engine", "mirdeep2") == "mirdeep-p2":
         outdir = ensure_outdir(Path(args.outdir))
-        mirna_dir = ensure_outdir(outdir / "mirna")
-        preds = run_mirdeep_p2(args, args.reads, mirna_dir / "mirdp2")
-        finish_mirna(preds, args, mirna_dir, args.reads)
+        work = work_paths(outdir, args.prefix)
+        preds = run_mirdeep_p2(args, args.reads, ensure_outdir(work["engine"]))
+        finish_mirna(preds, args, work["root"], args.reads)
         log("miRNA analysis completed successfully!", "INFO")
         return
 
@@ -548,9 +674,9 @@ def run_mirna_analysis(args):
     
     # Setup output directory structure
     outdir = ensure_outdir(Path(args.outdir))
-    mirna_dir = ensure_outdir(outdir / "mirna")
-    processed_dir = ensure_outdir(mirna_dir / "processed")
-    results_dir = ensure_outdir(mirna_dir / "results")
+    work = work_paths(outdir, args.prefix)
+    processed_dir = ensure_outdir(work["engine"] / "processed")
+    results_dir = ensure_outdir(work["engine"] / "results")
     
     # Clean existing files to avoid conflicts
     clean_mirna_directories(processed_dir, results_dir)
@@ -685,23 +811,14 @@ def run_mirna_analysis(args):
     # Step 6: Parse results and generate report
     log("Step 6: Generating results summary...", "INFO")
     results = parse_mirdeep2_results(results_dir, args.prefix)
-    generate_mirna_report(results, mirna_dir, args.prefix)
+    generate_mirna_report(results, work["root"], args.prefix)
 
     # Step 7: validate the novel predictions and emit the BED for --mirna-loci
-    novel = []
-    for csv_path in sorted(results_dir.glob("result_*.csv")):
-        novel = parse_mirdeep2_novel(csv_path)
-        if novel:
-            break
-    if novel:
-        log(f"Step 7: validating {len(novel)} novel predictions...", "INFO")
-        finish_mirna(novel, args, mirna_dir, input_files["reads"])
-    else:
-        log("no novel predictions to validate", "INFO")
-    
+    finish_animal_run(results_dir, args, work["root"], input_files["reads"])
+
     log("=" * 60, "INFO")
     log(f"miRNA analysis completed successfully!", "INFO")
-    log(f"Results saved in: {mirna_dir}", "INFO")
+    log(f"Results saved in: {Path(args.outdir)}", "INFO")
     log("=" * 60, "INFO")
 
 
@@ -768,6 +885,13 @@ def main():
     )
     
     args = parser.parse_args()
+    # This entry point does not go through srnaprofiler.main(), where every
+    # other prefix is checked, and the run below deletes paths named off it.
+    try:
+        validate_prefix(args.prefix)
+    except ValueError as e:
+        log(str(e), "ERROR")
+        sys.exit(1)
     run_mirna_analysis(args)
 
 
@@ -894,8 +1018,8 @@ def parse_mirdeep_p2_predictions(path):
     return out
 
 
-def parse_mirdeep2_novel(path):
-    """miRDeep2's result CSV, novel section, in the same shape as the above."""
+def mirdeep2_novel_rows(path):
+    """The novel section of miRDeep2's result CSV, rows as written."""
     import csv as _csv
     rows = list(_csv.reader(open(path), delimiter="\t"))
     start = None
@@ -909,11 +1033,18 @@ def parse_mirdeep2_novel(path):
     for r in rows[start:]:
         if not r or not r[0].strip():
             break
-        d = dict(zip(hdr, r))
-        m = re.match(r"(\S+):(\d+)\.\.(\d+)", d.get("precursor coordinate", ""))
+        out.append(dict(zip(hdr, r)))
+    return out
+
+
+def parse_mirdeep2_novel(path):
+    """miRDeep2's novel predictions, in the shape the engines share."""
+    out = []
+    for d in mirdeep2_novel_rows(path):
+        m = re.match(r"(\S+):(\d+)\.\.(\d+)(?::([+-]))?", d.get("precursor coordinate", ""))
         if not m:
             continue
-        out.append({"chrom": m.group(1), "strand": ".", "name": d["provisional id"],
+        out.append({"chrom": m.group(1), "strand": m.group(4) or ".", "name": d["provisional id"],
                     "start": int(m.group(2)), "end": int(m.group(3)),
                     "mature": d["consensus mature sequence"].strip().upper().replace("U", "T")})
     return out
@@ -958,12 +1089,33 @@ def stage_reads_for_mirscore(reads, workdir):
     return staged
 
 
-def parse_mirscore_results(path):
-    """Names miRScore passed. Anything not an explicit pass is a fail."""
+MIRSCORE_REQUIRED = ("name", "mSeq", "msSeq", "msLen", "precSeq", "precLen",
+                     "mStart", "mStop", "msStart", "msStop", "result", "flags",
+                     "mismatches", "bulges", "mReads", "msReads", "totReads",
+                     "precision")
+
+
+def read_mirscore_rows(path):
+    """miRScore's results keyed by name, with every column kept.
+
+    A missing column raises: writing NA for a renamed column would put a wrong
+    table in front of the user with no sign anything went wrong.
+    """
     import csv as _csv
     with open(path) as fh:
-        return {r["name"] for r in _csv.DictReader(fh)
-                if str(r.get("result", "")).strip().lower().startswith("pass")}
+        reader = _csv.DictReader(fh)
+        missing = [c for c in MIRSCORE_REQUIRED if c not in (reader.fieldnames or [])]
+        if missing:
+            raise RuntimeError(
+                f"{path} lacks the column(s) {', '.join(missing)}; miRScore's "
+                f"output format changed and the table cannot be built from it")
+        return {r["name"]: dict(r) for r in reader}
+
+
+def parse_mirscore_results(path):
+    """Names miRScore passed. Anything not an explicit pass is a fail."""
+    return {n for n, r in read_mirscore_rows(path).items()
+            if str(r.get("result", "")).strip().lower().startswith("pass")}
 
 
 def no_reads_counted(reads_csv):
@@ -974,21 +1126,6 @@ def no_reads_counted(reads_csv):
     with open(reads_csv) as fh:
         rows = list(_csv.DictReader(fh))
     return bool(rows) and all(float(r.get("allReads") or 0) == 0 for r in rows)
-
-
-def write_mirna_loci_bed(predictions, passing, path):
-    """The deliverable: a BED of validated precursors, ready for --mirna-loci.
-
-    The engines report 1-based inclusive coordinates; BED is 0-based half-open.
-    """
-    n = 0
-    with open(path, "w") as out:
-        for p in predictions:
-            if p["name"] not in passing:
-                continue
-            out.write(f"{p['chrom']}\t{p['start'] - 1}\t{p['end']}\t{p['name']}\n")
-            n += 1
-    return n
 
 
 def run_mirdeep_p2(args, reads, outdir):
@@ -1029,6 +1166,19 @@ def run_mirdeep_p2(args, reads, outdir):
     return preds
 
 
+@dataclass
+class Validation:
+    """What miRScore said, and about which predictions it was asked."""
+    rows: dict          # name -> its row in miRScore_results.csv
+    submitted: set      # names handed to miRScore at all
+
+
+def open_genome(path):
+    """Seam for tests: the only place pysam.FastaFile is called."""
+    import pysam
+    return pysam.FastaFile(str(path))
+
+
 def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
                            threads=1, flank=25):
     """miRScore's verdict per prediction, or None when it cannot be run.
@@ -1042,13 +1192,12 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
             "`conda install -c bioconda miRScore`", "WARN")
         return None
 
-    import pysam
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     mature_fa, hairpin_fa = workdir / "mature.fa", workdir / "hairpin.fa"
-    genome = pysam.FastaFile(str(genome_path))
+    genome = open_genome(genome_path)
 
-    kept = 0
+    kept = set()
     with open(mature_fa, "w") as mf, open(hairpin_fa, "w") as hf:
         for p in predictions:
             hp = hairpin_with_flank(genome, p["chrom"], p["start"], p["end"],
@@ -1057,12 +1206,12 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
                 continue
             mf.write(f">{p['name']}\n{p['mature']}\n")
             hf.write(f">{p['name']}\n{hp}\n")
-            kept += 1
+            kept.add(p["name"])
     if not kept:
         log("No prediction could be re-cut against the genome; skipping "
             "validation", "WARN")
         return None
-    log(f"{kept}/{len(predictions)} predictions prepared for miRScore", "INFO")
+    log(f"{len(kept)}/{len(predictions)} predictions prepared for miRScore", "INFO")
 
     out = workdir / "mirscore"
     if out.exists():
@@ -1075,11 +1224,13 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
     results = out / "miRScore_results.csv"
     if not results.exists():
         raise RuntimeError(f"miRScore wrote no results to {results}")
-    passing = parse_mirscore_results(results)
+    rows = read_mirscore_rows(results)
+    passing = {n for n, r in rows.items()
+               if str(r.get("result", "")).strip().lower().startswith("pass")}
     if not passing and no_reads_counted(out / "reads.csv"):
         raise RuntimeError(
             f"miRScore counted zero reads at every locus ({out/'reads.csv'}); "
             "that is its silent failure, not a biological result -- check that "
             "the reads it was given are the library the predictions came from")
-    log(f"miRScore validated {len(passing)}/{kept}", "INFO")
-    return passing
+    log(f"miRScore validated {len(passing)}/{len(kept)}", "INFO")
+    return Validation(rows=rows, submitted=kept)
