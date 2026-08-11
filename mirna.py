@@ -506,11 +506,36 @@ def deliverable_paths(outdir, prefix):
     }
 
 
+NA = "NA"
+
+# A tool's own version flag. miRDeep-P2 ships none, so it answers NA rather
+# than a number nobody printed.
+_ENGINE_VERSION_CMD = {"mirdeep2": ["miRDeep2.pl", "--version"]}
+
+
+def tool_version(argv):
+    """What the tool says its version is, or NA -- never a guess."""
+    if not shutil.which(argv[0]):
+        return NA
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return NA
+    m = re.search(r"\d+\.\d+(?:\.\d+)*", (proc.stdout or "") + (proc.stderr or ""))
+    return m.group(0) if m else NA
+
+
+def engine_version(engine):
+    cmd = _ENGINE_VERSION_CMD.get(engine)
+    return tool_version(cmd) if cmd else NA
+
+
 def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
     """Validate, write everything the module hands over, and say what happened."""
     import json
     from mirna_report import (build_records, write_table, write_bed,
-                              write_fasta, collect_structures)
+                              write_bed_unvalidated, write_fasta,
+                              collect_structures)
 
     kingdom = "plant" if args.engine == "mirdeep-p2" else "animal"
     result = None
@@ -532,7 +557,7 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
 
     paths = deliverable_paths(args.outdir, args.prefix)
     write_table(records, paths["table"])
-    n_bed = write_bed(records, paths["bed"]) if result else _write_bed_unvalidated(
+    n_bed = write_bed(records, paths["bed"]) if result else write_bed_unvalidated(
         records, paths["bed"])
     if result:
         # Written whenever validation ran: an empty FASTA is a truthful answer,
@@ -551,8 +576,10 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
               "failed": sum(1 for r in records if r.result == "Fail"),
               "not_scored": sum(1 for r in records if r.result == "NotScored")}
     paths["run_json"].write_text(json.dumps(
-        {"engine": args.engine, "kingdom": kingdom,
-         "validated": result is not None, "counts": counts}, indent=2))
+        {"engine": args.engine, "engine_version": engine_version(args.engine),
+         "kingdom": kingdom, "validated": result is not None,
+         "mirscore_version": tool_version(["miRScore", "--version"]) if result else NA,
+         "counts": counts}, indent=2))
 
     if result:
         log(f"{n_bed} validated loci written to {paths['bed']} "
@@ -561,18 +588,6 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
         log(f"{n_bed} UNVALIDATED loci written to {paths['bed']}", "WARN")
     log(f"table: {paths['table']}", "INFO")
     return paths["bed"]
-
-
-def _write_bed_unvalidated(records, path):
-    """Without miRScore there is no pass set, so every prediction is written.
-
-    A false prediction becomes a carved locus with miRNA asserted over it --
-    which is what the WARN in the caller is about.
-    """
-    with open(path, "w") as fh:
-        for r in records:
-            fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.name}\n")
-    return len(records)
 
 
 def novel_with_rows(results_dir):
@@ -784,7 +799,7 @@ def run_mirna_analysis(args):
 
     log("=" * 60, "INFO")
     log(f"miRNA analysis completed successfully!", "INFO")
-    log(f"Results saved in: {work['root']}", "INFO")
+    log(f"Results saved in: {Path(args.outdir)}", "INFO")
     log("=" * 60, "INFO")
 
 

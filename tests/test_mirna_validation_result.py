@@ -46,7 +46,6 @@ RESULTS = ("name,mSeq,mLen,mStart,mStop,msSeq,msLen,msStart,msStop,precSeq,"
 def fake_mirscore(monkeypatch, tmp_path):
     """Stands in for the tool: writes the results file its caller expects."""
     monkeypatch.setattr(mirna.shutil, "which", lambda name: "/fake/miRScore")
-    monkeypatch.setattr(mirna, "pysam", None, raising=False)
 
     def fake_run(cmd, **kwargs):
         out = Path(kwargs["cwd"]) / cmd[cmd.index("-out") + 1]
@@ -80,6 +79,26 @@ def test_nothing_re_cuttable_means_no_validation_at_all(fake_mirscore, tmp_path)
             "mature": "GGGGGGGG"}]
     assert validate_with_mirscore(bad, "genome.fa", tmp_path / "reads.fastq",
                                   "plant", tmp_path / "work", flank=8) is None
+
+
+def test_zero_reads_everywhere_is_a_silent_failure_not_a_result(monkeypatch, tmp_path):
+    """Nothing passed AND no locus counted a read: that is the tool misfiring."""
+    monkeypatch.setattr(mirna.shutil, "which", lambda name: "/fake/miRScore")
+
+    failing = RESULTS.replace(",Pass,", ",Fail,")
+
+    def fake_run(cmd, **kwargs):
+        out = Path(kwargs["cwd"]) / cmd[cmd.index("-out") + 1]
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "miRScore_results.csv").write_text(failing)
+        (out / "reads.csv").write_text("name,allReads\np1,0\n")
+
+    monkeypatch.setattr(mirna.subprocess, "run", fake_run)
+    monkeypatch.setattr(mirna, "open_genome", lambda path: FakeGenome())
+
+    with pytest.raises(RuntimeError, match="zero reads"):
+        validate_with_mirscore(PREDS, "genome.fa", tmp_path / "reads.fastq",
+                               "plant", tmp_path / "work", flank=8)
 
 
 def test_a_missing_miRScore_binary_is_not_validation(monkeypatch, tmp_path):

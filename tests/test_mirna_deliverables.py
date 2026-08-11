@@ -91,3 +91,12 @@ def test_nothing_submitted_is_NA_and_not_a_measured_zero(tmp_path):
     finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)
     meta = json.loads(deliverable_paths(tmp_path, "at")["run_json"].read_text())
     assert meta["counts"]["submitted"] == "NA"
+
+
+def test_the_run_json_carries_both_tool_versions(tmp_path):
+    """Absent is "NA": a version that could not be read is never guessed."""
+    import json
+    finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)
+    meta = json.loads(deliverable_paths(tmp_path, "at")["run_json"].read_text())
+    assert meta["engine_version"]
+    assert meta["mirscore_version"] == "NA"      # --no-validate: it never ran

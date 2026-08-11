@@ -7,6 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from reporter import _cell          # one definition of how a field is serialized
 from utils import log
 
 NA = "NA"
@@ -137,13 +138,6 @@ def build_records(predictions, engine, mirscore_rows=None, submitted=None,
     return out
 
 
-def _cell(value):
-    """Serialises a field, neutralising TAB/newline that would break the row."""
-    if value is None:
-        return NA
-    return str(value).replace("\t", " ").replace("\n", " ")
-
-
 def write_table(records, path):
     with open(path, "w") as fh:
         fh.write("\t".join(MIRNA_COLS) + "\n")
@@ -164,6 +158,18 @@ def write_bed(records, path):
             fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.name}\n")
             n += 1
     return n
+
+
+def write_bed_unvalidated(records, path):
+    """Without miRScore there is no pass set, so every prediction is written.
+
+    A false prediction becomes a carved locus with miRNA asserted over it --
+    which is what the WARN in the caller is about.
+    """
+    with open(path, "w") as fh:
+        for r in records:
+            fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.name}\n")
+    return len(records)
 
 
 def write_fasta(records, path, field):
