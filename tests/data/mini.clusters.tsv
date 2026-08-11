@@ -1,4 +1,0 @@
-chrom	start	end	name	reads	reads_rpm	distinct_seqs	major_rna	dicer_call	frac_in_window	frac_top	strand_call	pct_1u	pct_10a	gc	pingpong_z	pingpong_pairs10	pingpong_frac	overlap19_frac	phase_score	phase_pvalue	phase_number	phase_ratio	multimap_frac	cls	confidence	review	evidence
-chr1	100	400	chr1:100-400	500	1000	40	ACGT	24	0.9	0.95	+	0.8	0.2	0.45	3.1	50	0.4	0.05	2.0	0.01	4	0.6	0.9	piRNA	0.8	False	sz;1u
-chr1	800	1000	chr1:800-1000	300	600	25	TTGC	21	0.95	0.5	.	0.3	0.1	0.5	0.2	2	0.0	0.02	5.0	0.001	6	0.7	0.2	siRNA	0.75	False	sz;fractop
-chr2	50	200	chr2:50-200	20	40	5	AAAA	N	0.4	0.9	+	0.5	0.1	0.6	0.0	0	0.0	0.0	0.0	1.0	0	0.0	0.5		0.0	True	lowcov

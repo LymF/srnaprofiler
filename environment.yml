@@ -45,7 +45,6 @@ dependencies:
   - matplotlib
   - pybedtools
   - tqdm
-  - pytest
   - pip
   - pip:
       - logomaker   # sequence logos in classplots
