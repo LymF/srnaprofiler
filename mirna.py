@@ -958,12 +958,33 @@ def stage_reads_for_mirscore(reads, workdir):
     return staged
 
 
-def parse_mirscore_results(path):
-    """Names miRScore passed. Anything not an explicit pass is a fail."""
+MIRSCORE_REQUIRED = ("name", "mSeq", "msSeq", "msLen", "precSeq", "precLen",
+                     "mStart", "mStop", "msStart", "msStop", "result", "flags",
+                     "mismatches", "bulges", "mReads", "msReads", "totReads",
+                     "precision")
+
+
+def read_mirscore_rows(path):
+    """miRScore's results keyed by name, with every column kept.
+
+    A missing column raises: writing NA for a renamed column would put a wrong
+    table in front of the user with no sign anything went wrong.
+    """
     import csv as _csv
     with open(path) as fh:
-        return {r["name"] for r in _csv.DictReader(fh)
-                if str(r.get("result", "")).strip().lower().startswith("pass")}
+        reader = _csv.DictReader(fh)
+        missing = [c for c in MIRSCORE_REQUIRED if c not in (reader.fieldnames or [])]
+        if missing:
+            raise RuntimeError(
+                f"{path} lacks the column(s) {', '.join(missing)}; miRScore's "
+                f"output format changed and the table cannot be built from it")
+        return {r["name"]: dict(r) for r in reader}
+
+
+def parse_mirscore_results(path):
+    """Names miRScore passed. Anything not an explicit pass is a fail."""
+    return {n for n, r in read_mirscore_rows(path).items()
+            if str(r.get("result", "")).strip().lower().startswith("pass")}
 
 
 def no_reads_counted(reads_csv):

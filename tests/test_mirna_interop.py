@@ -208,7 +208,13 @@ def test_the_mirscore_command_uses_relative_paths(tmp_path):
 
 def test_mirscore_results_are_read_as_the_set_that_passed(tmp_path):
     f = tmp_path / "miRScore_results.csv"
-    f.write_text("name,mSeq,result\na,ACGT,Pass\nb,ACGT,Fail\nc,ACGT,Pass\n")
+    header = ("name,mSeq,msSeq,msLen,precSeq,precLen,mStart,mStop,msStart,"
+               "msStop,result,flags,mismatches,bulges,mReads,msReads,"
+               "totReads,precision\n")
+    row = ",".join(["{}", "ACGT", "ACGT", "4", "ACGT", "4", "1", "4", "1",
+                     "4", "{}", "NA", "0", "0", "1", "1", "2", "99.0"]) + "\n"
+    f.write_text(header + row.format("a", "Pass") + row.format("b", "Fail")
+                 + row.format("c", "Pass"))
     assert parse_mirscore_results(f) == {"a", "c"}
 
 
