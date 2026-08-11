@@ -485,6 +485,13 @@ def setup_input_files(args, processed_dir: Path) -> Dict[str, Path]:
     return input_files
 
 
+def work_paths(outdir, prefix):
+    """Where the raw third-party output lands, same tree for every engine."""
+    root = Path(outdir) / f"{prefix}.mirna_work"
+    return {"root": root, "engine": root / "engine",
+            "validation": root / "validation"}
+
+
 def deliverable_paths(outdir, prefix):
     """Every file this module hands over, named off the prefix in one place."""
     outdir = Path(outdir)
@@ -570,9 +577,9 @@ def run_mirna_analysis(args):
     
     if getattr(args, "engine", "mirdeep2") == "mirdeep-p2":
         outdir = ensure_outdir(Path(args.outdir))
-        mirna_dir = ensure_outdir(outdir / "mirna")
-        preds = run_mirdeep_p2(args, args.reads, mirna_dir / "mirdp2")
-        finish_mirna(preds, args, mirna_dir, args.reads)
+        work = work_paths(outdir, args.prefix)
+        preds = run_mirdeep_p2(args, args.reads, ensure_outdir(work["engine"]))
+        finish_mirna(preds, args, work["root"], args.reads)
         log("miRNA analysis completed successfully!", "INFO")
         return
 
@@ -601,9 +608,9 @@ def run_mirna_analysis(args):
     
     # Setup output directory structure
     outdir = ensure_outdir(Path(args.outdir))
-    mirna_dir = ensure_outdir(outdir / "mirna")
-    processed_dir = ensure_outdir(mirna_dir / "processed")
-    results_dir = ensure_outdir(mirna_dir / "results")
+    work = work_paths(outdir, args.prefix)
+    processed_dir = ensure_outdir(work["engine"] / "processed")
+    results_dir = ensure_outdir(work["engine"] / "results")
     
     # Clean existing files to avoid conflicts
     clean_mirna_directories(processed_dir, results_dir)
@@ -738,7 +745,7 @@ def run_mirna_analysis(args):
     # Step 6: Parse results and generate report
     log("Step 6: Generating results summary...", "INFO")
     results = parse_mirdeep2_results(results_dir, args.prefix)
-    generate_mirna_report(results, mirna_dir, args.prefix)
+    generate_mirna_report(results, work["root"], args.prefix)
 
     # Step 7: validate the novel predictions and emit the BED for --mirna-loci
     novel = []
@@ -748,13 +755,17 @@ def run_mirna_analysis(args):
             break
     if novel:
         log(f"Step 7: validating {len(novel)} novel predictions...", "INFO")
-        finish_mirna(novel, args, mirna_dir, input_files["reads"])
+        rows = {r["provisional id"]: r
+                for csv_path in sorted(results_dir.glob("result_*.csv"))
+                for r in mirdeep2_novel_rows(csv_path)}
+        finish_mirna(novel, args, work["root"], input_files["reads"],
+                     mirdeep_rows=rows)
     else:
         log("no novel predictions to validate", "INFO")
-    
+
     log("=" * 60, "INFO")
     log(f"miRNA analysis completed successfully!", "INFO")
-    log(f"Results saved in: {mirna_dir}", "INFO")
+    log(f"Results saved in: {work['root']}", "INFO")
     log("=" * 60, "INFO")
 
 
