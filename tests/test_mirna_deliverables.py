@@ -86,6 +86,35 @@ def test_a_rerun_that_validates_nothing_leaves_no_fasta_from_the_old_one(
         assert p[key].read_text() == "", f"{key} still claims the old pass set"
 
 
+def test_an_unvalidated_rerun_removes_the_fasta_of_the_validated_one(
+        tmp_path, monkeypatch):
+    """--no-validate writes no FASTA, so no FASTA may survive the rerun."""
+    fake_validation(monkeypatch, "Pass")
+    finish_mirna(PREDS, validated_args(tmp_path), tmp_path / "work", reads=None)
+    p = deliverable_paths(tmp_path, "at")
+    assert ">p1" in p["mature"].read_text()
+
+    finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)
+    for key in ("mature", "star", "precursor"):
+        assert not p[key].exists(), f"{key} survived an unvalidated run"
+
+
+def test_an_unvalidated_rerun_removes_the_stale_structures(tmp_path):
+    """The plots came from a validation that did not happen this time."""
+    p = deliverable_paths(tmp_path, "at")
+    (p["structures"] / "passed").mkdir(parents=True)
+    (p["structures"] / "passed" / "p1.ps.pdf").write_text("old plot")
+
+    finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)
+    assert not p["structures"].exists()
+
+
+def test_removing_stale_deliverables_is_safe_when_there_are_none(tmp_path):
+    """First run in a clean outdir: nothing to remove, and no failure."""
+    finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)
+    assert deliverable_paths(tmp_path, "at")["table"].exists()
+
+
 def test_nothing_submitted_is_NA_and_not_a_measured_zero(tmp_path):
     import json
     finish_mirna(PREDS, args_for(tmp_path), tmp_path / "work", reads=None)

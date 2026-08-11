@@ -506,6 +506,22 @@ def deliverable_paths(outdir, prefix):
     }
 
 
+def drop_validated_deliverables(paths):
+    """Remove what only a validated run may leave behind, and say so.
+
+    An unvalidated run writes no FASTA and no plots; leaving the previous
+    run's would make the outdir claim a validated set this BED contradicts.
+    """
+    for key in ("mature", "star", "precursor"):
+        if paths[key].exists():
+            paths[key].unlink()
+            log(f"removed stale {paths[key]}: this run did not validate", "WARN")
+    if paths["structures"].exists():
+        shutil.rmtree(paths["structures"])
+        log(f"removed stale {paths['structures']}: this run did not validate",
+            "WARN")
+
+
 NA = "NA"
 
 # A tool's own version flag. miRDeep-P2 ships none, so it answers NA rather
@@ -569,6 +585,8 @@ def finish_mirna(predictions, args, work_dir, reads, mirdeep_rows=None):
             Path(work_dir) / "validation" / "mirscore", records,
             paths["structures"])
         log(f"{n_plots} structure plots in {paths['structures']}", "INFO")
+    else:
+        drop_validated_deliverables(paths)
 
     counts = {"predicted": len(records),
               "submitted": len(result.submitted) if result else "NA",
