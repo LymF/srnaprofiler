@@ -131,3 +131,44 @@ def build_records(predictions, engine, mirscore_rows=None, submitted=None,
                 setattr(rec, dst, val)
         out.append(rec)
     return out
+
+
+def _cell(value):
+    """Serialises a field, neutralising TAB/newline that would break the row."""
+    if value is None:
+        return NA
+    return str(value).replace("\t", " ").replace("\n", " ")
+
+
+def write_table(records, path):
+    with open(path, "w") as fh:
+        fh.write("\t".join(MIRNA_COLS) + "\n")
+        for r in records:
+            fh.write("\t".join(_cell(getattr(r, c)) for c in MIRNA_COLS) + "\n")
+
+
+def validated(records):
+    """The records miRScore passed -- the set every other file agrees on."""
+    return [r for r in records if r.result == "Pass"]
+
+
+def write_bed(records, path):
+    """The validated precursors, ready for `classify --mirna-loci`."""
+    n = 0
+    with open(path, "w") as fh:
+        for r in validated(records):
+            fh.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.name}\n")
+            n += 1
+    return n
+
+
+def write_fasta(records, path, field):
+    """One validated sequence per record, named as in the BED."""
+    if field not in ("mature_seq", "star_seq", "precursor_seq"):
+        raise ValueError(f"not a sequence field: {field}")
+    n = 0
+    with open(path, "w") as fh:
+        for r in validated(records):
+            fh.write(f">{r.name}\n{getattr(r, field)}\n")
+            n += 1
+    return n
