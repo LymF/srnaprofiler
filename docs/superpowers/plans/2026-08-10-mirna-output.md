@@ -382,6 +382,13 @@ def test_submitted_but_absent_from_the_results_is_not_a_failure():
     assert recs[2].flags == "absent from miRScore results"
 
 
+def test_without_a_submitted_set_every_prediction_counts_as_submitted():
+    """`submitted=None` means 'all of them', so no locus is blamed on the re-cut."""
+    recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS)
+    assert recs[2].result == "NotScored"
+    assert recs[2].flags == "absent from miRScore results"
+
+
 def test_evidence_columns_come_from_mirscore():
     recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS, submitted={"p1", "p2"})
     assert recs[0].star_len == "21.0"        # miRScore's own float string, kept
@@ -563,7 +570,7 @@ def build_records(predictions, engine, mirscore_rows=None, submitted=None,
                     if dst in _SEQUENCE_FIELDS and val != NA:
                         val = val.upper().replace("U", "T")
                     setattr(rec, dst, val)
-            elif submitted is not None and p["name"] in submitted:
+            elif submitted is None or p["name"] in submitted:
                 rec.result = "NotScored"
                 rec.flags = "absent from miRScore results"
             else:
