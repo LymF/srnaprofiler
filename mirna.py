@@ -894,8 +894,8 @@ def parse_mirdeep_p2_predictions(path):
     return out
 
 
-def parse_mirdeep2_novel(path):
-    """miRDeep2's result CSV, novel section, in the same shape as the above."""
+def mirdeep2_novel_rows(path):
+    """The novel section of miRDeep2's result CSV, rows as written."""
     import csv as _csv
     rows = list(_csv.reader(open(path), delimiter="\t"))
     start = None
@@ -909,11 +909,18 @@ def parse_mirdeep2_novel(path):
     for r in rows[start:]:
         if not r or not r[0].strip():
             break
-        d = dict(zip(hdr, r))
-        m = re.match(r"(\S+):(\d+)\.\.(\d+)", d.get("precursor coordinate", ""))
+        out.append(dict(zip(hdr, r)))
+    return out
+
+
+def parse_mirdeep2_novel(path):
+    """miRDeep2's novel predictions, in the shape the engines share."""
+    out = []
+    for d in mirdeep2_novel_rows(path):
+        m = re.match(r"(\S+):(\d+)\.\.(\d+)(?::([+-]))?", d.get("precursor coordinate", ""))
         if not m:
             continue
-        out.append({"chrom": m.group(1), "strand": ".", "name": d["provisional id"],
+        out.append({"chrom": m.group(1), "strand": m.group(4) or ".", "name": d["provisional id"],
                     "start": int(m.group(2)), "end": int(m.group(3)),
                     "mature": d["consensus mature sequence"].strip().upper().replace("U", "T")})
     return out
