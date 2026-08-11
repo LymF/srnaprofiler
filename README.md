@@ -50,15 +50,14 @@ predictions from `mirna`, is what keeps them labelled correctly.
 
 ## Modules
 
-| module | what it does |
+| module | use it to |
 |---|---|
-| `qc` | trimming, quality report, genome standardization |
-| `mapping` | Bowtie 1 alignment, optional structural-RNA filter, sorted BAM |
-| `mirna` | miRNA prediction (miRDeep2 / miRDeep-P2) + miRScore validation |
-| `classify` | locus calling, signature measurement, classification |
-| `classplots` | per-class and per-locus plots from a classify run |
-| `plots` | size distribution and pattern plots straight from a SAM |
-| `clusters` | earlier classification engine, superseded by `classify` |
+| `setup` | check the toolchain and prepare reference data, once per machine |
+| `qc` | trim reads and standardize the genome |
+| `mapping` | align to the genome, optionally dropping structural RNA |
+| `mirna` | find and validate miRNA loci, so `classify` can carve them out |
+| `classify` | call loci, measure their signatures, assign a class |
+| `classplots` | look at the result: per-class and per-locus figures |
 
 ### Main parameters
 

@@ -10,7 +10,6 @@ from pathlib import Path
 # Import the analysis modules
 from qc import run_qc
 from mapping import run_mapping
-from clusters import run_clusters
 from mirna import run_mirna_analysis
 from setup_module import run_check, run_data, run_tools
 from utils import (
@@ -54,44 +53,32 @@ def print_header():
 def build_parser():
     """Build the command-line argument parser."""
     parser = argparse.ArgumentParser(
-        prog="srnaprofiler",
+        prog="python3 srnaprofiler.py",
         description="Small RNA Profiler - Comprehensive small RNA analysis pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Run QC on reads and prepare genome
-  %(prog)s qc -p myproject -o results/ --reads1 sample.fastq.gz -g genome.fa
+The order, and what each step is for:
 
-  # Map trimmed reads to tiled genome  
-  %(prog)s mapping -p myproject -o results/ --reads trimmed.fastq.gz -g genome_tiles.fa
+  setup       once per machine: check the toolchain, fetch what conda cannot
+  qc          trim reads and standardize the genome (needed before mirna)
+  mapping     align to the genome, optionally dropping structural RNA
+  mirna       find and validate miRNA loci, so classify can carve them out
+  classify    call loci, measure their signatures, assign a class
+  classplots  look at the result: per-class and per-locus figures
 
-  # Analyze clusters with miRNA filtering
-  %(prog)s clusters -p myproject -o results/ --sam mapped.sam -g genome_tiles.fa --mirna-fasta mirnas.fa
+A typical run:
 
-  # Full pipeline with pattern analysis
-  %(prog)s clusters -p myproject -o results/ --sam mapped.sam -g genome.fa --run-patterns
+  %(prog)s setup --check
+  %(prog)s qc       -p run -o out/ --reads1 reads.fastq.gz -g genome.fa
+  %(prog)s mapping  -p run -o out/ --reads out/run.trimmed.R1.fastq.gz -g out/run.genome.std.fa
+  %(prog)s mirna    -p run -o out/ --engine mirdeep-p2 -g out/run.genome.std.fa \\
+                    --index-prefix out/run.bowtie_index --reads out/run.trimmed.R1.fastq.gz --species osa
+  %(prog)s classify -p run -o out/ --sam out/run.bowtie.bam -g out/run.genome.std.fa \\
+                    --mirna-loci out/run.mirna_loci.bed --config rules.plant.yaml
+  %(prog)s classplots --clusters out/run.clusters.tsv --bam out/run.bowtie.bam -p run -o out/
 
-  # Generate plots directly from SAM (quick QC)
-  %(prog)s plots --sam mapped.sam -p myproject -o results/
-
-  # Generate plots per chromosome
-  %(prog)s plots --sam mapped.sam -p myproject -o results/ --per-chrom
-
-  # Re-generate plots from existing analysis
-  %(prog)s plots -p myproject -o results/
-
-  # Predict miRNAs with miRDeep2 (build new index)
-  %(prog)s mirna -p myproject -o results/ --reads reads.fastq.gz -g genome.fa --species "My_Species"
-
-  # Predict miRNAs using existing index from mapping
-  %(prog)s mirna -p myproject -o results/ --reads reads.fastq.gz --index-prefix results/myproject.bowtie_index --species "My_Species"
-
-For more information on each module:
-  %(prog)s qc --help
-  %(prog)s mapping --help
-  %(prog)s clusters --help
-  %(prog)s plots --help
-  %(prog)s mirna --help
+Use --config rules.yaml for animals and rules.plant.yaml for plants; the classes
+themselves are defined there. Every module takes --help.
         """
     )
     
@@ -116,7 +103,7 @@ For more information on each module:
     # ==================== QC Module ====================
     qc_parser = subparsers.add_parser(
         "qc",
-        help="Quality control, trimming, and genome preparation",
+        help="Trim reads and standardize the genome",
         description="Perform quality control on reads and prepare genome for mapping"
     )
     
@@ -199,7 +186,7 @@ For more information on each module:
     # ==================== Setup Module ====================
     setup_parser = subparsers.add_parser(
         "setup",
-        help="Verify and prepare an installation",
+        help="Check the toolchain and prepare reference data",
         description="Check that a run will work here, and prepare the "
                     "reference data the pipeline needs")
     setup_parser.add_argument(
@@ -232,7 +219,7 @@ For more information on each module:
     # ==================== Mapping Module ====================
     map_parser = subparsers.add_parser(
         "mapping",
-        help="Align reads using Bowtie1",
+        help="Align reads to the genome, with an optional ncRNA filter",
         description="Map small RNA reads to reference genome or transcriptome"
     )
     
@@ -342,243 +329,13 @@ For more information on each module:
     
     map_parser.set_defaults(func=run_mapping)
     
-    # ==================== Clusters Module ====================
-    cluster_parser = subparsers.add_parser(
-        "clusters",
-        help="Analyze small RNA clusters and patterns",
-        description="Classify contigs, filter miRNAs, and analyze small RNA patterns"
-    )
     
-    # Required arguments
-    cluster_required = cluster_parser.add_argument_group("required arguments")
-    cluster_required.add_argument(
-        "-p", "--prefix",
-        required=True,
-        help="Output file prefix"
-    )
-    cluster_required.add_argument(
-        "-o", "--outdir",
-        required=True,
-        help="Output directory"
-    )
-    cluster_required.add_argument(
-        "--sam",
-        required=True,
-        help="SAM/BAM file with mapped reads (can be gzipped)"
-    )
-    cluster_required.add_argument(
-        "-g", "--genome",
-        required=True,
-        help="Reference genome (tiled) FASTA"
-    )
-    
-    # Optional inputs
-    cluster_input = cluster_parser.add_argument_group("optional inputs")
-    cluster_input.add_argument(
-        "--reads",
-        help="Original reads file for additional statistics"
-    )
-    
-    # Classification thresholds
-    cluster_class = cluster_parser.add_argument_group("classification thresholds")
-    cluster_class.add_argument(
-        "--si",
-        type=int,
-        default=DEFAULT_SI_THRESHOLD,
-        help="Minimum reads for siRNA classification (default: %(default)s)"
-    )
-    cluster_class.add_argument(
-        "--pi",
-        type=int,
-        default=DEFAULT_PI_THRESHOLD,
-        help="Minimum reads for piRNA classification (default: %(default)s)"
-    )
-    cluster_class.add_argument(
-        "--len-min",
-        type=int,
-        default=DEFAULT_MIN_LEN,
-        help="Minimum small RNA length (default: %(default)s)"
-    )
-    cluster_class.add_argument(
-        "--len-max",
-        type=int,
-        default=DEFAULT_MAX_LEN,
-        help="Maximum small RNA length (default: %(default)s)"
-    )
-    
-    # Normalization options
-    cluster_norm = cluster_parser.add_argument_group("normalization options")
-    cluster_norm.add_argument(
-        "-n", "--norm",
-        type=int,
-        help="Library size for normalization (RPM)"
-    )
-    
-    # miRNA filtering options
-    cluster_mirna = cluster_parser.add_argument_group("miRNA filtering")
-    mirna_ref_group = cluster_mirna.add_mutually_exclusive_group()
-    mirna_ref_group.add_argument(
-        "--mirna-fasta",
-        help="miRNA FASTA reference (headers with coordinates accepted)"
-    )
-    mirna_ref_group.add_argument(
-        "--mirna-gff",
-        help="miRNA GFF reference (coordinates)"
-    )
-    mirna_ref_group.add_argument(
-        "--mirna-bed",
-        help="miRNA BED reference (coordinates)"
-    )
-    cluster_mirna.add_argument(
-        "--mirna-keep",
-        action="store_true",
-        help="Keep miRNA clusters in downstream analysis (label only)"
-    )
-    
-    # Analysis options
-    cluster_analysis = cluster_parser.add_argument_group("analysis options")
-    cluster_analysis.add_argument(
-        "--run-patterns",
-        action="store_true",
-        help="Analyze nucleotide patterns and ping-pong signatures"
-    )
-    cluster_analysis.add_argument(
-        "--force",
-        action="store_true",
-        help="Force re-run of all steps"
-    )
-    
-    # Alignment filtering options
-    cluster_align = cluster_parser.add_argument_group("alignment filtering")
-    cluster_align.add_argument(
-        "--mapq",
-        type=int,
-        default=0,
-        help="Minimum MAPQ quality score (default: %(default)s)"
-    )
-    cluster_align.add_argument(
-        "--nm",
-        type=int,
-        default=1_000_000_000,
-        help="Maximum number of mismatches (default: %(default)s)"
-    )
-    
-    cluster_parser.set_defaults(func=run_clusters)
-    
-    # ==================== Plots Module ====================
-    plots_parser = subparsers.add_parser(
-        "plots",
-        help="Generate plots from SAM file or existing tables",
-        description="""Generate sRNA distribution and pattern plots in multiple modes:
-  
-  Mode 1: From SAM file directly 
-  Mode 2: From existing tables (re-generate plots after analysis)
-  Mode 3: Per-chromosome mode (detailed analysis per chromosome/contig)
-
-Examples:
-  # Quick QC from SAM (combined plot)
-  %(prog)s --sam data.sam -p sample1 -o results/
-  
-  # Per-chromosome analysis
-  %(prog)s --sam data.sam -p sample1 -o results/ --per-chrom
-  
-  # Specific chromosomes only
-  %(prog)s --sam data.sam -p sample1 -o results/ --per-chrom --chromosomes chr1 chr2
-  
-  # Re-generate from existing tables
-  %(prog)s -p sample1 -o results/
-  
-  # Custom size range 
-  %(prog)s --sam data.sam -p sample1 -o results/ --min-len 21 --max-len 24
-""",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    
-    # Required arguments
-    plots_required = plots_parser.add_argument_group("required arguments")
-    plots_required.add_argument(
-        "-p", "--prefix",
-        required=True,
-        help="Output file prefix"
-    )
-    plots_required.add_argument(
-        "-o", "--outdir",
-        required=True,
-        help="Output directory"
-    )
-    
-    # SAM mode arguments (optional)
-    plots_sam = plots_parser.add_argument_group("SAM mode arguments")
-    plots_sam.add_argument(
-        "--sam",
-        help="SAM/BAM file (enables direct SAM processing mode)"
-    )
-    plots_sam.add_argument(
-        "--per-chrom",
-        action="store_true",
-        help="Generate separate plots for each chromosome (requires --sam)"
-    )
-    plots_sam.add_argument(
-        "--chromosomes",
-        nargs="+",
-        metavar="CHR",
-        help="Specific chromosomes to plot (use with --per-chrom)"
-    )
-    plots_sam.add_argument(
-        "--min-len",
-        type=int,
-        default=15,
-        help="Minimum read length (default: %(default)s)"
-    )
-    plots_sam.add_argument(
-        "--max-len",
-        type=int,
-        default=35,
-        help="Maximum read length (default: %(default)s)"
-    )
-    
-    # Table mode arguments
-    plots_tables = plots_parser.add_argument_group("table mode arguments")
-    plots_tables.add_argument(
-        "--tables-dir",
-        help="Directory containing data tables (default: <outdir>/tables)"
-    )
-    plots_tables.add_argument(
-        "--categories",
-        nargs="+",
-        metavar="CAT",
-        help="Specific categories to plot (e.g., putative_siRNA putative_piRNA)"
-    )
-    
-    # Plot options
-    plots_options = plots_parser.add_argument_group("plot options")
-    plots_options.add_argument(
-        "--no-base-distribution",
-        action="store_false",
-        dest="base_distribution",
-        help="Skip base distribution plots"
-    )
-    plots_options.add_argument(
-        "--no-patterns",
-        action="store_false",
-        dest="patterns",
-        help="Skip pattern plots"
-    )
-    
-    # Common options
-    plots_common = plots_parser.add_argument_group("common options")
-    plots_common.add_argument(
-        "--r-scripts-path",
-        help="Path to R scripts directory (auto-detect if not specified)"
-    )
-    
-    plots_parser.set_defaults(func=run_plots)
     
     # ==================== miRNA Module ====================
     mirna_parser = subparsers.add_parser(
         "mirna",
-        help="miRNA analysis with miRDeep2",
-        description="Predict and quantify miRNAs using miRDeep2"
+        help="Predict and validate miRNA loci, for classify --mirna-loci",
+        description="Predict miRNA loci with miRDeep2 or miRDeep-P2 and validate them with miRScore"
     )
     
     # Required arguments
@@ -662,7 +419,7 @@ Examples:
 
     # ==================== Classify Module ====================
     from classify import run_classify
-    cl = subparsers.add_parser("classify", help="Classify sRNA clusters (measure->decide engine)")
+    cl = subparsers.add_parser("classify", help="Call loci and classify them by signature")
     cl.add_argument("-p", "--prefix", required=True)
     cl.add_argument("-o", "--outdir", required=True)
     cl.add_argument("--sam", required=True, help="SAM/BAM mapped to the whole genome")
@@ -815,37 +572,6 @@ def check_dependencies():
         log("All dependencies found", "INFO")
     
     return len(missing) == 0
-
-
-def run_plots(args):
-    """
-    Generate plots - delegates to plots.py module.
-    
-    This function is a wrapper that calls the plots module,
-    which handles both SAM mode and table mode automatically.
-    """
-    try:
-        from plots import run_plots as plots_run_plots, run_from_sam
-        
-        # Determine mode and delegate
-        if hasattr(args, 'sam') and args.sam:
-            # SAM mode
-            log("Running plots in SAM mode", "INFO")
-            run_from_sam(args)
-        else:
-            # Table mode
-            log("Running plots in table mode", "INFO")
-            plots_run_plots(args)
-            
-    except ImportError as e:
-        log(f"Failed to import plots module: {e}", "ERROR")
-        log("Please ensure plots.py is in the same directory", "ERROR")
-        sys.exit(1)
-    except Exception as e:
-        log(f"Plot generation failed: {e}", "ERROR")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
 
 
 def main():
