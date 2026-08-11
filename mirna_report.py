@@ -119,7 +119,7 @@ def build_records(predictions, engine, mirscore_rows=None, submitted=None,
                     if dst in _SEQUENCE_FIELDS and val != NA:
                         val = val.upper().replace("U", "T")
                     setattr(rec, dst, val)
-            elif submitted is not None and p["name"] in submitted:
+            elif submitted is None or p["name"] in submitted:
                 rec.result = "NotScored"
                 rec.flags = "absent from miRScore results"
             else:

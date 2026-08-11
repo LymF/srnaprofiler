@@ -63,6 +63,14 @@ def test_submitted_but_absent_from_the_results_is_not_a_failure():
     assert recs[2].flags == "absent from miRScore results"
 
 
+def test_submitted_none_means_all_were_submitted():
+    """No `submitted` set given: p3 missing from the rows is still absent
+    from the results, not blamed on a re-cut failure that never happened."""
+    recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS)
+    assert recs[2].result == "NotScored"
+    assert recs[2].flags == "absent from miRScore results"
+
+
 def test_evidence_columns_come_from_mirscore():
     recs = build_records(PREDS, "mirdeep-p2", SCORE_ROWS, submitted={"p1", "p2"})
     assert recs[0].star_len == "21.0"        # miRScore's own float string, kept
