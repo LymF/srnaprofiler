@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, List
 from collections import defaultdict
+from dataclasses import dataclass
 
 from utils import log, ensure_outdir, validate_file_exists, which, run_command
 
@@ -491,9 +492,12 @@ def finish_mirna(predictions, args, mirna_dir, reads):
     if getattr(args, "no_validate", False):
         log("--no-validate: writing predictions without miRScore", "WARN")
     elif getattr(args, "genome", None):
-        passing = validate_with_mirscore(
+        validation = validate_with_mirscore(
             predictions, args.genome, reads, kingdom,
             Path(mirna_dir) / "validation", threads=getattr(args, "threads", 1))
+        if validation is not None:
+            passing = {n for n, r in validation.rows.items()
+                       if str(r.get("result", "")).strip().lower().startswith("pass")}
     else:
         log("no -g/--genome: skipping miRScore validation, which needs the "
             "genome to re-cut precursors with flanks", "WARN")
@@ -1057,6 +1061,19 @@ def run_mirdeep_p2(args, reads, outdir):
     return preds
 
 
+@dataclass
+class Validation:
+    """What miRScore said, and about which predictions it was asked."""
+    rows: dict          # name -> its row in miRScore_results.csv
+    submitted: set      # names handed to miRScore at all
+
+
+def open_genome(path):
+    """Seam for tests: the only place pysam.FastaFile is called."""
+    import pysam
+    return pysam.FastaFile(str(path))
+
+
 def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
                            threads=1, flank=25):
     """miRScore's verdict per prediction, or None when it cannot be run.
@@ -1070,13 +1087,12 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
             "`conda install -c bioconda miRScore`", "WARN")
         return None
 
-    import pysam
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     mature_fa, hairpin_fa = workdir / "mature.fa", workdir / "hairpin.fa"
-    genome = pysam.FastaFile(str(genome_path))
+    genome = open_genome(genome_path)
 
-    kept = 0
+    kept = set()
     with open(mature_fa, "w") as mf, open(hairpin_fa, "w") as hf:
         for p in predictions:
             hp = hairpin_with_flank(genome, p["chrom"], p["start"], p["end"],
@@ -1085,12 +1101,12 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
                 continue
             mf.write(f">{p['name']}\n{p['mature']}\n")
             hf.write(f">{p['name']}\n{hp}\n")
-            kept += 1
+            kept.add(p["name"])
     if not kept:
         log("No prediction could be re-cut against the genome; skipping "
             "validation", "WARN")
         return None
-    log(f"{kept}/{len(predictions)} predictions prepared for miRScore", "INFO")
+    log(f"{len(kept)}/{len(predictions)} predictions prepared for miRScore", "INFO")
 
     out = workdir / "mirscore"
     if out.exists():
@@ -1103,11 +1119,13 @@ def validate_with_mirscore(predictions, genome_path, reads, kingdom, workdir,
     results = out / "miRScore_results.csv"
     if not results.exists():
         raise RuntimeError(f"miRScore wrote no results to {results}")
-    passing = parse_mirscore_results(results)
+    rows = read_mirscore_rows(results)
+    passing = {n for n, r in rows.items()
+               if str(r.get("result", "")).strip().lower().startswith("pass")}
     if not passing and no_reads_counted(out / "reads.csv"):
         raise RuntimeError(
             f"miRScore counted zero reads at every locus ({out/'reads.csv'}); "
             "that is its silent failure, not a biological result -- check that "
             "the reads it was given are the library the predictions came from")
-    log(f"miRScore validated {len(passing)}/{kept}", "INFO")
-    return passing
+    log(f"miRScore validated {len(passing)}/{len(kept)}", "INFO")
+    return Validation(rows=rows, submitted=kept)
