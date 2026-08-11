@@ -3,7 +3,11 @@
 The engine knows where a locus is and miRScore knows whether it is a miRNA;
 neither knows both. This is where the two are joined.
 """
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
+
+from utils import log
 
 NA = "NA"
 
@@ -170,5 +174,33 @@ def write_fasta(records, path, field):
     with open(path, "w") as fh:
         for r in validated(records):
             fh.write(f">{r.name}\n{getattr(r, field)}\n")
+            n += 1
+    return n
+
+
+def collect_structures(mirscore_out, records, dest):
+    """miRScore's plots, split by verdict, where the user will look.
+
+    strucVis draws read depth on the fold and is the one worth looking at;
+    RNAplots is the plain structure and stands in when strucVis did not run.
+    """
+    mirscore_out, dest = Path(mirscore_out), Path(dest)
+    source = next((s for s in ("strucVis", "RNAplots")
+                   if (mirscore_out / s).is_dir()), None)
+    if source is None:
+        log(f"no structure plots under {mirscore_out}: neither strucVis/ nor "
+            f"RNAplots/. Is strucVis on PATH?", "WARN")
+        return 0
+
+    verdicts = {"Pass": "passed", "Fail": "failed"}
+    n = 0
+    for r in records:
+        sub = verdicts.get(r.result)
+        if sub is None:                      # NotScored/NotValidated: no plot exists
+            continue
+        for plot in sorted((mirscore_out / source / sub).glob(f"{r.name}.*")) or \
+                    sorted((mirscore_out / source / sub).glob(f"{r.name}_*")):
+            (dest / sub).mkdir(parents=True, exist_ok=True)
+            shutil.copy2(plot, dest / sub / plot.name)
             n += 1
     return n
