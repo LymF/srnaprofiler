@@ -161,3 +161,7 @@ are larger by the multiplicity factor, 3.19× in one Drosophila library.
 `score` and the `s_*` columns answer different questions: `s_*` say how surprising a signature
 is, which grows with depth; `score` says how strong the effect is, which does not. Use `score`
 to compare loci.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
