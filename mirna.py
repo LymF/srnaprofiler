@@ -153,6 +153,42 @@ def convert_fastq_to_fasta(fastq_path: Path, fasta_path: Path) -> bool:
         return False
 
 
+# miRDeep2.pl rejects collapsed reads shorter than 17 nt; mapper.pl is run with
+# -l 18, so reads below that cannot contribute and are dropped before collapsing.
+MIRDEEP2_MIN_READ_LEN = 18
+
+
+def filter_fasta_min_length(in_path: Path, out_path: Path, min_len: int):
+    """Write the reads of `in_path` with at least `min_len` nt to `out_path`.
+
+    Returns (kept, dropped). Wrapped sequences are joined onto one line.
+    """
+    kept = dropped = 0
+
+    def flush(fh, header, parts):
+        nonlocal kept, dropped
+        if header is None:
+            return
+        seq = "".join(parts)
+        if len(seq) >= min_len:
+            fh.write(f"{header}\n{seq}\n")
+            kept += 1
+        else:
+            dropped += 1
+
+    with open(in_path) as src, open(out_path, "w") as dst:
+        header, parts = None, []
+        for line in src:
+            line = line.rstrip("\r\n")
+            if line.startswith(">"):
+                flush(dst, header, parts)
+                header, parts = line, []
+            elif line:
+                parts.append(line)
+        flush(dst, header, parts)
+    return kept, dropped
+
+
 def collapse_reads_mirdeep(fasta_path: Path, collapsed_path: Path, prefix: str = "lcg") -> bool:
     """Collapse identical reads using miRDeep2 collapse_reads_md.pl."""
     try:
@@ -737,6 +773,17 @@ def run_mirna_analysis(args):
     
     log(f"Input contains {initial_count} sequences", "INFO")
     
+    # Drop reads below the engine minimum (engine input only; the trimmed reads
+    # used by mapping/classification are untouched)
+    long_reads = processed_dir / f"{args.prefix}.minlen.fa"
+    kept, dropped = filter_fasta_min_length(fasta_reads, long_reads, MIRDEEP2_MIN_READ_LEN)
+    log(f"Dropped {dropped} reads shorter than {MIRDEEP2_MIN_READ_LEN} nt "
+        f"({kept} kept)", "INFO")
+    if kept == 0:
+        log(f"No reads of at least {MIRDEEP2_MIN_READ_LEN} nt", "ERROR")
+        sys.exit(1)
+    fasta_reads = long_reads
+
     # Collapse reads using miRDeep2
     collapsed_reads = processed_dir / f"{args.prefix}.collapsed.fa"
     log(f"Collapsing reads with miRDeep2: {fasta_reads} -> {collapsed_reads}", "INFO")

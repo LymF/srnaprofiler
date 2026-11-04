@@ -24,7 +24,7 @@ def fastqc(reads: str, outdir: Path, threads: int) -> None:
         return
     
     try:
-        cmd = ["fastqc", "-o", str(outdir), "--quiet", "--threads", str(threads), reads]
+        cmd = ["fastqc", "--outdir", str(outdir), "--quiet", "--threads", str(threads), reads]
         run_command(cmd)
         log(f"FastQC completed for {Path(reads).name}", "INFO")
     except Exception as e:
