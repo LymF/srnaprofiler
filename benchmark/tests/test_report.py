@@ -1,8 +1,8 @@
-import hashlib
 import json
 from pathlib import Path
 
 from benchmark.manifest import Library
+from benchmark.run import pipeline_sha256
 from benchmark.report import LibraryResult, build_report, collect_results
 
 
@@ -37,11 +37,12 @@ def metrics(precision=0.9, fdr=0.1):
 def make_rules(tmp_path, text="a: 1\n"):
     rules = tmp_path / "rules.yaml"
     rules.write_text(text)
-    return rules, hashlib.sha256(rules.read_bytes()).hexdigest()
+    (tmp_path / "pipeline.py").write_text("x = 1\n")
+    return rules, pipeline_sha256(tmp_path)
 
 
 def res(acc, role, sha, organism="Bombyx mori", **kw):
-    meta = {"rules_sha256": sha, "rules_path": "/elsewhere/rules.yaml", "role": role}
+    meta = {"pipeline_sha256": sha, "rules_path": "/elsewhere/rules.yaml", "role": role}
     return LibraryResult(lib(acc, role, organism), metrics(**kw), meta)
 
 
@@ -75,6 +76,43 @@ def test_report_flags_rules_changed_after_test_run(tmp_path):
     assert "no valid test libraries" in teste
     aggregate = teste.split("### Aggregate")[1]
     assert "0.777" not in aggregate
+
+
+def test_report_flags_pipeline_code_change_and_missing_hash(tmp_path):
+    _, sha = make_rules(tmp_path)
+    results = [res("SRRTEST", "test", sha), res("SRRTUNE", "tuning", sha, "Drosophila melanogaster")]
+    assert "INVALID" not in build_report(results, tmp_path)
+    (tmp_path / "pipeline.py").write_text("x = 2\n")  # code, not rules, changed
+    text = build_report(results, tmp_path)
+    ajuste, teste = text.split("## Teste")
+    assert "INVALID" in teste and "stale" in ajuste
+    # a result without pipeline_sha256 is never valid
+    old = res("SRROLD", "test", sha)
+    del old.meta["pipeline_sha256"]
+    (tmp_path / "pipeline.py").write_text("x = 1\n")
+    assert "INVALID" in build_report([old], tmp_path)
+
+
+def test_report_shows_short_pipeline_hash_per_row(tmp_path):
+    _, sha = make_rules(tmp_path)
+    text = build_report([res("SRRTEST", "test", sha)], tmp_path)
+    assert sha[:8] in text and sha[:9] not in text
+
+
+def test_report_shows_mirna_loci_used_per_row(tmp_path):
+    _, sha = make_rules(tmp_path)
+    used, unused = res("SRRUSED", "test", sha), res("SRRNONE", "test", sha)
+    used.meta["mirna_loci_used"] = True
+    unused.meta["mirna_loci_used"] = False
+    text = build_report([used, unused], tmp_path)
+    row = {}
+    for l in text.splitlines():  # the classification table comes first in the section
+        if l.startswith("| SRR"):
+            row.setdefault(l.split("|")[1].strip(), l)
+    header = next(l for l in text.splitlines() if "mirna_loci_used" in l)
+    col = [c.strip() for c in header.split("|")].index("mirna_loci_used")
+    assert row["SRRUSED"].split("|")[col].strip() == "yes"
+    assert row["SRRNONE"].split("|")[col].strip() == "no"
 
 
 def test_report_none_rendered_as_dash(tmp_path):

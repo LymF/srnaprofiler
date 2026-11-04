@@ -234,3 +234,43 @@ def test_shared_index_is_built_once_per_species(fake, tmp_path):
     mp, mi = calls[1], calls[2]
     assert mp[mp.index("--index-prefix") + 1] == str(prefix) and "-g" not in mp
     assert mi[mi.index("--index-prefix") + 1] == str(prefix)
+
+
+def test_pipeline_sha256_covers_root_py_and_rules_only(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "rules.yaml").write_text("r: 1\n")
+    (tmp_path / "rules.plant.yaml").write_text("p: 1\n")
+    (tmp_path / "benchmark").mkdir()
+    (tmp_path / "benchmark" / "b.py").write_text("y = 1\n")
+    (tmp_path / "other.yaml").write_text("z: 1\n")
+    base = run_mod.pipeline_sha256(tmp_path)
+    assert len(base) == 64 and base == run_mod.pipeline_sha256(tmp_path)
+    (tmp_path / "benchmark" / "b.py").write_text("y = 2\n")
+    (tmp_path / "other.yaml").write_text("z: 2\n")
+    assert run_mod.pipeline_sha256(tmp_path) == base  # benchmark/ and other files do not count
+    for name in ("a.py", "rules.yaml", "rules.plant.yaml"):
+        f = tmp_path / name
+        old = f.read_text()
+        f.write_text(old + "# edit\n")
+        assert run_mod.pipeline_sha256(tmp_path) != base, name
+        f.write_text(old)
+    (tmp_path / "new.py").write_text("")
+    assert run_mod.pipeline_sha256(tmp_path) != base
+
+
+def test_meta_records_pipeline_sha_and_git_state(fake, tmp_path):
+    res = go(tmp_path)
+    meta = json.loads(res.meta.read_text())
+    assert meta["pipeline_sha256"] == run_mod.pipeline_sha256(run_mod.REPO)
+    assert meta["tool_git_sha"] == "unknown" and meta["git_dirty"] is None  # no git available
+
+
+def test_git_dirty_reflects_porcelain_output(monkeypatch):
+    class R:
+        def __init__(self, out):
+            self.stdout = out
+
+    monkeypatch.setattr(run_mod.subprocess, "run", lambda cmd, **kw: R(" M srnaprofiler.py\n"))
+    assert run_mod._git_dirty() is True
+    monkeypatch.setattr(run_mod.subprocess, "run", lambda cmd, **kw: R(""))
+    assert run_mod._git_dirty() is False

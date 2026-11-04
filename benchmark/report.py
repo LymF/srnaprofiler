@@ -1,10 +1,10 @@
 """Role-separated markdown report built from per-library metrics.json files."""
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from benchmark.manifest import Library
+from benchmark.run import pipeline_sha256
 
 DASH = "—"
 STATUS_OK, STATUS_STALE, STATUS_INVALID = "ok", "stale", "INVALID"
@@ -31,12 +31,21 @@ def collect_results(results_dir: Path, libs: list[Library]) -> list[LibraryResul
     return out
 
 
-def _status(r: LibraryResult, rules_dir: Path) -> str:
-    rules = Path(rules_dir) / Path(r.meta["rules_path"]).name
-    current = hashlib.sha256(rules.read_bytes()).hexdigest() if rules.exists() else None
-    if current == r.meta.get("rules_sha256"):
+def _status(r: LibraryResult, repo_dir: Path) -> str:
+    """ok only if the result was made by the pipeline code and rules in repo_dir now."""
+    if r.meta.get("pipeline_sha256") == pipeline_sha256(repo_dir):
         return STATUS_OK
     return STATUS_INVALID if r.lib.role == "test" else STATUS_STALE
+
+
+def _short_sha(r: LibraryResult) -> str:
+    sha = r.meta.get("pipeline_sha256")
+    return sha[:8] if sha else DASH
+
+
+def _mirna_cell(r: LibraryResult) -> str:
+    used = r.meta.get("mirna_loci_used")
+    return DASH if used is None else ("yes" if used else "no")
 
 
 def _fmt(v, digits: int = 3) -> str:
@@ -79,8 +88,9 @@ def _species_section(species: str, items: list[tuple[LibraryResult, str]]) -> li
     classes = _classes(per_class)
     lines += ["Classification", ""]
     lines += _table(
-        ["library", "status"] + _class_header(classes) + ["ambiguous_coverage", "ece", "unknown"],
-        [[r.lib.accession, st] + _class_cells(r.metrics["classification"]["per_class"], classes)
+        ["library", "status", "pipeline", "mirna_loci_used"] + _class_header(classes)
+        + ["ambiguous_coverage", "ece", "unknown"],
+        [[r.lib.accession, st, _short_sha(r), _mirna_cell(r)] + _class_cells(r.metrics["classification"]["per_class"], classes)
          + [_fmt(r.metrics["classification"]["ambiguous_coverage"]),
             _fmt(r.metrics["classification"]["ece"]),
             _fmt(r.metrics["classification"]["unknown"]["count"])]
@@ -146,9 +156,9 @@ def _aggregate(valid: list[LibraryResult]) -> list[str]:
     return lines + _table(["class", "precision", "recall", "fdr"], rows)
 
 
-def build_report(results: list[LibraryResult], rules_dir: Path) -> str:
+def build_report(results: list[LibraryResult], repo_dir: Path) -> str:
     """Markdown report; tuning and test results are never merged."""
-    statused = [(r, _status(r, rules_dir)) for r in sorted(results, key=lambda r: r.lib.accession)]
+    statused = [(r, _status(r, repo_dir)) for r in sorted(results, key=lambda r: r.lib.accession)]
     tuning = [(r, st) for r, st in statused if r.lib.role == "tuning"]
     test = [(r, st) for r, st in statused if r.lib.role == "test"]
     lines = ["# sRNAProfiler benchmark report", ""]

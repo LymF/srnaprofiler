@@ -33,6 +33,27 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def pipeline_sha256(repo: Path = REPO) -> str:
+    """sha256 over the pipeline *.py files at the repo root (not benchmark/) and rules*.yaml."""
+    repo = Path(repo)
+    h = hashlib.sha256()
+    for f in sorted([*repo.glob("*.py"), *repo.glob("rules*.yaml")], key=lambda f: f.name):
+        h.update(f.name.encode() + b"\0" + f.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
+def _git_dirty() -> bool | None:
+    """True if tracked files differ from HEAD; None when git is unavailable."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "status", "--porcelain", "--untracked-files=no"],
+            check=True, capture_output=True, text=True,
+        )
+        return bool(out.stdout.strip())
+    except (subprocess.CalledProcessError, OSError):
+        return None
+
+
 def result_paths(workdir: Path, acc: str) -> RunResult:
     """Where a finished run leaves its clusters table, BAM and metadata."""
     workdir = Path(workdir)
@@ -145,6 +166,8 @@ def run_library(
 
     meta.write_text(json.dumps({
         "tool_git_sha": _git_sha(),
+        "pipeline_sha256": pipeline_sha256(),
+        "git_dirty": _git_dirty(),
         "rules_sha256": hashlib.sha256(rules.read_bytes()).hexdigest(),
         "rules_path": str(rules),
         "accession": acc,
