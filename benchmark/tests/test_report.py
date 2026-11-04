@@ -10,10 +10,13 @@ def lib(acc, role, organism="Bombyx mori", group="arthropod"):
     return Library(acc, organism, role, group, "ovary", 1, "http://x", ["t"])
 
 
-def metrics(precision=0.9, fdr=0.1):
+def metrics(precision=0.9, fdr=0.1, recall_expressed=0.25):
     return {
         "classification": {
-            "per_class": {"piRNA": {"precision": precision, "fdr": fdr, "recall": 0.5, "tp": 1, "fp": 1},
+            "per_class": {"piRNA": {"precision": precision, "fdr": fdr, "recall": 0.45, "tp": 41, "fp": 43,
+                                    "n_called": 47, "n_matched": 84, "n_unknown": 5,
+                                    "recall_expressed": recall_expressed,
+                                    "n_truth": 61, "n_truth_expressed": 23},
                           "miRNA": {"precision": None, "fdr": None, "recall": None, "tp": 0, "fp": 0}},
             "ambiguous_coverage": 0.75,
             "unknown": {"count": 7},
@@ -41,9 +44,9 @@ def make_rules(tmp_path, text="a: 1\n"):
     return rules, pipeline_sha256(tmp_path)
 
 
-def res(acc, role, sha, organism="Bombyx mori", **kw):
+def res(acc, role, sha, organism="Bombyx mori", group="arthropod", **kw):
     meta = {"pipeline_sha256": sha, "rules_path": "/elsewhere/rules.yaml", "role": role}
-    return LibraryResult(lib(acc, role, organism), metrics(**kw), meta)
+    return LibraryResult(lib(acc, role, organism, group), metrics(**kw), meta)
 
 
 def test_report_keeps_tuning_and_test_separate(tmp_path):
@@ -66,7 +69,7 @@ def test_report_flags_rules_changed_after_test_run(tmp_path):
                res("SRRTUNE", "tuning", sha, "Drosophila melanogaster")]
     ok = build_report(results, tmp_path)
     assert "INVALID" not in ok and "stale" not in ok
-    assert "mean over 1 valid" in ok
+    assert "1 valid test librar" in ok
 
     rules.write_text("a: 2\n")
     text = build_report(results, tmp_path)
@@ -143,3 +146,47 @@ def test_collect_results_reads_metrics_and_meta(tmp_path):
     out = collect_results(tmp_path / "results", [lib("SRRTEST", "test"), lib("OTHER", "test")])
     assert [r.lib.accession for r in out] == ["SRRTEST"]
     assert out[0].meta["role"] == "test"
+
+
+def test_report_class_table_shows_counts_and_honest_headers(tmp_path):
+    _, sha = make_rules(tmp_path)
+    text = build_report([res("SRRTEST", "test", sha)], tmp_path)
+    assert "piRNA precision (annotated loci)" in text
+    for col in ("piRNA tp", "piRNA fp", "piRNA n_called", "piRNA n_unknown",
+                "piRNA recall_expressed", "piRNA n_truth", "piRNA n_truth_expressed"):
+        assert col in text, col
+    row = next(l for l in text.splitlines() if l.startswith("| SRRTEST"))
+    cells = [c.strip() for c in row.split("|")]
+    for v in ("41", "43", "47", "5", "61", "23", "0.250"):
+        assert v in cells, v
+
+
+def test_aggregate_is_mean_of_species_means_per_taxon_group(tmp_path):
+    _, sha = make_rules(tmp_path)
+    results = [
+        res("SRR1", "test", sha, "Species A", "arthropod", precision=0.2),
+        res("SRR2", "test", sha, "Species A", "arthropod", precision=0.4),
+        res("SRR3", "test", sha, "Species B", "arthropod", precision=0.9),
+        res("SRR4", "test", sha, "Species C", "plant", precision=0.1),
+    ]
+    text = build_report(results, tmp_path)
+    agg = text.split("### Aggregate")[1]
+    arthropod, plant = agg.split("#### plant")
+    assert "#### arthropod" in arthropod
+    # A = 0.3 (mean of 0.2 and 0.4), B = 0.9 -> arthropod 0.6; pooled libraries would give 0.5
+    assert "0.600" in arthropod and "0.500" not in arthropod
+    assert "0.100" in plant and "0.600" not in plant
+    # libraries per species are shown
+    assert "Species A" in arthropod and "Species A | 2" in arthropod.replace("  ", " ")
+    assert "Species B | 1" in arthropod.replace("  ", " ")
+    assert "Species C | 1" in plant.replace("  ", " ")
+
+
+def test_aggregate_skips_missing_values_at_each_level(tmp_path):
+    _, sha = make_rules(tmp_path)
+    a = res("SRR1", "test", sha, "Species A", "arthropod", precision=0.2)
+    b = res("SRR2", "test", sha, "Species B", "arthropod")
+    b.metrics["classification"]["per_class"]["piRNA"]["precision"] = None
+    text = build_report([a, b], tmp_path)
+    agg = text.split("### Aggregate")[1]
+    assert "0.200" in agg and "None" not in agg

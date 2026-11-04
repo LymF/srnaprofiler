@@ -10,6 +10,7 @@ from benchmark.fetch import fetch_genome, fetch_library
 from benchmark.manifest import Config, Library, load_config, load_manifest
 from benchmark.metrics_class import classification_metrics, read_loci
 from benchmark.metrics_delim import delimitation_metrics, locus_counts
+from benchmark.metrics_expr import expressed_regions
 from benchmark.run import result_paths, run_library
 from benchmark.truth import (Region, check_contigs, check_contigs_fasta, guard_seed_use,
                              load_aliases, load_regions)
@@ -60,6 +61,7 @@ def _write_metrics(lib: Library, regions: list[Region], cfg: Config, workdir: Pa
     check_contigs(regions, fai)  # ValueError names the missing contigs
 
     loci = read_loci(paths.clusters_tsv)
+    expressed = expressed_regions(paths.bam, regions, cfg.expressed_min_reads)
     clusters = [r for r in regions if r.cls != "miRNA"]
     sources = sorted({r.source for r in regions})
     cluster_sources = sorted({r.source for r in clusters})
@@ -67,7 +69,7 @@ def _write_metrics(lib: Library, regions: list[Region], cfg: Config, workdir: Pa
         "accession": acc,
         "organism": lib.organism,
         "role": lib.role,
-        "classification": classification_metrics(loci, regions, cfg),
+        "classification": classification_metrics(loci, regions, cfg, expressed),
         # one delimitation per source: sources overlap each other, so pooling double counts
         "delimitation": {
             "global": locus_counts(loci, cfg),
@@ -77,7 +79,8 @@ def _write_metrics(lib: Library, regions: list[Region], cfg: Config, workdir: Pa
             },
         },
         "by_source": {
-            s: classification_metrics(loci, [r for r in regions if r.source == s], cfg)["per_class"]
+            s: classification_metrics(loci, [r for r in regions if r.source == s], cfg,
+                                   expressed)["per_class"]
             for s in sources
         },
         "n_loci": len(loci),

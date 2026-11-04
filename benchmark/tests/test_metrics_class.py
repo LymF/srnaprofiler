@@ -132,3 +132,52 @@ def test_ece_excludes_ambiguous_unmatched_and_missing_confidence():
             L(1000, 1050, "piRNA", conf=0.1),
             L(100, 150, "siRNA", conf=None)]
     assert classification_metrics(loci, regions, CFG)["ece"] == pytest.approx(0.0)
+
+
+def test_per_class_counts_called_matched_unknown():
+    regions = [R(0, 100, "piRNA"), R(400, 500, "siRNA")]
+    loci = [L(0, 100, "piRNA"),                      # tp
+            L(400, 500, "piRNA"),                    # fp (matches an siRNA region)
+            L(1000, 1100, "piRNA"),                  # called, no match -> unknown
+            L(2000, 2100, "ambiguous", conf=None)]   # abstention: not called
+    pc = classification_metrics(loci, regions, CFG)["per_class"]
+    assert pc["piRNA"]["n_called"] == 3
+    assert pc["piRNA"]["n_matched"] == 2 == pc["piRNA"]["tp"] + pc["piRNA"]["fp"]
+    assert pc["piRNA"]["n_unknown"] == 1
+    assert pc["piRNA"]["precision"] == pytest.approx(0.5)  # unknown loci are not in the denominator
+    assert pc["siRNA"]["n_called"] == 0 and pc["siRNA"]["n_unknown"] == 0
+    assert pc["piRNA"]["n_truth"] == 1 and pc["siRNA"]["n_truth"] == 1
+
+
+def test_recall_expressed_uses_only_expressed_truth():
+    regions = [R(0, 100, "piRNA", name="a"), R(200, 300, "piRNA", name="b"),
+               R(400, 500, "piRNA", name="c")]
+    loci = [L(0, 100, "piRNA"), L(400, 500, "piRNA")]
+    expressed = {id(regions[0]), id(regions[1])}  # a, b expressed; c is silent
+    pc = classification_metrics(loci, regions, CFG, expressed=expressed)["per_class"]["piRNA"]
+    assert pc["recall"] == pytest.approx(2 / 3)
+    assert pc["n_truth"] == 3 and pc["n_truth_expressed"] == 2
+    assert pc["recall_expressed"] == pytest.approx(0.5)  # only a of {a, b} is hit
+
+
+def test_recall_expressed_none_without_expressed_regions_or_bam():
+    regions = [R(0, 100, "piRNA")]
+    loci = [L(0, 100, "piRNA")]
+    pc = classification_metrics(loci, regions, CFG)["per_class"]["piRNA"]
+    assert pc["recall_expressed"] is None and pc["n_truth_expressed"] is None
+    pc = classification_metrics(loci, regions, CFG, expressed=set())["per_class"]["piRNA"]
+    assert pc["recall_expressed"] is None and pc["n_truth_expressed"] == 0
+
+
+def test_match_tie_prefers_smaller_region_then_input_order():
+    # equal overlap (100 bp) with a big region listed first and a small one second
+    regions = [R(0, 1000, "siRNA", name="big"), R(0, 100, "miRNA", name="small")]
+    out = match_loci([L(0, 100, "miRNA")], regions, 0.5)
+    assert out[0][1].name == "small"
+    regions = [R(0, 100, "siRNA", name="first"), R(0, 100, "miRNA", name="second")]
+    out = match_loci([L(0, 100, "miRNA")], regions, 0.5)
+    assert out[0][1].name == "first"
+    # the order of the manifest does not change the winner among different sizes
+    out = match_loci([L(0, 100, "miRNA")], list(reversed([R(0, 1000, "siRNA", name="big"),
+                                                          R(0, 100, "miRNA", name="small")])), 0.5)
+    assert out[0][1].name == "small"

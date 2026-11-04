@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pysam
 import pytest
+from bamutil import make_bam
 
 from benchmark import orchestrate
 from benchmark.manifest import Library
@@ -60,6 +61,8 @@ def setup(tmp_path, monkeypatch, *, truth_chrom="chr1", index_rows=None, role="t
         seen["threads"] = threads
         workdir.mkdir(parents=True, exist_ok=True)
         (workdir / "SRR9.genome.std.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
+        # 12 alignments on the piRNA truth region (expressed), none on the miRNA region
+        make_bam(workdir / "SRR9.bowtie.bam", [("chr1", 100 + i, False) for i in range(12)])
         clusters = workdir / "SRR9.clusters.tsv"
         clusters.write_text(CLUSTER_HEADER +
                             "chr1\t100\t200\t50\tpiRNA\t0.9\n"
@@ -95,6 +98,11 @@ def test_run_writes_metrics_json(tmp_path, monkeypatch):
     assert set(m["delimitation"]["by_source"]) == {"SrcPi"}
     assert m["delimitation"]["by_source"]["SrcPi"]["summary"]["n_clusters"] == 1
     assert "miRNA" in m["classification"]["per_class"]
+    pi = m["classification"]["per_class"]["piRNA"]
+    assert (pi["n_truth"], pi["n_truth_expressed"], pi["recall"], pi["recall_expressed"]) == (1, 1, 1.0, 1.0)
+    mi = m["classification"]["per_class"]["miRNA"]
+    assert (mi["n_truth"], mi["n_truth_expressed"], mi["recall"], mi["recall_expressed"]) == (1, 0, 1.0, None)
+    assert m["by_source"]["SrcPi"]["piRNA"]["n_truth_expressed"] == 1
     assert (path.parent / "benchmark_run.json").exists()
     assert seen["rules"] == orchestrate.REPO / "rules.yaml"
     assert seen["threads"] == 4

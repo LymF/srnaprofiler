@@ -70,16 +70,18 @@ def _classes(items: list[dict]) -> list[str]:
     return sorted({c for per_class in items for c in per_class})
 
 
+CLASS_COLS = [("precision", "precision (annotated loci)"), ("tp", "tp"), ("fp", "fp"),
+              ("n_called", "n_called"), ("n_unknown", "n_unknown"), ("recall", "recall"),
+              ("recall_expressed", "recall_expressed"), ("n_truth", "n_truth"),
+              ("n_truth_expressed", "n_truth_expressed"), ("fdr", "fdr")]
+
+
 def _class_cells(per_class: dict, classes: list[str]) -> list[str]:
-    cells = []
-    for c in classes:
-        m = per_class.get(c, {})
-        cells += [_fmt(m.get("precision")), _fmt(m.get("recall")), _fmt(m.get("fdr"))]
-    return cells
+    return [_fmt(per_class.get(c, {}).get(key)) for c in classes for key, _ in CLASS_COLS]
 
 
 def _class_header(classes: list[str]) -> list[str]:
-    return [f"{c} {k}" for c in classes for k in ("precision", "recall", "fdr")]
+    return [f"{c} {label}" for c in classes for _, label in CLASS_COLS]
 
 
 def _species_section(species: str, items: list[tuple[LibraryResult, str]]) -> list[str]:
@@ -139,21 +141,46 @@ def _role_section(title: str, items: list[tuple[LibraryResult, str]]) -> list[st
     return lines
 
 
+AGG_KEYS = ("precision", "recall", "recall_expressed", "fdr")
+
+
+def _mean(vals: list) -> float | None:
+    vals = [v for v in vals if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
 def _aggregate(valid: list[LibraryResult]) -> list[str]:
+    """Mean per class over libraries within a species, then over species within a taxon group.
+
+    Arthropods and plants are never mixed, and every species weighs the same however many
+    libraries it has.
+    """
     lines = ["### Aggregate", ""]
     if not valid:
         return lines + ["no valid test libraries", ""]
-    lines += [f"Per-class mean over {len(valid)} valid test libraries (libraries without a value skipped).", ""]
-    classes = _classes([r.metrics["classification"]["per_class"] for r in valid])
-    rows = []
-    for c in classes:
-        cells = []
-        for k in ("precision", "recall", "fdr"):
-            vals = [r.metrics["classification"]["per_class"].get(c, {}).get(k) for r in valid]
-            vals = [v for v in vals if v is not None]
-            cells.append(_fmt(sum(vals) / len(vals)) if vals else DASH)
-        rows.append([c] + cells)
-    return lines + _table(["class", "precision", "recall", "fdr"], rows)
+    lines += [f"{len(valid)} valid test librar{'y' if len(valid) == 1 else 'ies'}. Per-class mean over "
+              "the libraries of each species, then mean over the species of each taxon group "
+              "(values missing at either level are skipped).", ""]
+    for group in sorted({r.lib.taxon_group for r in valid}):
+        in_group = [r for r in valid if r.lib.taxon_group == group]
+        species = sorted({r.lib.organism for r in in_group})
+        lines += [f"#### {group}", ""]
+        lines += _table(["species", "libraries"],
+                        [[sp, str(sum(1 for r in in_group if r.lib.organism == sp))] for sp in species])
+        classes = _classes([r.metrics["classification"]["per_class"] for r in in_group])
+        rows = []
+        for c in classes:
+            cells = []
+            for k in AGG_KEYS:
+                per_species = [
+                    _mean([r.metrics["classification"]["per_class"].get(c, {}).get(k)
+                           for r in in_group if r.lib.organism == sp])
+                    for sp in species]
+                cells.append(_fmt(_mean(per_species)))
+            rows.append([c] + cells)
+        lines += _table(["class", "precision (annotated loci)", "recall", "recall_expressed", "fdr"],
+                        rows)
+    return lines
 
 
 def build_report(results: list[LibraryResult], repo_dir: Path) -> str:

@@ -61,18 +61,22 @@ def match_loci(loci: list[dict], regions: list[Region],
     """Pair each locus with its best-overlapping region (or None), in input order.
 
     A region matches when overlap/locus_len or overlap/region_len >= min_overlap_frac.
-    Ties on overlap go to the region that comes first in `regions`.
+    Ties on overlap go to the smaller region, then to the one that comes first in `regions`
+    (so a miRNA precursor inside a larger cluster does not depend on the manifest order).
     """
     index = IntervalIndex([(r.chrom, r.start, r.end) for r in regions])
     out = []
     for loc in loci:
         ls, le = loc["start"], loc["end"]
         best, best_ov, best_idx = None, 0, -1
+        best_len = 0
         for idx, ov in index.overlapping(loc["chrom"], ls, le):
             r = regions[idx]
             if ov / (le - ls) >= min_overlap_frac or ov / (r.end - r.start) >= min_overlap_frac:
-                if ov > best_ov or (ov == best_ov and idx < best_idx):
-                    best, best_ov, best_idx = r, ov, idx
+                length = r.end - r.start
+                if (best is None or ov > best_ov
+                        or (ov == best_ov and (length, idx) < (best_len, best_idx))):
+                    best, best_ov, best_idx, best_len = r, ov, idx, length
         out.append((loc, best))
     return out
 
@@ -99,7 +103,14 @@ def _ece(pairs: list[tuple[float, bool]]) -> float:
     return total
 
 
-def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config) -> dict:
+def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config,
+                           expressed: set[int] | None = None) -> dict:
+    """Per-class precision/recall plus unknown and calibration.
+
+    precision is over annotated loci only: loci predicted C that match a truth region
+    (tp + fp = n_matched); the n_unknown loci predicted C with no match are outside it.
+    expressed: id() of the truth regions with enough reads (metrics_expr); None = unknown.
+    """
     matched = match_loci(loci, regions, cfg.min_overlap_frac)
     scored = [(loc, reg) for loc, reg in matched if loc["cls"] != AMBIGUOUS]
 
@@ -110,10 +121,13 @@ def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config)
 
     per_class = {}
     for c in sorted(classes):
-        tp = fp = 0
+        tp = fp = n_called = 0
         hit_regions = set()
         for loc, reg in scored:
-            if loc["cls"] != c or reg is None:
+            if loc["cls"] != c:
+                continue
+            n_called += 1
+            if reg is None:
                 continue
             if reg.cls == c:
                 tp += 1
@@ -122,12 +136,22 @@ def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config)
                 fp += 1
         precision = tp / (tp + fp) if tp + fp else None
         recall = len(hit_regions) / truth_count[c] if truth_count[c] else None
+        n_expr = n_expr_hit = None
+        if expressed is not None:
+            n_expr = sum(1 for r in regions if r.cls == c and id(r) in expressed)
+            n_expr_hit = len(hit_regions & expressed)
         per_class[c] = {
             "precision": precision,
             "fdr": None if precision is None else 1.0 - precision,
             "recall": recall,
+            "recall_expressed": n_expr_hit / n_expr if n_expr else None,
+            "n_truth": truth_count[c],
+            "n_truth_expressed": n_expr,
             "tp": tp,
             "fp": fp,
+            "n_called": n_called,
+            "n_matched": tp + fp,
+            "n_unknown": n_called - tp - fp,
         }
 
     unknown = [loc for loc, reg in matched if reg is None]

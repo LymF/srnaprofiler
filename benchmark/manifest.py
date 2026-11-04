@@ -36,6 +36,7 @@ class Config:
     low_reads: list[int]
     min_overlap_frac: float
     merge_gap_bp: int = 200  # regions closer than this are one locus, not distinct
+    expressed_min_reads: int = 10  # a truth region is 'expressed' with at least this many reads
 
 
 def load_config(path: Path) -> Config:
@@ -45,6 +46,7 @@ def load_config(path: Path) -> Config:
         low_reads=[int(x) for x in data["low_reads"]],
         min_overlap_frac=float(data["min_overlap_frac"]),
         merge_gap_bp=int(data.get("merge_gap_bp", 200)),
+        expressed_min_reads=int(data.get("expressed_min_reads", 10)),
     )
 
 
