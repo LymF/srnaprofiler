@@ -221,3 +221,177 @@ def test_validate_writes_unique_names_to_mature_and_hairpin(monkeypatch, tmp_pat
                    if line.startswith(">")]
         assert headers == expected
     assert result.submitted == set(expected)
+
+
+# --- randomized insert ends (NEXTflex-style 4N) ---
+
+import argparse
+
+import mapping
+
+
+@pytest.mark.parametrize("rate0,rate4,expected", [
+    (0.0014, 0.84, 4),
+    (0.93, 0.95, 0),
+    (0.10, 0.25, 0),
+    (0.0, 0.0, 0),
+])
+def test_choose_random_ends(rate0, rate4, expected):
+    assert qc.choose_random_ends(rate0, rate4) == expected
+
+
+def test_trim_random_ends_removes_ends_and_drops_short_reads(tmp_path):
+    fq = tmp_path / "t.fastq.gz"
+    long_seq = "AAAA" + "ACGTACGTACGTACGTAC" + "TTTT"   # 26 nt -> 18 nt
+    _write_fastq(fq, [long_seq, "AAAA" + "ACGTACG" + "TTTT", long_seq])  # middle: 15 nt < 18
+    kept, dropped = qc.trim_random_ends([fq], 18)
+    assert (kept, dropped) == (2, 1)
+    with gzip.open(fq, "rt") as fh:
+        lines = fh.read().splitlines()
+    assert lines[1] == "ACGTACGTACGTACGTAC" and lines[3] == "I" * 18
+    assert len(lines) == 8
+    assert not (tmp_path / "tmp.t.fastq.gz").exists()
+
+
+def test_trim_random_ends_keeps_mates_in_sync(tmp_path):
+    r1, r2 = tmp_path / "a_1.fq", tmp_path / "a_2.fq"
+    _write_fastq(r1, ["N" * 4 + "A" * 20 + "N" * 4, "N" * 4 + "C" * 20 + "N" * 4])
+    _write_fastq(r2, ["N" * 4 + "G" * 20 + "N" * 4, "N" * 4 + "T" * 5 + "N" * 4])
+    assert qc.trim_random_ends([r1, r2], 18) == (1, 1)
+    assert r1.read_text().splitlines()[1] == "A" * 20
+    assert r2.read_text().splitlines()[1] == "G" * 20
+
+
+def _qc_args(tmp_path, **kw):
+    d = dict(random_ends="auto", index_prefix=None, prefix="lib", threads=2, min_len=18)
+    d.update(kw)
+    return argparse.Namespace(**d)
+
+
+def _no_bowtie(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("bowtie must not be called")
+    monkeypatch.setattr(qc, "measure_random_end_rates", boom)
+    monkeypatch.setattr(mapping, "bowtie_build", boom)
+
+
+def test_random_ends_zero_never_detects(monkeypatch, tmp_path):
+    _no_bowtie(monkeypatch)
+    fq = tmp_path / "t.fastq"
+    _write_fastq(fq, [BIO])
+    stats = qc.resolve_random_ends(_qc_args(tmp_path, random_ends="0", index_prefix="x"),
+                                   [fq], tmp_path / "g.fa", tmp_path)
+    assert stats["random_ends"] == 0 and fq.read_text().splitlines()[1] == BIO
+
+
+def test_random_ends_auto_without_genome_or_index_is_zero(monkeypatch, tmp_path):
+    _no_bowtie(monkeypatch)
+    fq = tmp_path / "t.fastq"
+    _write_fastq(fq, [BIO])
+    stats = qc.resolve_random_ends(_qc_args(tmp_path), [fq], None, tmp_path)
+    assert stats["random_ends"] == 0 and stats["random_ends_rate0"] is None
+
+
+def test_random_ends_auto_chooses_4_and_trims(monkeypatch, tmp_path):
+    fq = tmp_path / "t.fastq"
+    _write_fastq(fq, ["ACGT" + BIO + "TGCA"])
+    seen = {}
+
+    def fake_rates(trimmed, index, threads):
+        seen["index"] = index
+        return 0.001, 0.84
+    monkeypatch.setattr(qc, "measure_random_end_rates", fake_rates)
+    stats = qc.resolve_random_ends(_qc_args(tmp_path, index_prefix="/idx/sp"),
+                                   [fq], None, tmp_path)
+    assert seen["index"] == "/idx/sp"
+    assert stats["random_ends"] == 4 and stats["random_ends_rate4"] == 0.84
+    assert (stats["random_ends_kept"], stats["random_ends_dropped"]) == (1, 0)
+    assert fq.read_text().splitlines()[1] == BIO
+
+
+def test_random_ends_auto_builds_index_where_mapping_expects_it(monkeypatch, tmp_path):
+    built = []
+    monkeypatch.setattr(mapping, "bowtie_build", lambda g, p, t=1: built.append((g, p)))
+    monkeypatch.setattr(qc, "measure_random_end_rates", lambda *a: (0.9, 0.9))
+    fq = tmp_path / "t.fastq"
+    _write_fastq(fq, [BIO])
+    genome = tmp_path / "lib.genome.std.fa"
+    stats = qc.resolve_random_ends(_qc_args(tmp_path), [fq], genome, tmp_path)
+    assert built == [(str(genome), str(tmp_path / "lib.bowtie_index"))]
+    assert stats["random_ends"] == 0
+
+
+def _six_index_files(prefix, content="x"):
+    for n in ("1", "2", "3", "4", "rev.1", "rev.2"):
+        Path(f"{prefix}.{n}.ebwt").write_text(content)
+
+
+def _mapping_args(tmp_path, genome):
+    return argparse.Namespace(
+        outdir=str(tmp_path), prefix="lib", genome=str(genome), index_prefix=None,
+        reads=str(tmp_path / "r.fq"), reads_paired=None, sam_out=None, fmt=None, mismatches=1,
+        k=1, keep_unmapped=False, threads=1)
+
+
+class _StopAfterIndex(Exception):
+    pass
+
+
+def _run_mapping_until_index(monkeypatch, tmp_path):
+    genome = tmp_path / "g.fa"
+    genome.write_text(">c\nACGT\n")
+    calls = []
+    monkeypatch.setattr(mapping, "validate_arguments", lambda a: None)
+    monkeypatch.setattr(mapping, "check_disk_space", lambda *a: True)
+    monkeypatch.setattr(mapping, "bowtie_build", lambda *a: calls.append(a))
+    monkeypatch.setattr(mapping, "infer_format",
+                        lambda *a: (_ for _ in ()).throw(_StopAfterIndex()))
+    monkeypatch.setattr(mapping, "convert_uracil_to_thymine_optimized", lambda *a: False)
+    monkeypatch.setattr(mapping, "get_read_stats", lambda *a: {})
+    (tmp_path / "r.fq").write_text("@r\nACGT\n+\nIIII\n")
+    with pytest.raises(_StopAfterIndex):
+        mapping.run_mapping(_mapping_args(tmp_path, genome))
+    return calls
+
+
+def test_mapping_reuses_complete_index(monkeypatch, tmp_path):
+    _six_index_files(tmp_path / "lib.bowtie_index")
+    assert _run_mapping_until_index(monkeypatch, tmp_path) == []
+
+
+def test_mapping_rebuilds_incomplete_index(monkeypatch, tmp_path):
+    _six_index_files(tmp_path / "lib.bowtie_index")
+    (tmp_path / "lib.bowtie_index.rev.2.ebwt").write_text("")
+    assert len(_run_mapping_until_index(monkeypatch, tmp_path)) == 1
+
+
+def test_run_passes_shared_index_to_qc(monkeypatch, tmp_path):
+    from benchmark import run as run_mod
+    from benchmark.manifest import Library
+    argvs = []
+
+    def fake_run(cmd, **kw):
+        if cmd[0] == "git":
+            raise subprocess.CalledProcessError(1, cmd)
+        argvs.append(cmd)
+        raise StopIteration  # stop after qc
+    monkeypatch.setattr(run_mod.subprocess, "run", fake_run)
+    for name, data in (("r.fq.gz", b"r"), ("g.fa", b">c\nA\n"), ("rules.yaml", b"a: 1\n")):
+        (tmp_path / name).write_bytes(data)
+    lib = Library("SRR9", "Bombyx mori", "test", "arthropod", "ovary", 1, "http://x", ["t"])
+    shared = tmp_path / "idx" / "Bm"
+    shared.parent.mkdir()
+    for kw in ({}, {"index_prefix": shared}):
+        argvs.clear()
+        with pytest.raises(StopIteration):
+            run_mod.run_library(lib, tmp_path / "r.fq.gz", tmp_path / "g.fa",
+                                tmp_path / "w", tmp_path / "rules.yaml", **kw)
+        assert "--index-prefix" not in argvs[0]      # shared index not built yet
+    _six_index_files(shared)
+    argvs.clear()
+    with pytest.raises(StopIteration):
+        run_mod.run_library(lib, tmp_path / "r.fq.gz", tmp_path / "g.fa",
+                            tmp_path / "w", tmp_path / "rules.yaml", index_prefix=shared)
+    qc_cmd = argvs[0]
+    assert qc_cmd[2] == "qc" and qc_cmd[qc_cmd.index("--index-prefix") + 1] == str(shared)
+    assert qc_cmd[qc_cmd.index("-g") + 1] == str(tmp_path / "g.fa")

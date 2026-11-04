@@ -6,6 +6,7 @@ Handles read QC, trimming, and genome preparation
 import sys
 import subprocess
 import gzip
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -268,6 +269,133 @@ def prepare_genome(genome_path, outdir, prefix):
     return out
 
 
+RANDOM_ENDS_SAMPLE = 20_000
+RANDOM_ENDS_LEN = 4
+
+
+def choose_random_ends(rate0: float, rate4: float) -> int:
+    """4 when trimming 4 nt from both ends at least doubles the alignment rate and reaches 30%."""
+    return RANDOM_ENDS_LEN if rate4 >= 2 * rate0 and rate4 >= 0.30 else 0
+
+
+def _open_text(path, mode: str):
+    return gzip.open(path, mode) if str(path).endswith(".gz") else open(path, mode)
+
+
+def _bowtie_rate(index_prefix: str, reads: Path, threads: int, trim: int) -> float:
+    """Fraction of reads with an alignment (bowtie1 -v 1 -k 1), trimming `trim` nt from both ends."""
+    cmd = ["bowtie", "-v", "1", "-k", "1", "-p", str(threads), "-x", index_prefix,
+           "--trim5", str(trim), "--trim3", str(trim), str(reads)]
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                          text=True, check=True)
+    processed = aligned = None
+    for line in proc.stderr.splitlines():
+        if line.startswith("# reads processed:"):
+            processed = int(line.split(":")[1])
+        elif line.startswith("# reads with at least one"):
+            aligned = int(line.split(":")[1].split()[0])
+    if not processed or aligned is None:
+        raise RuntimeError(f"could not parse bowtie summary: {proc.stderr[-300:]}")
+    return aligned / processed
+
+
+def measure_random_end_rates(trimmed: Path, index_prefix: str, threads: int,
+                             n_reads: int = RANDOM_ENDS_SAMPLE) -> tuple[float, float]:
+    """Align the first n_reads trimmed reads untrimmed and with 4 nt cut from each end.
+
+    Returns (rate0, rate4).
+    """
+    if not which("bowtie"):
+        raise RuntimeError("bowtie not found in PATH")
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        sample = Path(tmp) / "sample.fastq"
+        with _open_text(trimmed, "rt") as src, open(sample, "w") as dst:
+            for i, line in enumerate(src):
+                if i >= 4 * n_reads:
+                    break
+                dst.write(line)
+        return (_bowtie_rate(index_prefix, sample, threads, 0),
+                _bowtie_rate(index_prefix, sample, threads, RANDOM_ENDS_LEN))
+
+
+def trim_random_ends(paths: list[Path], min_len: int, n: int = RANDOM_ENDS_LEN) -> tuple[int, int]:
+    """Remove n nt from both ends of every read, in place (temp file + rename).
+
+    Reads (pairs, when two files are given) shorter than min_len afterwards are dropped from
+    all files. Returns (kept, dropped).
+    """
+    paths = [Path(p) for p in paths]
+    tmps = [p.with_name("tmp." + p.name) for p in paths]
+    kept = dropped = 0
+    srcs = [_open_text(p, "rt") for p in paths]
+    dsts = [_open_text(t, "wt") for t in tmps]
+    try:
+        while True:
+            recs = []
+            for src in srcs:
+                rec = [src.readline() for _ in range(4)]
+                recs.append(rec if rec[0] else None)
+            if all(r is None for r in recs):
+                break
+            if any(r is None for r in recs):
+                raise ValueError("paired FASTQ files have different numbers of reads")
+            cut = [(r[0], r[1].rstrip("\n")[n:-n], r[2], r[3].rstrip("\n")[n:-n]) for r in recs]
+            if any(len(c[1]) < min_len for c in cut):
+                dropped += 1
+                continue
+            kept += 1
+            for dst, (h, seq, plus, qual) in zip(dsts, cut):
+                dst.write(f"{h}{seq}\n{plus}{qual}\n")
+    finally:
+        for f in srcs + dsts:
+            f.close()
+    for p, t in zip(paths, tmps):
+        os.replace(t, p)
+    return kept, dropped
+
+
+def _detection_index(args, std_genome: Optional[Path], outdir: Path) -> Optional[str]:
+    """Bowtie1 index for detection: --index-prefix, else the one `mapping -g` would build."""
+    from mapping import bowtie_build, bowtie_index_ready
+    if getattr(args, "index_prefix", None):
+        return args.index_prefix
+    if std_genome is None:
+        return None
+    prefix = str(outdir / f"{args.prefix}.bowtie_index")
+    if bowtie_index_ready(prefix):
+        log(f"reusing index {prefix}", "INFO")
+    else:
+        bowtie_build(str(std_genome), prefix, args.threads)
+    return prefix
+
+
+def resolve_random_ends(args, trimmed: list[Path], std_genome: Optional[Path],
+                        outdir: Path) -> dict:
+    """Decide (auto) or apply (4) random-end trimming on the trimmed reads; returns stats."""
+    mode = str(getattr(args, "random_ends", "auto"))
+    stats = {"random_ends": 0, "random_ends_rate0": None, "random_ends_rate4": None}
+    if mode == "auto":
+        index = _detection_index(args, std_genome, outdir) \
+            if (std_genome or getattr(args, "index_prefix", None)) else None
+        if index is None:
+            log("Random-end detection needs a genome (-g) or --index-prefix; assuming 0", "INFO")
+            return stats
+        rate0, rate4 = measure_random_end_rates(trimmed[0], index, args.threads)
+        stats["random_ends"] = choose_random_ends(rate0, rate4)
+        stats["random_ends_rate0"], stats["random_ends_rate4"] = rate0, rate4
+        log(f"Random ends: untrimmed {100 * rate0:.2f}% aligned, 4 nt trimmed per end "
+            f"{100 * rate4:.2f}% aligned; choice {stats['random_ends']}", "INFO")
+    else:
+        stats["random_ends"] = int(mode)
+    if stats["random_ends"]:
+        kept, dropped = trim_random_ends(trimmed, args.min_len, stats["random_ends"])
+        stats["random_ends_kept"], stats["random_ends_dropped"] = kept, dropped
+        log(f"Removed {stats['random_ends']} nt from both ends: kept {kept:,}, "
+            f"dropped {dropped:,} reads shorter than {args.min_len}", "INFO")
+    return stats
+
+
 def generate_qc_report(stats: dict, outdir: Path, prefix: str) -> None:
     """Generate a summary QC report."""
     report_file = outdir / f"{prefix}.qc_summary.txt"
@@ -297,6 +425,15 @@ def generate_qc_report(stats: dict, outdir: Path, prefix: str) -> None:
                 f.write(f"  Reads before: {ts['total_reads_before']:,}\n")
                 f.write(f"  Reads after:  {ts['total_reads_after']:,} ({retained:.1f}%)\n\n")
         
+        if 'random_ends' in stats:
+            f.write("Randomized insert ends:\n")
+            f.write("-"*30 + "\n")
+            f.write(f"  Trimmed per end: {stats['random_ends']} nt\n")
+            if stats.get('random_ends_rate0') is not None:
+                f.write(f"  Aligned untrimmed: {100 * stats['random_ends_rate0']:.2f}%\n")
+                f.write(f"  Aligned trimmed:   {100 * stats['random_ends_rate4']:.2f}%\n")
+            f.write("\n")
+
         if 'genome_stats' in stats:
             f.write("Genome Processing:\n")
             f.write("-"*30 + "\n")
@@ -318,6 +455,30 @@ def run_qc(args) -> None:
     
     # Collect statistics
     all_stats = {}
+    
+    # Genome first: random-end detection aligns trimmed reads to it
+    # Process genome if provided
+    std_genome = None
+    if args.genome:
+        log("-"*60, "INFO")
+        log("Processing genome...", "INFO")
+        
+        validate_file_exists(Path(args.genome), "Genome FASTA")
+
+        # Standardize headers
+        std_genome = outdir / f"{args.prefix}.genome.std.fa"
+        seq_count = standardize_fasta_headers(Path(args.genome), std_genome)
+
+        # Prepare genome (uppercase, no tiling — map to full genome)
+        prepared_genome = prepare_genome(str(std_genome), str(outdir), args.prefix)
+
+        all_stats['genome_stats'] = {
+            'sequences': seq_count,
+        }
+
+        log(f"Genome files created:", "INFO")
+        log(f"  Standardized: {std_genome}", "INFO")
+        log(f"  Prepared (no tiling): {prepared_genome}", "INFO")
     
     # Process reads if provided
     if args.reads1:
@@ -397,6 +558,9 @@ def run_qc(args) -> None:
             )
         
         all_stats['trim_stats'] = trim_stats
+
+        all_stats.update(resolve_random_ends(
+            args, [trimmed1] + ([trimmed2] if trimmed2 else []), std_genome, outdir))
         
         # Run FastQC on trimmed reads
         log("Running FastQC on trimmed reads...", "INFO")
@@ -408,28 +572,6 @@ def run_qc(args) -> None:
         log(f"  R1: {trimmed1}", "INFO")
         if trimmed2:
             log(f"  R2: {trimmed2}", "INFO")
-    
-    # Process genome if provided
-    if args.genome:
-        log("-"*60, "INFO")
-        log("Processing genome...", "INFO")
-        
-        validate_file_exists(Path(args.genome), "Genome FASTA")
-
-        # Standardize headers
-        std_genome = outdir / f"{args.prefix}.genome.std.fa"
-        seq_count = standardize_fasta_headers(Path(args.genome), std_genome)
-
-        # Prepare genome (uppercase, no tiling — map to full genome)
-        prepared_genome = prepare_genome(str(std_genome), str(outdir), args.prefix)
-
-        all_stats['genome_stats'] = {
-            'sequences': seq_count,
-        }
-
-        log(f"Genome files created:", "INFO")
-        log(f"  Standardized: {std_genome}", "INFO")
-        log(f"  Prepared (no tiling): {prepared_genome}", "INFO")
     
     # Generate summary report
     generate_qc_report(all_stats, outdir, args.prefix)

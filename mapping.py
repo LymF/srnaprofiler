@@ -80,6 +80,15 @@ def bowtie_build(genome_fa: str, out_prefix: str, threads: int = 1) -> None:
     log(f"Bowtie index built: {out_prefix}", "INFO")
 
 
+def bowtie_index_ready(index_prefix: str) -> bool:
+    """True when all six bowtie1 index files exist and are non-empty."""
+    for n in ("1", "2", "3", "4", "rev.1", "rev.2"):
+        f = Path(f"{index_prefix}.{n}.ebwt")
+        if not f.is_file() or f.stat().st_size == 0:
+            return False
+    return True
+
+
 def check_bowtie_index(index_prefix: str) -> bool:
     """Check if Bowtie index files exist."""
     index_path = Path(index_prefix)
@@ -465,10 +474,13 @@ def run_mapping(args) -> None:
     index_prefix = args.index_prefix
     
     if args.genome:
-        log("Building Bowtie index...", "INFO")
         validate_file_exists(Path(args.genome), "Genome FASTA")
         index_prefix = str(outdir / f"{args.prefix}.bowtie_index")
-        bowtie_build(args.genome, index_prefix, args.threads)
+        if bowtie_index_ready(index_prefix):
+            log(f"reusing index {index_prefix}", "INFO")
+        else:
+            log("Building Bowtie index...", "INFO")
+            bowtie_build(args.genome, index_prefix, args.threads)
     elif args.index_prefix:
         log(f"Using existing index: {args.index_prefix}", "INFO")
         if not check_bowtie_index(args.index_prefix):

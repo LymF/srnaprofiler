@@ -154,10 +154,12 @@ def run_library(
             commands[name] = argv
             subprocess.run(argv, check=True)
 
-    step("qc", [trimmed, std_genome], [reads, genome],
-         base + ["qc", "-p", acc, "-o", out, "--reads1", str(reads), "-g", str(genome)] + t)
-
     use_shared = shared is not None and _index_ready(shared)
+    qc_index = ["--index-prefix", str(shared)] if use_shared else []
+    step("qc", [trimmed, std_genome], [reads, genome],
+         base + ["qc", "-p", acc, "-o", out, "--reads1", str(reads), "-g", str(genome)]
+         + qc_index + t)
+
     ref = ["--index-prefix", str(shared)] if use_shared else ["-g", str(std_genome)]
     step("mapping", [bam, bai], [trimmed, std_genome],
          base + ["mapping", "-p", acc, "-o", out, "--reads", str(trimmed)] + ref + t)

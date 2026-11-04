@@ -166,6 +166,18 @@ themselves are defined there. Every module takes --help.
         default=DEFAULT_MIN_LEN,
         help="Minimum read length after trimming (default: %(default)s). For miRNA analyses --min-len 18 is optimal"
     )
+    qc_trim.add_argument(
+        "--random-ends",
+        choices=["auto", "0", "4"],
+        default="auto",
+        help="Randomized nt at both insert ends (NEXTflex-style 4N): 'auto' detects it by "
+             "aligning reads with and without 4 nt trimmed per end (needs -g or --index-prefix; "
+             "without either it behaves as 0), '4' removes 4 nt from each end (default: %(default)s)"
+    )
+    qc_trim.add_argument(
+        "--index-prefix",
+        help="Existing bowtie1 index used by --random-ends auto instead of building one from -g"
+    )
     
     # Performance options
     qc_perf = qc_parser.add_argument_group("performance options")
