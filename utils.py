@@ -27,7 +27,8 @@ DEFAULT_MAX_ALIGNMENTS = 20
 FASTQ_ADAPTERS = {
     'illumina_srna': 'TGGAATTCTCGGGTGCCAAGG',
     'truseq': 'AGATCGGAAGAGC',
-    'nextera': 'CTGTCTCTTATACACATCT'
+    'nextera': 'CTGTCTCTTATACACATCT',
+    'qiaseq': 'AACTGTAGGCACCATCAAT'
 }
 
 # Color codes for logging

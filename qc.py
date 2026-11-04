@@ -5,6 +5,7 @@ Handles read QC, trimming, and genome preparation
 """
 import sys
 import subprocess
+import gzip
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,54 @@ from utils import (
     DEFAULT_MIN_LEN, DEFAULT_QTRIM,
     DEFAULT_THREADS, FASTQ_ADAPTERS
 )
+
+
+def adapter_fractions(reads: str, candidates: dict[str, str], n_reads: int = 100_000,
+                      probe_len: int = 12) -> dict[str, float]:
+    """Fraction of the first `n_reads` reads containing each candidate's probe."""
+    probes = {name: seq[:probe_len] for name, seq in candidates.items()}
+    counts = {name: 0 for name in candidates}
+    total = 0
+    opener = gzip.open if str(reads).endswith(".gz") else open
+    with opener(reads, "rt") as fh:
+        for i, line in enumerate(fh):
+            if i % 4 != 1:
+                continue
+            total += 1
+            seq = line.strip().upper()
+            for name, probe in probes.items():
+                if probe in seq:
+                    counts[name] += 1
+            if total >= n_reads:
+                break
+    return {name: (c / total if total else 0.0) for name, c in counts.items()}
+
+
+def detect_adapter(reads: str, candidates: dict[str, str], n_reads: int = 100_000,
+                   min_frac: float = 0.05, probe_len: int = 12) -> Optional[str]:
+    """Pick the 3' adapter carried by the reads, or None.
+
+    Returns the full sequence of the candidate whose first `probe_len` nt occur
+    in the highest fraction of the first `n_reads` reads, if that fraction
+    reaches `min_frac`; ties go to the first candidate in dict order.
+    """
+    fractions = adapter_fractions(reads, candidates, n_reads, probe_len)
+    if not fractions:
+        return None
+    best = max(fractions, key=lambda n: fractions[n])  # first wins on ties
+    return candidates[best] if fractions[best] >= min_frac else None
+
+
+def _detect_from_reads(reads: str) -> Optional[str]:
+    """detect_adapter over FASTQ_ADAPTERS, logging the outcome."""
+    found = detect_adapter(reads, FASTQ_ADAPTERS)
+    if found is None:
+        log("No known 3' adapter detected in the reads", "INFO")
+        return None
+    name = next(n for n, s in FASTQ_ADAPTERS.items() if s == found)
+    frac = adapter_fractions(reads, {name: found})[name]
+    log(f"Detected 3' adapter '{name}' ({found}) in {100 * frac:.1f}% of reads", "INFO")
+    return found
 
 
 def fastqc(reads: str, outdir: Path, threads: int) -> None:
@@ -63,11 +112,13 @@ def trim_with_fastp(
     if in2 and out2:
         cmd += ["-I", in2, "-O", str(out2)]
     
+    if not adapter:
+        adapter = _detect_from_reads(in1)
     if adapter:
         cmd += ["--adapter_sequence", adapter]
-    else:
-        # Auto-detect adapters
-        cmd += ["--detect_adapter_for_pe" if in2 else "--adapter_sequence", FASTQ_ADAPTERS['illumina_srna']]
+    elif in2:
+        cmd += ["--detect_adapter_for_pe"]
+    # else single-end with no known adapter: fastp auto-detects by itself
     
     # Handle Phred encoding
     if phred == 64:
@@ -123,17 +174,16 @@ def trim_with_cutadapt(
     ]
     
     # Add adapter sequences
-    if adapter:
-        if in2:
-            base_cmd += ["-a", adapter, "-A", adapter]
-        else:
-            base_cmd += ["-a", adapter]
+    if not adapter:
+        adapter = _detect_from_reads(in1)
+        if not adapter:
+            adapter = FASTQ_ADAPTERS['illumina_srna']
+            log("No adapter detected; cutadapt cannot auto-detect, so the "
+                f"illumina_srna default ({adapter}) is a guess", "WARN")
+    if in2:
+        base_cmd += ["-a", adapter, "-A", adapter]
     else:
-        default_adapter = FASTQ_ADAPTERS['illumina_srna']
-        if in2:
-            base_cmd += ["-a", default_adapter, "-A", default_adapter]
-        else:
-            base_cmd += ["-a", default_adapter]
+        base_cmd += ["-a", adapter]
     
     # Handle Phred encoding
     if phred == 64:

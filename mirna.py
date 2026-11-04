@@ -365,6 +365,9 @@ def run_quantifier(mapped_reads: Path, output_dir: Path, species: str,
                   hairpin_ref: Optional[Path] = None,
                   mature_ref: Optional[Path] = None) -> bool:
     """Run quantifier.pl for miRNA expression quantification."""
+    if hairpin_ref is None and mature_ref is None:
+        log("No miRNA reference given; skipping quantifier.pl (novel-only run)", "INFO")
+        return True
     try:
         species_safe = species.replace(' ', '_')
         
@@ -1122,10 +1125,16 @@ def staged_reads_name(name):
     finds nothing, and reports zero reads for every locus -- while the reads sit
     aligned in the BAM. Our own mapping module emits exactly that name.
     """
-    stem, dot, ext = str(name).rpartition(".")
+    name = str(name)
+    compressed = ""
+    for suffix in (".gz", ".bz2"):
+        if name.endswith(suffix):
+            name, compressed = name[:-len(suffix)], suffix
+            break
+    stem, dot, ext = name.rpartition(".")
     if not dot:
-        return str(name)
-    return stem.replace(".", "_") + dot + ext
+        return name + compressed
+    return stem.replace(".", "_") + dot + ext + compressed
 
 
 def stage_reads_for_mirscore(reads, workdir):
