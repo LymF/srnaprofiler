@@ -24,6 +24,7 @@ class SimSpec:
 class SimResult:
     fastq: Path
     truth_bed: Path
+    genome: Path
 
 
 def revcomp(seq: str) -> str:
@@ -168,6 +169,23 @@ def phasirna_reads(rng, p, start, end, n) -> list[Read]:
     return reads
 
 
+def hairpin(p, locus_seq: str, strand: str) -> str:
+    """Genome stretch (as stored on the + strand) folding into a hairpin with the mirna_reads arms.
+
+    The 5p arm and 5' flank stay as in the locus; the 3p arm side is their reverse complement
+    (3p base b+j pairs with 5p base a+19-j, so 5p/3p carry 2-nt 3' overhangs); a short second stem
+    closes a ~10-nt loop."""
+    t = list(locus_seq if strand == "+" else revcomp(locus_seq))
+    last = len(t) - 1
+    pairs = list(range(0, p["five_prime_offset"] + p["mature_length"] - p["overhang"]))
+    arm_end = p["five_prime_offset"] + p["mature_length"]
+    pairs += list(range(arm_end, arm_end + 8))   # second stem, after a 2x2 internal loop at the arm ends
+    for x in pairs:
+        t[last - x] = t[x].translate(COMP)
+    out = "".join(t)
+    return out if strand == "+" else revcomp(out)
+
+
 def make_reads(rng, cls, p, seq, start, end, strand, n) -> list[Read]:
     if cls == "piRNA":
         return pirna_reads(rng, p, seq, start, end, strand, n)
@@ -180,8 +198,8 @@ def make_reads(rng, cls, p, seq, start, end, strand, n) -> list[Read]:
     return hcsirna_reads(rng, p, seq, start, end, n)
 
 
-def open_text(path: Path):
-    return gzip.open(path, "rt") if str(path).endswith(".gz") else open(path)
+def open_binary(path: Path):
+    return gzip.open(path, "rb") if str(path).endswith(".gz") else open(path, "rb")
 
 
 def simulate(spec: SimSpec, background_fastq: Path, genome: Path, out_dir: Path, *,
@@ -203,6 +221,9 @@ def simulate(spec: SimSpec, background_fastq: Path, genome: Path, out_dir: Path,
         for i, (chrom, start, end) in enumerate(place_loci(rng, seqs, spec.classes[cls], p["locus_length"], loci)):
             strand = ("+" if rng.random() < 0.5 else "-") if cls in ("piRNA", "miRNA") else "."
             loci.append((chrom, start, end, f"{cls}_{i}", cls, strand))
+            if cls == "miRNA":
+                hp = hairpin(p, seqs[chrom][start:end], strand)
+                seqs[chrom] = seqs[chrom][:start] + hp + seqs[chrom][end:]
             for s, e, st, tag in make_reads(rng, cls, p, seqs[chrom], start, end, strand, n_reads):
                 seq = seqs[chrom][s:e] if st == "+" else revcomp(seqs[chrom][s:e])
                 seq += adapter or ""
@@ -210,8 +231,13 @@ def simulate(spec: SimSpec, background_fastq: Path, genome: Path, out_dir: Path,
 
     fastq = out_dir / "sim.fastq.gz"
     with open(fastq, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz:
-        with open_text(Path(background_fastq)) as bg:
-            gz.write(bg.read().encode())
+        last = b"\n"
+        with open_binary(Path(background_fastq)) as bg:
+            while chunk := bg.read(1 << 20):
+                gz.write(chunk)
+                last = chunk[-1:]
+        if last != b"\n":
+            gz.write(b"\n")
         gz.write("".join(records).encode())
 
     truth_bed = out_dir / "sim_truth.bed"
@@ -219,4 +245,10 @@ def simulate(spec: SimSpec, background_fastq: Path, genome: Path, out_dir: Path,
     for cls in spec.classes:
         lines = [f"{c}\t{s}\t{e}\t{n}\t0\t{st}\n" for c, s, e, n, k, st in loci if k == cls]
         (out_dir / f"sim_truth.{cls}.bed").write_text("".join(lines))
-    return SimResult(fastq, truth_bed)
+    genome_out = out_dir / "sim_genome.fa"
+    with open(genome_out, "w") as fh:
+        for chrom, seq in seqs.items():
+            fh.write(f">{chrom}\n")
+            for i in range(0, len(seq), 80):
+                fh.write(seq[i:i + 80] + "\n")
+    return SimResult(fastq, truth_bed, genome_out)
