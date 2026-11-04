@@ -1,0 +1,6 @@
+name: srnabench
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - iseq
