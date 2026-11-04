@@ -28,3 +28,10 @@ deep-research-report-*.md
 # legacy standalone version (superseded)
 srnaprofiler-func.py
 tools/
+
+# reference data built by `setup --data` (large, regenerable)
+data/
+
+# kept on disk only (removed from the repo in ca6ddc2)
+tests/
+extras/
