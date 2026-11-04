@@ -1,0 +1,94 @@
+# Spike-in simulation parameters. Every entry is {value, source}. None is taken from the tool's own
+# classification configuration. DOIs were checked against the Crossref API (api.crossref.org/works/<doi>);
+# the paper supports the qualitative signature, numeric weights not stated in the paper are modelling choices
+# and say so in `note`.
+defaults:
+  reads_per_locus:
+    value: 40
+    source: "modelling choice"
+piRNA:
+  locus_length:
+    value: 400
+    source: "modelling choice"
+    note: "real piRNA clusters are kb-scale; a short synthetic locus keeps the injected truth small"
+  length_dist:
+    value: {24: 0.10, 25: 0.20, 26: 0.20, 27: 0.20, 28: 0.15, 29: 0.10, 30: 0.05}
+    source: "Brennecke J. et al. (2007) Cell 128:1089-1103. https://doi.org/10.1016/j.cell.2007.01.043"
+    note: "24-30 nt range of Drosophila germline piRNAs from the paper; weights are a modelling choice"
+  first_u_prob:
+    value: 0.9
+    source: "Brennecke J. et al. (2007) Cell 128:1089-1103. https://doi.org/10.1016/j.cell.2007.01.043"
+    note: "primary piRNAs carry a strong 1U bias; the exact fraction is a modelling choice"
+  pingpong_fraction:
+    value: 0.35
+    source: "modelling choice"
+    note: "fraction of primary reads given an opposite-strand partner"
+  pingpong_overlap:
+    value: 10
+    source: "Gunawardane L.S. et al. (2007) Science 315:1587-1590. https://doi.org/10.1126/science.1140494"
+    note: "5' ends of sense and antisense piRNAs overlap by 10 nt; partner has A at position 10 (Brennecke 2007, doi above)"
+siRNA:
+  locus_length:
+    value: 150
+    source: "modelling choice"
+  length_dist:
+    value: {20: 0.05, 21: 0.80, 22: 0.15}
+    source: "Czech B. et al. (2008) Nature 453:798-802. https://doi.org/10.1038/nature07007"
+    note: "endo-siRNAs of Drosophila are 21 nt; weights are a modelling choice (also Ghildiyal 2008, https://doi.org/10.1126/science.1157396)"
+  plus_strand_prob:
+    value: 0.5
+    source: "Czech B. et al. (2008) Nature 453:798-802. https://doi.org/10.1038/nature07007"
+    note: "both strands of a duplex-derived locus are represented; balance is a modelling choice"
+miRNA:
+  locus_length:
+    value: 90
+    source: "Bartel D.P. (2004) Cell 116:281-297. https://doi.org/10.1016/S0092-8674(04)00045-5"
+    note: "hairpin precursor ~70-100 nt; exact length is a modelling choice"
+  mature_length:
+    value: 22
+    source: "Bartel D.P. (2004) Cell 116:281-297. https://doi.org/10.1016/S0092-8674(04)00045-5"
+  overhang:
+    value: 2
+    source: "Bartel D.P. (2004) Cell 116:281-297. https://doi.org/10.1016/S0092-8674(04)00045-5"
+    note: "miRNA/miRNA* duplex has 2-nt 3' overhangs"
+  five_prime_offset:
+    value: 10
+    source: "modelling choice"
+    note: "position of the 5p arm inside the hairpin"
+  star_fraction:
+    value: 0.2
+    source: "Bartel D.P. (2004) Cell 116:281-297. https://doi.org/10.1016/S0092-8674(04)00045-5"
+    note: "the star strand is the less abundant arm; the fraction is a modelling choice"
+phasiRNA:
+  locus_length:
+    value: 168
+    source: "modelling choice"
+    note: "8 cycles of 21 nt"
+  period:
+    value: 21
+    source: "Allen E. et al. (2005) Cell 121:207-221. https://doi.org/10.1016/j.cell.2005.04.004"
+  overhang:
+    value: 2
+    source: "Allen E. et al. (2005) Cell 121:207-221. https://doi.org/10.1016/j.cell.2005.04.004"
+    note: "DCL-processed duplexes carry 2-nt 3' overhangs, shifting the minus-strand register"
+  in_phase_fraction:
+    value: 0.9
+    source: "modelling choice"
+  minus_strand_prob:
+    value: 0.5
+    source: "modelling choice"
+hcsiRNA:
+  locus_length:
+    value: 150
+    source: "modelling choice"
+  length_dist:
+    value: {23: 0.05, 24: 0.85, 25: 0.10}
+    source: "Mi S. et al. (2008) Cell 133:116-127. https://doi.org/10.1016/j.cell.2008.02.034"
+    note: "24-nt siRNAs loaded in AGO4; weights are a modelling choice"
+  first_a_prob:
+    value: 0.7
+    source: "Mi S. et al. (2008) Cell 133:116-127. https://doi.org/10.1016/j.cell.2008.02.034"
+    note: "AGO4 sorts 5'A small RNAs; the exact fraction is a modelling choice"
+  plus_strand_prob:
+    value: 0.5
+    source: "modelling choice"
