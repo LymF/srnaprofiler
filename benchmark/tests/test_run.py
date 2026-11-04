@@ -281,3 +281,59 @@ def test_meta_records_md5_of_reads_and_genome(fake, tmp_path):
     meta = json.loads(res.meta.read_text())
     assert meta["reads_md5"] == hashlib.md5(b"reads").hexdigest()
     assert meta["genome_md5"] == hashlib.md5(b">c\nA\n").hexdigest()
+
+
+def _prepare_fresh_run(tmp_path):
+    go(tmp_path)
+    set_mtimes(tmp_path / "w", 1000)
+    age_inputs(tmp_path)
+
+
+def test_resume_skips_steps_under_same_pipeline_hash(fake, tmp_path):
+    calls, _ = fake
+    _prepare_fresh_run(tmp_path)
+    calls.clear()
+    res = go(tmp_path)
+    assert calls == []
+    meta = json.loads(res.meta.read_text())
+    assert meta["resumed_from_pipeline_sha256"] == run_mod.pipeline_sha256()
+
+
+def test_resume_reruns_everything_under_different_pipeline_hash(fake, tmp_path):
+    calls, _ = fake
+    _prepare_fresh_run(tmp_path)
+    meta_path = tmp_path / "w" / "benchmark_run.json"
+    stored = json.loads(meta_path.read_text())
+    stored["pipeline_sha256"] = "0" * 64
+    meta_path.write_text(json.dumps(stored))
+    set_mtimes(tmp_path / "w", 1000)
+    calls.clear()
+    res = go(tmp_path)
+    assert [c[2] for c in calls] == ["qc", "mapping", "mirna", "classify"]
+    meta = json.loads(res.meta.read_text())
+    assert meta["skipped_steps"] == []
+    assert meta["resumed_from_pipeline_sha256"] == "0" * 64
+    assert meta["pipeline_sha256"] == run_mod.pipeline_sha256()
+
+
+def test_no_previous_meta_runs_everything_even_with_fresh_outputs(fake, tmp_path):
+    calls, _ = fake
+    _prepare_fresh_run(tmp_path)
+    (tmp_path / "w" / "benchmark_run.json").unlink()
+    set_mtimes(tmp_path / "w", 1000)
+    calls.clear()
+    res = go(tmp_path)
+    assert [c[2] for c in calls] == ["qc", "mapping", "mirna", "classify"]
+    assert json.loads(res.meta.read_text())["resumed_from_pipeline_sha256"] is None
+
+
+def test_index_ready_needs_the_six_exact_nonempty_files(tmp_path):
+    prefix = tmp_path / "idx"
+    for suffix in ("1", "2", "3", "4", "rev.1"):
+        (tmp_path / f"idx.{suffix}.ebwt").write_text("x")
+    (tmp_path / "idx.rev.2.ebwt.part").write_text("x")
+    assert not run_mod._index_ready(prefix)
+    (tmp_path / "idx.rev.2.ebwt").write_text("")
+    assert not run_mod._index_ready(prefix)  # empty file does not count
+    (tmp_path / "idx.rev.2.ebwt").write_text("x")
+    assert run_mod._index_ready(prefix)

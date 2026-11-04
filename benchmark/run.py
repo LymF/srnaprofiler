@@ -79,8 +79,13 @@ def _fresh(outputs: list[Path], inputs: list[Path]) -> bool:
 
 
 def _index_ready(prefix: Path) -> bool:
-    """A bowtie1 index has six files (.1-.4.ebwt, .rev.1-.2.ebwt; .ebwtl when large)."""
-    return len(list(prefix.parent.glob(prefix.name + ".*.ebwt*"))) >= 6
+    """A bowtie1 index is exactly six non-empty files; a stray .part file does not count."""
+    names = ("1", "2", "3", "4", "rev.1", "rev.2")
+    for n in names:
+        f = prefix.parent / f"{prefix.name}.{n}.ebwt"
+        if not f.is_file() or f.stat().st_size == 0:
+            return False
+    return True
 
 
 def _share_index(built: Path, shared: Path) -> None:
@@ -126,16 +131,22 @@ def run_library(
 
     meta = workdir / "benchmark_run.json"
     previous: dict[str, list[str]] = {}  # commands that produced the outputs we may skip
+    previous_sha: str | None = None
     if meta.exists():
         try:
-            previous = {c[2]: c for c in json.loads(meta.read_text()).get("commands", [])}
-        except (ValueError, IndexError, TypeError):
-            previous = {}
+            old = json.loads(meta.read_text())
+            previous_sha = old.get("pipeline_sha256")
+            previous = {c[2]: c for c in old.get("commands", [])}
+        except (ValueError, IndexError, TypeError, AttributeError):
+            previous, previous_sha = {}, None
+    current_sha = pipeline_sha256()
+    # outputs may be reused only if they were made by exactly this pipeline code
+    can_resume = previous_sha is not None and previous_sha == current_sha
     commands: dict[str, list[str]] = {}
     skipped: list[str] = []
 
     def step(name: str, outputs: list[Path], inputs: list[Path], argv: list[str]) -> None:
-        if _fresh(outputs, inputs):
+        if can_resume and _fresh(outputs, inputs):
             skipped.append(name)
             if name in previous:
                 commands[name] = previous[name]
@@ -175,7 +186,8 @@ def run_library(
 
     meta.write_text(json.dumps({
         "tool_git_sha": _git_sha(),
-        "pipeline_sha256": pipeline_sha256(),
+        "pipeline_sha256": current_sha,
+        "resumed_from_pipeline_sha256": previous_sha,
         "git_dirty": _git_dirty(),
         "reads_md5": file_md5(reads),
         "genome_md5": file_md5(genome),
