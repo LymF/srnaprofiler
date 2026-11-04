@@ -105,11 +105,20 @@ def reads_suffix(path: Path) -> str:
 
 def copy_input_file(source_path: Path, dest_path: Path, file_type: str) -> Path:
     """Copy input file to pipeline directory structure if needed."""
-    if source_path == dest_path or dest_path.exists():
+    if source_path == dest_path:
         return dest_path
-    
-    log(f"Copying {file_type} to pipeline directory: {source_path} -> {dest_path}", "INFO")
-    shutil.copy2(source_path, dest_path)
+    if dest_path.exists():
+        if source_path.resolve() == dest_path.resolve():
+            return dest_path
+        src_st, dst_st = source_path.stat(), dest_path.stat()
+        if src_st.st_size == dst_st.st_size and src_st.st_mtime_ns == dst_st.st_mtime_ns:
+            return dest_path
+        log(f"Staged {file_type} is stale; re-copying: {source_path} -> {dest_path}", "INFO")
+    else:
+        log(f"Copying {file_type} to pipeline directory: {source_path} -> {dest_path}", "INFO")
+    tmp_path = dest_path.with_name(dest_path.name + ".tmp")
+    shutil.copy2(source_path, tmp_path)
+    os.replace(tmp_path, dest_path)
     return dest_path
 
 

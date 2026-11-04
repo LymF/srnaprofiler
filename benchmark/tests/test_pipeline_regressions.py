@@ -395,3 +395,62 @@ def test_run_passes_shared_index_to_qc(monkeypatch, tmp_path):
     qc_cmd = argvs[0]
     assert qc_cmd[2] == "qc" and qc_cmd[qc_cmd.index("--index-prefix") + 1] == str(shared)
     assert qc_cmd[qc_cmd.index("-g") + 1] == str(tmp_path / "g.fa")
+
+
+# --- copy_input_file staleness (task 10fix5) ---
+import os as _os
+import shutil as _shutil
+
+
+def test_copy_input_file_fresh_copy(tmp_path):
+    src = tmp_path / "src.fq"
+    src.write_text("abc")
+    dst = tmp_path / "dst.fq"
+    assert mirna.copy_input_file(src, dst, "reads") == dst
+    assert dst.read_text() == "abc"
+
+
+def test_copy_input_file_up_to_date_not_recopied(tmp_path, monkeypatch):
+    src = tmp_path / "src.fq"
+    src.write_text("abc")
+    dst = tmp_path / "dst.fq"
+    _shutil.copy2(src, dst)
+    calls = []
+    monkeypatch.setattr(mirna.shutil, "copy2", lambda *a, **k: calls.append(a))
+    mirna.copy_input_file(src, dst, "reads")
+    assert calls == []
+
+
+def test_copy_input_file_size_changed_replaced(tmp_path):
+    src = tmp_path / "src.fq"
+    src.write_text("abc")
+    dst = tmp_path / "dst.fq"
+    _shutil.copy2(src, dst)
+    src.write_text("abcdef")
+    mirna.copy_input_file(src, dst, "reads")
+    assert dst.read_text() == "abcdef"
+    assert not (tmp_path / "dst.fq.tmp").exists()
+
+
+def test_copy_input_file_same_size_different_mtime_recopied(tmp_path):
+    src = tmp_path / "src.fq"
+    src.write_text("abc")
+    dst = tmp_path / "dst.fq"
+    dst.write_text("xyz")
+    _os.utime(dst, ns=(1_000_000_000, 1_000_000_000))
+    mirna.copy_input_file(src, dst, "reads")
+    assert dst.read_text() == "abc"
+    assert dst.stat().st_mtime_ns == src.stat().st_mtime_ns
+
+
+def test_copy_input_file_same_path_no_copy(tmp_path, monkeypatch):
+    src = tmp_path / "src.fq"
+    src.write_text("abc")
+    calls = []
+    monkeypatch.setattr(mirna.shutil, "copy2", lambda *a, **k: calls.append(a))
+    assert mirna.copy_input_file(src, src, "reads") == src
+    link = tmp_path / "link.fq"
+    link.symlink_to(src)
+    assert mirna.copy_input_file(src, link, "reads") == link
+    assert calls == []
+    assert src.read_text() == "abc"
