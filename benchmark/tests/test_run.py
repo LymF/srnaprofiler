@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,15 @@ def fake(monkeypatch):
         sub = cmd[2]
         out = Path(cmd[cmd.index("-o") + 1])
         acc = cmd[cmd.index("-p") + 1]
+        if sub == "qc":
+            (out / f"{acc}.trimmed.R1.fastq.gz").write_text("t")
+            (out / f"{acc}.genome.std.fa").write_text(">c\nA\n")
+        if sub == "mapping":
+            (out / f"{acc}.bowtie.bam").write_text("b")
+            (out / f"{acc}.bowtie.bam.bai").write_text("i")
+            if "-g" in cmd:  # mapping -g builds the index in the workdir
+                for suffix in ("1", "2", "3", "4", "rev.1", "rev.2"):
+                    (out / f"{acc}.bowtie_index.{suffix}.ebwt").write_text("x")
         if sub == "mirna" and state["bed"] is not None:
             (out / f"{acc}.mirna_loci.bed").write_text(state["bed"])
         if sub == "classify" and state["clusters"]:
@@ -40,7 +50,11 @@ def fake(monkeypatch):
 
 def go(tmp_path, lib=None, **kw):
     rules = tmp_path / "rules.yaml"
-    rules.write_bytes(b"a: 1\n")
+    if not rules.exists():
+        rules.write_bytes(b"a: 1\n")
+    for name, data in (("r.fq.gz", b"reads"), ("g.fa", b">c\nA\n")):
+        if not (tmp_path / name).exists():
+            (tmp_path / name).write_bytes(data)
     return run_mod.run_library(lib or make_lib(), tmp_path / "r.fq.gz",
                                tmp_path / "g.fa", tmp_path / "w", rules, **kw)
 
@@ -120,3 +134,103 @@ def test_interpreter_from_env(fake, tmp_path, monkeypatch):
     monkeypatch.setenv("SRNAPROFILER_PYTHON", "/opt/env/bin/python")
     go(tmp_path)
     assert all(c[0] == "/opt/env/bin/python" for c in calls)
+
+
+def set_mtimes(directory, t):
+    for f in Path(directory).rglob("*"):
+        if f.is_file():
+            os.utime(f, (t, t))
+
+
+def age_inputs(tmp_path):
+    for name in ("r.fq.gz", "g.fa", "rules.yaml"):
+        os.utime(tmp_path / name, (500, 500))
+
+
+def test_second_run_skips_every_step(fake, tmp_path):
+    calls, state = fake
+    go(tmp_path)
+    assert len(calls) == 4
+    set_mtimes(tmp_path / "w", 1000)
+    age_inputs(tmp_path)
+    calls.clear()
+    res = go(tmp_path)
+    assert calls == []
+    meta = json.loads(res.meta.read_text())
+    assert meta["skipped_steps"] == ["qc", "mapping", "mirna", "classify"]
+    assert len(meta["commands"]) == 4  # the commands of the full pipeline stay recorded
+
+
+def test_newer_reads_rerun_everything(fake, tmp_path):
+    calls, _ = fake
+    go(tmp_path)
+    set_mtimes(tmp_path / "w", 1000)
+    age_inputs(tmp_path)
+    os.utime(tmp_path / "r.fq.gz", (2000, 2000))
+    calls.clear()
+    res = go(tmp_path)
+    assert [c[2] for c in calls] == ["qc", "mapping", "mirna", "classify"]
+    assert json.loads(res.meta.read_text())["skipped_steps"] == []
+
+
+def test_only_missing_output_step_and_downstream_rerun(fake, tmp_path):
+    calls, _ = fake
+    go(tmp_path)
+    set_mtimes(tmp_path / "w", 1000)
+    age_inputs(tmp_path)
+    (tmp_path / "w" / "SRR9.clusters.tsv").unlink()
+    calls.clear()
+    go(tmp_path)
+    assert [c[2] for c in calls] == ["classify"]
+    # a BAM without its index counts as incomplete: mapping reruns, and classify follows
+    set_mtimes(tmp_path / "w", 1000)
+    (tmp_path / "w" / "SRR9.bowtie.bam.bai").unlink()
+    calls.clear()
+    go(tmp_path)
+    assert [c[2] for c in calls] == ["mapping", "classify"]
+
+
+def test_mirna_with_no_loci_is_not_rerun(fake, tmp_path):
+    calls, state = fake
+    state["bed"] = None  # mirna produced no bed at all
+    go(tmp_path)
+    assert (tmp_path / "w" / "SRR9.mirna.done").exists()
+    set_mtimes(tmp_path / "w", 1000)
+    age_inputs(tmp_path)
+    calls.clear()
+    go(tmp_path)
+    assert calls == []
+
+
+def test_failed_mirna_leaves_no_done_marker(fake, tmp_path, monkeypatch):
+    orig = run_mod.subprocess.run
+
+    def boom(cmd, **kw):
+        if len(cmd) > 2 and cmd[2] == "mirna":
+            raise run_mod.subprocess.CalledProcessError(1, cmd)
+        return orig(cmd, **kw)
+
+    monkeypatch.setattr(run_mod.subprocess, "run", boom)
+    with pytest.raises(run_mod.subprocess.CalledProcessError):
+        go(tmp_path)
+    assert not (tmp_path / "w" / "SRR9.mirna.done").exists()
+
+
+def test_shared_index_is_built_once_per_species(fake, tmp_path):
+    calls, _ = fake
+    shared = tmp_path / "idx" / "Bombyx_mori"
+    prefix = shared / "Bombyx_mori"
+    lib1 = make_lib()
+    go(tmp_path, lib1, index_prefix=prefix)
+    mp, mi = calls[1], calls[2]
+    assert "-g" in mp and "--index-prefix" not in mp
+    assert mi[mi.index("--index-prefix") + 1] == str(prefix)
+    assert (shared / "Bombyx_mori.1.ebwt").exists() and (shared / "Bombyx_mori.rev.2.ebwt").exists()
+
+    calls.clear()
+    lib2 = Library("SRR10", "Bombyx mori", "test", "arthropod", "ovary", 2, "http://x", ["t"])
+    run_mod.run_library(lib2, tmp_path / "r.fq.gz", tmp_path / "g.fa", tmp_path / "w2",
+                        tmp_path / "rules.yaml", index_prefix=prefix)
+    mp, mi = calls[1], calls[2]
+    assert mp[mp.index("--index-prefix") + 1] == str(prefix) and "-g" not in mp
+    assert mi[mi.index("--index-prefix") + 1] == str(prefix)

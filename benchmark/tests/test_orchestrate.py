@@ -53,7 +53,8 @@ def setup(tmp_path, monkeypatch, *, truth_chrom="chr1", index_rows=None, role="t
         seen["order"] = seen.get("order", []) + ["reads"]
         return tmp_path / "r.fq.gz"
 
-    def fake_run(l, reads, genome, workdir, rules, threads=8):
+    def fake_run(l, reads, genome, workdir, rules, threads=8, index_prefix=None):
+        seen["index_prefix"] = index_prefix
         seen["order"] = seen.get("order", []) + ["run"]
         seen["rules"] = Path(rules)
         seen["threads"] = threads
@@ -97,6 +98,8 @@ def test_run_writes_metrics_json(tmp_path, monkeypatch):
     assert (path.parent / "benchmark_run.json").exists()
     assert seen["rules"] == orchestrate.REPO / "rules.yaml"
     assert seen["threads"] == 4
+    # one bowtie index per species, shared by its libraries
+    assert seen["index_prefix"] == tmp_path / "results" / "_index" / "Bombyx_mori" / "Bombyx_mori"
     assert seen["genome_dest"] == tmp_path / "data" / "genomes" / "Bombyx_mori"
     assert seen["reads_dest"] == tmp_path / "data" / "reads"
 
@@ -144,3 +147,37 @@ def test_run_rejects_unknown_accession(tmp_path, monkeypatch):
     manifest, _ = setup(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="UNKNOWN"):
         go(tmp_path, manifest, acc="UNKNOWN")
+
+
+def test_metrics_only_rebuilds_from_existing_work_without_running(tmp_path, monkeypatch):
+    manifest, _ = setup(tmp_path, monkeypatch)
+    path = go(tmp_path, manifest)
+    first = json.loads(path.read_text())
+    path.unlink()
+    (path.parent / "benchmark_run.json").unlink()
+
+    def boom(*a, **k):
+        raise AssertionError("must not run the pipeline or download")
+
+    for name in ("run_library", "fetch_genome", "fetch_library"):
+        monkeypatch.setattr(orchestrate, name, boom)
+    out = orchestrate.rebuild_metrics("SRR9", manifest, tmp_path / "results")
+    assert out == path
+    assert json.loads(path.read_text()) == first
+    assert (path.parent / "benchmark_run.json").exists()
+
+
+def test_metrics_only_without_work_dir_fails_clearly(tmp_path, monkeypatch):
+    manifest, _ = setup(tmp_path, monkeypatch)
+    with pytest.raises(FileNotFoundError, match="SRR9"):
+        orchestrate.rebuild_metrics("SRR9", manifest, tmp_path / "results")
+
+
+def test_metrics_subcommand(tmp_path, monkeypatch, capsys):
+    from benchmark.__main__ import main
+    manifest, _ = setup(tmp_path, monkeypatch)
+    path = go(tmp_path, manifest)
+    path.unlink()
+    rc = main(["metrics", "--library", "SRR9", "--manifest", str(manifest),
+               "--results-dir", str(tmp_path / "results")])
+    assert rc == 0 and path.exists()

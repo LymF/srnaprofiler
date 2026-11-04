@@ -7,10 +7,10 @@ from pathlib import Path
 import pysam
 
 from benchmark.fetch import fetch_genome, fetch_library
-from benchmark.manifest import Library, load_config, load_manifest
+from benchmark.manifest import Config, Library, load_config, load_manifest
 from benchmark.metrics_class import classification_metrics, read_loci
 from benchmark.metrics_delim import delimitation_metrics, locus_counts
-from benchmark.run import run_library
+from benchmark.run import result_paths, run_library
 from benchmark.truth import (Region, check_contigs, check_contigs_fasta, guard_seed_use,
                              load_aliases, load_regions)
 
@@ -41,32 +41,25 @@ def _load_truth(lib: Library) -> list[Region]:
     return regions
 
 
-def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir: Path,
-                          threads: int) -> Path:
-    """Run one library and return the path of its metrics.json."""
+def _library(acc: str, manifest: Path) -> Library:
     libs = {l.accession: l for l in load_manifest(manifest)}
     if acc not in libs:
         raise ValueError(f"unknown accession {acc} in {manifest}")
-    lib = libs[acc]
-    data_dir, results_dir = Path(data_dir), Path(results_dir)
-    cfg = load_config(CONFIG)
+    return libs[acc]
 
-    genome = fetch_genome(lib, data_dir / "genomes" / lib.organism.replace(" ", "_"))
-    # fail on a truth/genome contig mismatch before the long reads download and pipeline
-    regions = _load_truth(lib)
-    check_contigs_fasta(regions, genome)
-    reads = fetch_library(lib, data_dir / "reads")
-    rules = REPO / RULES[lib.taxon_group]
-    workdir = results_dir / acc / "work"
-    res = run_library(lib, reads, genome, workdir, rules, threads=threads)
 
+def _write_metrics(lib: Library, regions: list[Region], cfg: Config, workdir: Path,
+                   results_dir: Path) -> Path:
+    """Score <workdir>/<ACC>.clusters.tsv against the truth and write metrics.json."""
+    acc = lib.accession
+    paths = result_paths(workdir, acc)
     std_genome = workdir / f"{acc}.genome.std.fa"
     fai = Path(str(std_genome) + ".fai")
     if not fai.exists():
         pysam.faidx(str(std_genome))
     check_contigs(regions, fai)  # ValueError names the missing contigs
 
-    loci = read_loci(res.clusters_tsv)
+    loci = read_loci(paths.clusters_tsv)
     clusters = [r for r in regions if r.cls != "miRNA"]
     sources = sorted({r.source for r in regions})
     cluster_sources = sorted({r.source for r in clusters})
@@ -93,5 +86,37 @@ def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir:
     out.mkdir(parents=True, exist_ok=True)
     metrics_path = out / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
-    shutil.copyfile(res.meta, out / "benchmark_run.json")
+    shutil.copyfile(paths.meta, out / "benchmark_run.json")
     return metrics_path
+
+
+def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir: Path,
+                          threads: int) -> Path:
+    """Run one library and return the path of its metrics.json."""
+    lib = _library(acc, manifest)
+    data_dir, results_dir = Path(data_dir), Path(results_dir)
+    cfg = load_config(CONFIG)
+
+    species = lib.organism.replace(" ", "_")
+    genome = fetch_genome(lib, data_dir / "genomes" / species)
+    # fail on a truth/genome contig mismatch before the long reads download and pipeline
+    regions = _load_truth(lib)
+    check_contigs_fasta(regions, genome)
+    reads = fetch_library(lib, data_dir / "reads")
+    rules = REPO / RULES[lib.taxon_group]
+    workdir = results_dir / acc / "work"
+    run_library(lib, reads, genome, workdir, rules, threads=threads,
+                index_prefix=results_dir / "_index" / species / species)
+    return _write_metrics(lib, regions, cfg, workdir, results_dir)
+
+
+def rebuild_metrics(acc: str, manifest: Path, results_dir: Path) -> Path:
+    """Rebuild metrics.json from an existing results/<ACC>/work, without running anything."""
+    lib = _library(acc, manifest)
+    results_dir = Path(results_dir)
+    workdir = results_dir / acc / "work"
+    paths = result_paths(workdir, acc)
+    for needed in (paths.clusters_tsv, paths.meta, workdir / f"{acc}.genome.std.fa"):
+        if not needed.exists():
+            raise FileNotFoundError(f"{acc}: {needed} missing; run the library first")
+    return _write_metrics(lib, _load_truth(lib), load_config(CONFIG), workdir, results_dir)

@@ -38,6 +38,17 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
+def metrics(args: argparse.Namespace) -> int:
+    from benchmark.orchestrate import rebuild_metrics
+    try:
+        path = rebuild_metrics(args.library, args.manifest, args.results_dir)
+    except (ValueError, FileNotFoundError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    print(path)
+    return 0
+
+
 def report(args: argparse.Namespace) -> int:
     from benchmark.report import build_report, collect_results
     results = collect_results(args.results_dir, load_manifest(args.manifest))
@@ -61,6 +72,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--threads", type=int, default=8)
     p.set_defaults(func=run)
+    p = sub.add_parser("metrics", help="rebuild metrics.json from an existing results/<ACC>/work")
+    p.add_argument("--library", required=True)
+    p.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
+    p.set_defaults(func=metrics)
     p = sub.add_parser("report", help="build the role-separated markdown report")
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
