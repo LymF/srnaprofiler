@@ -1,0 +1,110 @@
+import json
+from pathlib import Path
+
+import pysam
+import pytest
+
+from benchmark import orchestrate
+from benchmark.manifest import Library
+from benchmark.run import RunResult
+
+CLUSTER_HEADER = "chrom\tstart\tend\treads\tcls\tconfidence\n"
+
+
+def setup(tmp_path, monkeypatch, *, truth_chrom="chr1", index_rows=None, role="test",
+          truth_sources=None):
+    repo = tmp_path / "repo"
+    (repo / "benchmark" / "truth").mkdir(parents=True)
+    (repo / "rules.yaml").write_text("a: 1\n")
+    (repo / "rules.plant.yaml").write_text("a: 2\n")
+    (repo / "pirna.bed").write_text(f"{truth_chrom}\t100\t200\tpic1\n")
+    (repo / "mirna.bed").write_text(f"{truth_chrom}\t500\t560\tmir1\n")
+    rows = ["path\tcls\tsource\tfeature_types\taliases"]
+    if index_rows is None:
+        index_rows = ["pirna.bed\tpiRNA\tSrcPi\t\t", "mirna.bed\tmiRNA\tSrcMi\t\t"]
+    rows += index_rows
+    index = repo / "benchmark" / "truth" / "truth_index.tsv"
+    index.write_text("\n".join(rows) + "\n")
+    config = repo / "config.yaml"
+    config.write_text("tiny_bp: [50]\nlow_reads: [20]\nmin_overlap_frac: 0.5\n")
+    monkeypatch.setattr(orchestrate, "REPO", repo)
+    monkeypatch.setattr(orchestrate, "TRUTH_INDEX", index)
+    monkeypatch.setattr(orchestrate, "CONFIG", config)
+
+    sources = ["pirna.bed", "mirna.bed"] if truth_sources is None else truth_sources
+    lib = Library("SRR9", "Bombyx mori", role, "arthropod", "ovary", 1, "http://x", sources)
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text(
+        "accession\torganism\trole\ttaxon_group\ttissue\treplicate\tgenome_url\ttruth_sources\n"
+        f"SRR9\tBombyx mori\t{role}\tarthropod\tovary\t1\thttp://x\t{','.join(sources)}\n")
+
+    seen = {}
+
+    def fake_genome(l, dest):
+        seen["genome_dest"] = Path(dest)
+        return tmp_path / "raw.fa"
+
+    def fake_reads(l, dest):
+        seen["reads_dest"] = Path(dest)
+        return tmp_path / "r.fq.gz"
+
+    def fake_run(l, reads, genome, workdir, rules, threads=8):
+        seen["rules"] = Path(rules)
+        seen["threads"] = threads
+        workdir.mkdir(parents=True, exist_ok=True)
+        (workdir / "SRR9.genome.std.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
+        clusters = workdir / "SRR9.clusters.tsv"
+        clusters.write_text(CLUSTER_HEADER +
+                            "chr1\t100\t200\t50\tpiRNA\t0.9\n"
+                            "chr1\t500\t560\t30\tmiRNA\t0.8\n")
+        meta = workdir / "benchmark_run.json"
+        meta.write_text(json.dumps({"role": role, "rules_sha256": "x"}))
+        return RunResult(clusters, workdir / "b.bam", meta)
+
+    monkeypatch.setattr(orchestrate, "fetch_genome", fake_genome)
+    monkeypatch.setattr(orchestrate, "fetch_library", fake_reads)
+    monkeypatch.setattr(orchestrate, "run_library", fake_run)
+    return manifest, seen
+
+
+def go(tmp_path, manifest, acc="SRR9"):
+    return orchestrate.run_benchmark_library(
+        acc, manifest, tmp_path / "data", tmp_path / "results", 4)
+
+
+def test_run_writes_metrics_json(tmp_path, monkeypatch):
+    manifest, seen = setup(tmp_path, monkeypatch)
+    path = go(tmp_path, manifest)
+    assert path == tmp_path / "results" / "SRR9" / "metrics.json"
+    m = json.loads(path.read_text())
+    assert set(m) == {"accession", "organism", "role", "classification", "delimitation",
+                      "by_source", "n_loci"}
+    assert m["n_loci"] == 2 and m["role"] == "test"
+    assert set(m["by_source"]) == {"SrcPi", "SrcMi"}
+    # delimitation only sees the piRNA cluster, not the miRNA precursor
+    assert m["delimitation"]["summary"]["n_clusters"] == 1
+    assert "miRNA" in m["classification"]["per_class"]
+    assert (path.parent / "benchmark_run.json").exists()
+    assert seen["rules"] == orchestrate.REPO / "rules.yaml"
+    assert seen["threads"] == 4
+    assert seen["genome_dest"] == tmp_path / "data" / "genomes" / "Bombyx_mori"
+    assert seen["reads_dest"] == tmp_path / "data" / "reads"
+
+
+def test_run_aborts_on_contig_mismatch(tmp_path, monkeypatch):
+    manifest, _ = setup(tmp_path, monkeypatch, truth_chrom="NC_000001.1")
+    with pytest.raises(ValueError, match="NC_000001.1"):
+        go(tmp_path, manifest)
+    assert not (tmp_path / "results" / "SRR9" / "metrics.json").exists()
+
+
+def test_run_rejects_unknown_truth_source(tmp_path, monkeypatch):
+    manifest, _ = setup(tmp_path, monkeypatch, truth_sources=["pirna.bed", "nope.bed"])
+    with pytest.raises(ValueError, match="nope.bed"):
+        go(tmp_path, manifest)
+
+
+def test_run_rejects_unknown_accession(tmp_path, monkeypatch):
+    manifest, _ = setup(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        go(tmp_path, manifest, acc="UNKNOWN")

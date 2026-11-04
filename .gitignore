@@ -35,3 +35,6 @@ data/
 # kept on disk only (removed from the repo in ca6ddc2)
 /tests/
 extras/
+
+# benchmark outputs
+benchmark/results/
