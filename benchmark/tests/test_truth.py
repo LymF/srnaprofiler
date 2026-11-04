@@ -78,3 +78,13 @@ def test_committed_truth_is_sane(row):
     regs = load_regions(TRUTH_DIR.parents[1] / row["path"], row["cls"], row["source"], feature_types=types)
     assert regs
     assert all(r.start < r.end for r in regs)
+
+
+def test_check_contigs_fasta_uses_first_header_word(tmp_path):
+    from benchmark.truth import check_contigs_fasta, fasta_contigs
+    fa = tmp_path / "g.fa"
+    fa.write_text(">2L type=chromosome; length=100\nACGT\n>3R\nACGT\n")
+    assert fasta_contigs(fa) == {"2L", "3R"}
+    check_contigs_fasta([Region("2L", 0, 10, "piRNA", "s", "a")], fa)
+    with pytest.raises(ValueError, match="X"):
+        check_contigs_fasta([Region("X", 0, 10, "piRNA", "s", "a")], fa)

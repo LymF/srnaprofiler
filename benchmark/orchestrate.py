@@ -11,8 +11,8 @@ from benchmark.manifest import Library, load_config, load_manifest
 from benchmark.metrics_class import classification_metrics, read_loci
 from benchmark.metrics_delim import delimitation_metrics, locus_counts
 from benchmark.run import run_library
-from benchmark.truth import (Region, check_contigs, guard_seed_use, load_aliases,
-                             load_regions)
+from benchmark.truth import (Region, check_contigs, check_contigs_fasta, guard_seed_use,
+                             load_aliases, load_regions)
 
 REPO = Path(__file__).resolve().parent.parent
 TRUTH_INDEX = REPO / "benchmark" / "truth" / "truth_index.tsv"
@@ -52,12 +52,14 @@ def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir:
     cfg = load_config(CONFIG)
 
     genome = fetch_genome(lib, data_dir / "genomes" / lib.organism.replace(" ", "_"))
+    # fail on a truth/genome contig mismatch before the long reads download and pipeline
+    regions = _load_truth(lib)
+    check_contigs_fasta(regions, genome)
     reads = fetch_library(lib, data_dir / "reads")
     rules = REPO / RULES[lib.taxon_group]
     workdir = results_dir / acc / "work"
     res = run_library(lib, reads, genome, workdir, rules, threads=threads)
 
-    regions = _load_truth(lib)
     std_genome = workdir / f"{acc}.genome.std.fa"
     fai = Path(str(std_genome) + ".fai")
     if not fai.exists():

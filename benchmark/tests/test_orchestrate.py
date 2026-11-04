@@ -44,13 +44,17 @@ def setup(tmp_path, monkeypatch, *, truth_chrom="chr1", index_rows=None, role="t
 
     def fake_genome(l, dest):
         seen["genome_dest"] = Path(dest)
-        return tmp_path / "raw.fa"
+        raw = tmp_path / "raw.fa"
+        raw.write_text(">chr1 Homo sapiens chromosome 1\nACGT\n>chr2\nACGT\n")
+        return raw
 
     def fake_reads(l, dest):
         seen["reads_dest"] = Path(dest)
+        seen["order"] = seen.get("order", []) + ["reads"]
         return tmp_path / "r.fq.gz"
 
     def fake_run(l, reads, genome, workdir, rules, threads=8):
+        seen["order"] = seen.get("order", []) + ["run"]
         seen["rules"] = Path(rules)
         seen["threads"] = threads
         workdir.mkdir(parents=True, exist_ok=True)
@@ -115,10 +119,19 @@ def test_delimitation_is_per_source_and_independent_of_other_sources(tmp_path, m
 
 
 def test_run_aborts_on_contig_mismatch(tmp_path, monkeypatch):
-    manifest, _ = setup(tmp_path, monkeypatch, truth_chrom="NC_000001.1")
+    manifest, seen = setup(tmp_path, monkeypatch, truth_chrom="NC_000001.1")
     with pytest.raises(ValueError, match="NC_000001.1"):
         go(tmp_path, manifest)
+    assert "run" not in seen.get("order", [])
     assert not (tmp_path / "results" / "SRR9" / "metrics.json").exists()
+
+
+def test_contig_check_uses_raw_fasta_first_word_before_reads_and_pipeline(tmp_path, monkeypatch):
+    # truth on "chr2" matches the first word of a header ">chr2 description"; "chr3" does not
+    manifest, seen = setup(tmp_path, monkeypatch, truth_chrom="chr3")
+    with pytest.raises(ValueError, match="chr3"):
+        go(tmp_path, manifest)
+    assert "order" not in seen  # neither reads download nor pipeline ran
 
 
 def test_run_rejects_unknown_truth_source(tmp_path, monkeypatch):

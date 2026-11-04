@@ -59,12 +59,33 @@ def load_regions(path: Path, cls: str, source: str, *,
     return regions
 
 
+def _check_names(regions: list[Region], known: set[str], where: Path) -> None:
+    missing = sorted({r.chrom for r in regions} - known)
+    if missing:
+        raise ValueError(f"contigs absent from {where}: {', '.join(missing)}")
+
+
 def check_contigs(regions: list[Region], fai: Path) -> None:
     """Raise ValueError listing every region contig missing from the .fai."""
     known = {line.split("\t")[0] for line in Path(fai).read_text().splitlines() if line}
-    missing = sorted({r.chrom for r in regions} - known)
-    if missing:
-        raise ValueError(f"contigs absent from {fai}: {', '.join(missing)}")
+    _check_names(regions, known, fai)
+
+
+def fasta_contigs(fasta: Path) -> set[str]:
+    """First word of every header line of a FASTA (what faidx and the pipeline call a contig)."""
+    names = set()
+    with open(fasta) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                words = line[1:].split()
+                if words:
+                    names.add(words[0])
+    return names
+
+
+def check_contigs_fasta(regions: list[Region], fasta: Path) -> None:
+    """Like check_contigs, against the first-word headers of a (raw) FASTA."""
+    _check_names(regions, fasta_contigs(fasta), fasta)
 
 
 def guard_seed_use(lib: Library, path: Path) -> None:
