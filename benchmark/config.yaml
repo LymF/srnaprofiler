@@ -1,0 +1,4 @@
+# Reported thresholds for the benchmark (no pass/fail target).
+tiny_bp: [50, 100]        # tiny loci: length <= 50 bp and <= 100 bp
+low_reads: [20, 50, 100]  # low-read loci: reads < 20, < 50, < 100
+min_overlap_frac: 0.5     # minimum reciprocal overlap fraction to match a locus to truth
