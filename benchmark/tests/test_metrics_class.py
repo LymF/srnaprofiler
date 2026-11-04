@@ -96,3 +96,39 @@ def test_empty_loci_returns_zero_metrics():
     assert res["ece"] == 0.0
     assert res["per_class"]["piRNA"]["precision"] is None
     assert res["per_class"]["piRNA"]["recall"] == 0.0
+
+
+def test_match_below_threshold_on_both_fractions_is_unmatched():
+    # overlap 10: 10/100 = 0.1 of locus, 10/910 ~ 0.011 of region
+    out = match_loci([L(0, 100, "piRNA")], [R(90, 1000, "piRNA")], 0.5)
+    assert out[0][1] is None
+
+
+def test_match_exactly_at_threshold_matches():
+    # overlap 50: 50/100 == 0.5 of locus; region fraction 0.05
+    out = match_loci([L(0, 100, "piRNA")], [R(50, 1050, "piRNA")], 0.5)
+    assert out[0][1] is not None
+
+
+def test_match_long_region_starting_far_before_locus():
+    regions = [R(0, 10000, "piRNA", name="long"), R(100, 150, "siRNA", name="s1"),
+               R(5000, 5050, "siRNA", name="s2"), R(9500, 9550, "siRNA", name="s3")]
+    out = match_loci([L(9000, 9100, "piRNA")], regions, 0.5)
+    assert out[0][1].name == "long"
+
+
+def test_ece_multiple_bins_different_sizes():
+    regions = [R(i * 100, i * 100 + 50, "piRNA") for i in range(4)]
+    loci = [L(0, 50, "piRNA", conf=0.9), L(100, 150, "piRNA", conf=0.9),
+            L(200, 250, "siRNA", conf=0.9), L(300, 350, "siRNA", conf=0.2)]
+    expected = 0.75 * abs(2 / 3 - 0.9) + 0.25 * abs(0.0 - 0.2)
+    assert classification_metrics(loci, regions, CFG)["ece"] == pytest.approx(expected)
+
+
+def test_ece_excludes_ambiguous_unmatched_and_missing_confidence():
+    regions = [R(0, 50, "piRNA"), R(100, 150, "piRNA")]
+    loci = [L(0, 50, "piRNA", conf=1.0),
+            L(100, 150, "ambiguous", conf=0.1),
+            L(1000, 1050, "piRNA", conf=0.1),
+            L(100, 150, "siRNA", conf=None)]
+    assert classification_metrics(loci, regions, CFG)["ece"] == pytest.approx(0.0)
