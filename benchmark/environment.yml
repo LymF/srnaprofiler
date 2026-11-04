@@ -4,3 +4,6 @@ channels:
   - bioconda
 dependencies:
   - iseq
+  - sra-tools   # prefetch, vdb-validate, fasterq-dump (scripts/download_reads_sra.sh)
+  - pigz
+  - axel

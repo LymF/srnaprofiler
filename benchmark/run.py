@@ -33,6 +33,15 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def file_md5(path: Path) -> str:
+    """md5 of a file, streamed."""
+    h = hashlib.md5()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def pipeline_sha256(repo: Path = REPO) -> str:
     """sha256 over the pipeline *.py files at the repo root (not benchmark/) and rules*.yaml."""
     repo = Path(repo)
@@ -168,6 +177,8 @@ def run_library(
         "tool_git_sha": _git_sha(),
         "pipeline_sha256": pipeline_sha256(),
         "git_dirty": _git_dirty(),
+        "reads_md5": file_md5(reads),
+        "genome_md5": file_md5(genome),
         "rules_sha256": hashlib.sha256(rules.read_bytes()).hexdigest(),
         "rules_path": str(rules),
         "accession": acc,

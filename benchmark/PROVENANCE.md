@@ -2,7 +2,7 @@
 
 All metadata below was looked up on 2026-11-03 against the primary records (ENA/SRA portal and
 BioProject XML, GEO series records, the source papers and the databases that serve the truth
-files). No reads were downloaded. Run accessions in `manifest.tsv` are SRA/DDBJ run accessions.
+files). The reads were fetched later (see "Download method"). Run accessions in `manifest.tsv` are SRA/DDBJ run accessions.
 
 Roles: tuning = *Drosophila melanogaster*, *Arabidopsis thaliana*, *Oryza sativa*;
 test = *Bombyx mori* (arthropod) and *Zea mays* (plant). All libraries are wild-type,
@@ -223,8 +223,9 @@ All truth files were retrieved on 2026-11-03.
   (195606 loci). Build recipe: rename `ChrN` to `N`, drop `ChrUn`/`ChrSy` (733), drop rows with start < 1 or end <= start
   (1), giving 194872; a built copy (md5 dfb60acf3459b9c30bbf8608850bf1cf) is on litrp3 in `~/srnaprofiler/data/truth_large/osa_sRNAanno_hcsiRNA.gff3`.
   It has no `truth_index` row and is not in the manifest.
-- The sRNA-seq libraries that sRNAanno used for rice were not checked, so overlap with the tuning libraries
-  (PRJDB5291) cannot be excluded; rice is a tuning species and these files are tuning truth only.
+- The sRNA-seq libraries that sRNAanno used for rice were checked against the benchmark libraries (leakage check under
+  "Nature of the truth sources"): none of the rice tuning runs (PRJDB5291, DRP003992) is in the sRNAanno library list, so
+  no overlap was found. Rice is still a tuning species and these files are tuning truth only.
 
 ### zmay
 
@@ -325,6 +326,16 @@ are given as `hcsiRNA`.
 
 Tools: CrossMap 0.7.3 (conda env `srnabench` on litrp3, bioconda; Zhao et al. 2014), pysam for the sequence checks.
 Downloaded genomes and intermediates stay in `~/srnaprofiler/data/` on litrp3 (git-ignored).
+
+## Download method
+
+Reads were fetched from NCBI SRA with `benchmark/scripts/download_reads_sra.sh ACCESSION OUTDIR` (`prefetch` with md5
+verification and retries, `vdb-validate`, `fasterq-dump --split-files`, `pigz`; the `.fastq.gz` appears atomically through a
+`.part` file and a `mv`). The planned route, iSeq through the ENA ftp mirror, was unreliable on litrp3: md5 mismatches
+under concurrent downloads and an Aspera authentication failure. The tools (`sra-tools`, `pigz`, `axel`) are in
+`benchmark/environment.yml`. `fetch_library` skips an existing `<ACC>.fastq.gz`, so reads fetched with the script are used
+as they are. Every run records the md5 of its reads and of the genome FASTA (`reads_md5`, `genome_md5`) in
+`benchmark_run.json`.
 
 ## Known limitations
 

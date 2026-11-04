@@ -274,3 +274,10 @@ def test_git_dirty_reflects_porcelain_output(monkeypatch):
     assert run_mod._git_dirty() is True
     monkeypatch.setattr(run_mod.subprocess, "run", lambda cmd, **kw: R(""))
     assert run_mod._git_dirty() is False
+
+
+def test_meta_records_md5_of_reads_and_genome(fake, tmp_path):
+    res = go(tmp_path)
+    meta = json.loads(res.meta.read_text())
+    assert meta["reads_md5"] == hashlib.md5(b"reads").hexdigest()
+    assert meta["genome_md5"] == hashlib.md5(b">c\nA\n").hexdigest()
