@@ -76,6 +76,7 @@ def main(pdf: Path, chain: Path, out: Path, work: Path) -> None:
     subprocess.run(["CrossMap", "bed", str(chain), str(src), str(lifted)], check=True, stdout=subprocess.DEVNULL)
     ok = [l.split("\t") for l in lifted.read_text().splitlines() if l]
     ok = [(f[0][3:] if f[0].startswith("chr") else f[0], int(f[1]), int(f[2]), f[3]) for f in ok]
+    n_lifted = len(ok)
     ok = [r for r in ok if r[2] - r[1] >= 2]
     ex = []
     for path, cls, types, al in EXCLUDE_TRUTH:
@@ -92,7 +93,7 @@ def main(pdf: Path, chain: Path, out: Path, work: Path) -> None:
     kept.sort(key=lambda r: (r[0], r[1]))
     out.write_text("".join(f"{c}\t{s}\t{e}\t{n}\t0\t.\n" for c, s, e, n in kept))
     print(f"parsed rows {n_parsed}; without transgene 'vector' rows {n_novec}; union of S1/S2 {len(merged)}; "
-          f"lifted {len(ok) + 0} (unmapped/too short {len(merged) - len(ok)}); dropped by overlap {dropped}; "
+          f"lifted {n_lifted} (lift failed {len(merged) - n_lifted}); too short after lift {n_lifted - len(ok)}; dropped by overlap {dropped}; "
           f"kept {len(kept)}; kept overlapping tuning seed piC {sum(overlaps(seed, *r[:3]) for r in kept)}", file=sys.stderr)
 
 

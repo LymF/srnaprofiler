@@ -257,6 +257,10 @@ All truth files were retrieved on 2026-11-03.
 - Circularity: low; experimental (small-RNA cloning in ovary and S2 cells), curated in the paper, independent of the tool and of the
   benchmark libraries. Caveat: Table S1/S2 loci are coverage-defined clusters of uniquely mapping siRNAs (several tens to a few
   thousand bp), not hairpin annotations, and S2/ovary data predate dm6.
+- Scoring caveat: the loci are coverage-defined, so score locus detection/overlap (recall/precision) against them, not boundary
+  accuracy (recovered_fraction / n_fragments). Some loci are very short (33 bp, 83 bp), so tiny-locus counts (<=50 bp, <=100 bp)
+  against this set should be read with that in mind.
+- Counts as printed by the script: lift failed 0; too short after lift (<2 bp) 0.
 - Paper: Czech et al. (2008). Ghildiyal 2008 and Okamura 2008 are not included (see "Not included").
 
 ### zmay
