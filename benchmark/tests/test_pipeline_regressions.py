@@ -144,3 +144,80 @@ def test_quantifier_skipped_without_references(monkeypatch, tmp_path):
         raise AssertionError("quantifier.pl must not run")
     monkeypatch.setattr(mirna.subprocess, "run", boom)
     assert mirna.run_quantifier(tmp_path / "r.fa", tmp_path, "Drosophila melanogaster") is True
+
+
+def _mdp2_file(tmp_path, rows):
+    """A miRDeep-P2 `*_filter_P_prediction` file: (read id, name, mature coords, precursor coords, mature)."""
+    path = tmp_path / "filter_P_prediction"
+    lines = [f"1\t-\t{read}\t{name}\t{mature_at}\t{pre_at}\t{seq}\t....."
+             for read, name, mature_at, pre_at, seq in rows]
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def test_mirdeep_p2_repeated_precursor_is_renamed_not_dropped(tmp_path):
+    path = _mdp2_file(tmp_path, [
+        ("read02059488_x61", "1_139", "32686180..32686200", "32686095..32686200", "TGAAGCTGCCAGCATGATCTG"),
+        ("read02059489_x666", "1_139", "32686179..32686200", "32686095..32686200", "TGAAGCTGCCAGCATGATCTGA"),
+        ("read00000001_x7", "1_200", "100..120", "90..130", "GGGGCCCCAAAATTTTGGGG"),
+    ])
+    preds = mirna.parse_mirdeep_p2_predictions(path)
+    assert [p["name"] for p in preds] == ["1_139", "1_139_iso2", "1_200"]
+    assert preds[0]["p2_name"] == "1_139" and preds[1]["p2_name"] == "1_139"
+    assert preds[1]["mature"] == "TGAAGCTGCCAGCATGATCTGA"
+    assert preds[0]["start"] == 32686095
+
+
+def test_mirdeep_p2_three_duplicates_get_iso2_and_iso3(tmp_path):
+    path = _mdp2_file(tmp_path, [
+        ("r1_x1", "4_1", "10..30", "1..60", "AAAAAAAAAAAAAAAAAAAAA"),
+        ("r2_x1", "4_1", "11..31", "1..60", "CCCCCCCCCCCCCCCCCCCCC"),
+        ("r3_x1", "4_1", "12..32", "1..60", "GGGGGGGGGGGGGGGGGGGGG"),
+    ])
+    preds = mirna.parse_mirdeep_p2_predictions(path)
+    assert [p["name"] for p in preds] == ["4_1", "4_1_iso2", "4_1_iso3"]
+    assert {p["p2_name"] for p in preds} == {"4_1"}
+
+
+def test_mirdeep_p2_suffix_already_in_file_is_not_reused(tmp_path):
+    path = _mdp2_file(tmp_path, [
+        ("a_x1", "5_1", "10..30", "1..60", "AAAAAAAAAAAAAAAAAAAAA"),
+        ("b_x1", "5_1_iso2", "10..30", "1..60", "CCCCCCCCCCCCCCCCCCCCC"),
+        ("c_x1", "5_1", "10..30", "1..60", "GGGGGGGGGGGGGGGGGGGGG"),
+    ])
+    preds = mirna.parse_mirdeep_p2_predictions(path)
+    assert [p["name"] for p in preds] == ["5_1", "5_1_iso2", "5_1_iso3"]
+    assert [p["p2_name"] for p in preds] == ["5_1", "5_1_iso2", "5_1"]
+
+
+def test_validate_writes_unique_names_to_mature_and_hairpin(monkeypatch, tmp_path):
+    path = _mdp2_file(tmp_path, [
+        ("r1_x1", "1_139", "10..30", "1..60", "AAAAAAAAAAAAAAAAAAAAA"),
+        ("r2_x9", "1_139", "11..31", "1..60", "CCCCCCCCCCCCCCCCCCCCC"),
+        ("r3_x1", "1_200", "10..30", "1..60", "GGGGGGGGGGGGGGGGGGGGG"),
+    ])
+    preds = mirna.parse_mirdeep_p2_predictions(path)
+    workdir = tmp_path / "ms"
+
+    def fake_run(cmd, **kwargs):
+        out = workdir / "mirscore"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "miRScore_results.csv").write_text("")
+
+    monkeypatch.setattr(mirna.shutil, "which", lambda name: "/bin/miRScore")
+    monkeypatch.setattr(mirna, "open_genome", lambda path: object())
+    monkeypatch.setattr(mirna, "hairpin_with_flank",
+                        lambda genome, chrom, start, end, mature, flank=25: "ACGT" * 10)
+    monkeypatch.setattr(mirna, "stage_reads_for_mirscore", lambda reads, workdir: reads)
+    monkeypatch.setattr(mirna.subprocess, "run", fake_run)
+    monkeypatch.setattr(mirna, "read_mirscore_rows", lambda p: {})
+    monkeypatch.setattr(mirna, "no_reads_counted", lambda p: False)
+
+    result = mirna.validate_with_mirscore(preds, "genome.fa", tmp_path / "reads.fa",
+                                          "Plant", workdir)
+    expected = ["1_139", "1_139_iso2", "1_200"]
+    for fa in ("mature.fa", "hairpin.fa"):
+        headers = [line[1:] for line in (workdir / fa).read_text().splitlines()
+                   if line.startswith(">")]
+        assert headers == expected
+    assert result.submitted == set(expected)

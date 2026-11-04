@@ -1056,8 +1056,13 @@ def parse_mirdeep_p2_predictions(path):
     mature sequence, precursor sequence. Coordinates are 1-based inclusive.
     A line that does not parse is skipped rather than guessed at -- a wrong
     coordinate here carves a locus in the wrong place and asserts miRNA on it.
+
+    miRDeep-P2 writes one row per mature isoform, so a precursor name can
+    repeat. Every parsed row is kept: the first keeps its name, later rows get
+    `_iso2`, `_iso3`, ... in file order, skipping any suffixed name the file
+    already uses. Each prediction carries `p2_name`, the name miRDeep-P2 gave it.
     """
-    out = []
+    rows = []
     with open(path) as fh:
         for line in fh:
             f = line.rstrip("\n").split("\t")
@@ -1066,10 +1071,21 @@ def parse_mirdeep_p2_predictions(path):
             m = re.match(r"(\d+)\.\.(\d+)$", f[5].strip())
             if not m:
                 continue
-            out.append({"chrom": f[0], "strand": f[1], "name": f[3],
-                        "start": int(m.group(1)), "end": int(m.group(2)),
-                        "mature": f[6].strip().upper().replace("U", "T")})
-    return out
+            rows.append({"chrom": f[0], "strand": f[1], "name": f[3], "p2_name": f[3],
+                         "start": int(m.group(1)), "end": int(m.group(2)),
+                         "mature": f[6].strip().upper().replace("U", "T")})
+    taken = {r["p2_name"] for r in rows}   # every name in use, so a suffix never collides
+    seen = set()
+    for r in rows:
+        if r["p2_name"] not in seen:
+            seen.add(r["p2_name"])
+            continue
+        k = 2
+        while f"{r['p2_name']}_iso{k}" in taken:
+            k += 1
+        r["name"] = f"{r['p2_name']}_iso{k}"
+        taken.add(r["name"])
+    return rows
 
 
 def mirdeep2_novel_rows(path):
@@ -1224,6 +1240,10 @@ def run_mirdeep_p2(args, reads, outdir):
             f"miRDeep-P2 produced no prediction file under {outdir}. It reports "
             f"success even when it predicts nothing, so this is checked here.")
     preds = parse_mirdeep_p2_predictions(hits[0])
+    renamed = sum(1 for p in preds if p["name"] != p["p2_name"])
+    if renamed:
+        log(f"miRDeep-P2: {renamed} rows shared a precursor name; renamed with "
+            f"_isoK suffixes (all kept)", "INFO")
     log(f"miRDeep-P2: {len(preds)} predictions", "INFO")
     return preds
 
