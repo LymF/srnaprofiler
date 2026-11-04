@@ -70,6 +70,7 @@ def test_seed_aliases_map_refseq_and_chr_names():
     p for p in TRUTH_DIR.rglob("*") if p.suffix in (".bed", ".gff3") and SEED_DIR not in p.parents),
     ids=lambda p: p.name)
 def test_committed_truth_is_sane(path):
-    regs = load_regions(path, "x", "y", feature_types=MIRNA_PRECURSOR_TYPES)
+    types = MIRNA_PRECURSOR_TYPES if "mir" in path.name else None  # precursor filter only for miRNA files
+    regs = load_regions(path, "x", "y", feature_types=types)
     assert regs
     assert all(r.start < r.end for r in regs)
