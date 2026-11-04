@@ -10,6 +10,8 @@ from benchmark.truth import SEED_DIR, guard_seed_use, load_aliases, load_regions
 REPO = Path(__file__).resolve().parents[2]
 INDEX = REPO / "benchmark" / "truth" / "truth_index.tsv"
 MANIFEST = REPO / "benchmark" / "manifest.tsv"
+# Smallest accepted truth interval (bp): drops degenerate 1-bp calls such as start == end.
+MIN_LEN = 2
 CLASSES = {"miRNA", "piRNA", "siRNA", "phasiRNA", "phasiRNA24", "hcsiRNA"}
 
 
@@ -35,7 +37,17 @@ def test_row_loads(row):
     aliases = load_aliases(REPO / row["aliases"]) if row["aliases"] else None
     regions = load_regions(path, row["cls"], row["source"], feature_types=types, aliases=aliases)
     assert regions, f"{row['path']} gave no regions"
-    assert all(r.start < r.end for r in regions)
+    assert all(r.end - r.start >= MIN_LEN for r in regions), f"{row['path']}: region shorter than {MIN_LEN} bp"
+
+
+@pytest.mark.parametrize("row", [r for r in index_rows() if r["path"].endswith((".gff3", ".gff"))],
+                         ids=lambda r: r["path"])
+def test_gff3_rows_are_valid_one_based(row):
+    for line in (REPO / row["path"]).read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        f = line.split("\t")
+        assert int(f[3]) >= 1 and int(f[4]) >= int(f[3]), f"{row['path']}: invalid interval {f[3]}-{f[4]}"
 
 
 def test_paths_unique():

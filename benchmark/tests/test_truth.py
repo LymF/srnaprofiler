@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 
 import pytest
@@ -66,11 +67,14 @@ def test_seed_aliases_map_refseq_and_chr_names():
     assert {r.chrom for r in regs} <= {"1", "2", "3", "4", "5"}
 
 
-@pytest.mark.parametrize("path", sorted(
-    p for p in TRUTH_DIR.rglob("*") if p.suffix in (".bed", ".gff3") and SEED_DIR not in p.parents),
-    ids=lambda p: p.name)
-def test_committed_truth_is_sane(path):
-    types = MIRNA_PRECURSOR_TYPES if "mir" in path.name else None  # precursor filter only for miRNA files
-    regs = load_regions(path, "x", "y", feature_types=types)
+def _index_rows():
+    with open(TRUTH_DIR / "truth_index.tsv", newline="") as fh:
+        return [r for r in csv.DictReader(fh, delimiter="\t") if "/truth/seed/" not in r["path"]]
+
+
+@pytest.mark.parametrize("row", _index_rows(), ids=lambda r: Path(r["path"]).name)
+def test_committed_truth_is_sane(row):
+    types = {t for t in row["feature_types"].split(",") if t} or None
+    regs = load_regions(TRUTH_DIR.parents[1] / row["path"], row["cls"], row["source"], feature_types=types)
     assert regs
     assert all(r.start < r.end for r in regs)

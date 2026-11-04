@@ -8,9 +8,8 @@ benchmark/truth/osat/osa_mirbase_v23.1.gff3	miRNA	miRBase v23.1	miRNA_primary_tr
 benchmark/truth/osat/osa_24PHAS_ono2018.bed	phasiRNA24	Ono et al. 2018		
 benchmark/truth/osat/osa_sRNAanno_PHAS21.gff3	phasiRNA	sRNAanno		
 benchmark/truth/osat/osa_sRNAanno_PHAS24.gff3	phasiRNA24	sRNAanno		
-benchmark/truth/osat/osa_sRNAanno_hcsiRNA.gff3	hcsiRNA	sRNAanno		
 benchmark/truth/bmor/bmo_mirbase_v23.1.gff3	miRNA	miRBase v23.1	miRNA_primary_transcript,pre_miRNA	
-benchmark/truth/bmor/bmo_piC_p50ma_ovary_lee2025.gff3	piRNA	Lee et al. 2025 (p50ma ovary piCs)		
+benchmark/truth/bmor/bmo_piC_p50ma_ovary_lee2025.gff3	piRNA	Lee et al. 2025 (p50ma ovary piCs); reduced-confidence: chromosome-level identity filter, no chain		
 benchmark/truth/zmay/zma_mirbase_v23.1.gff3	miRNA	miRBase v23.1	miRNA_primary_transcript,pre_miRNA	
 benchmark/truth/zmay/zma_sRNAanno_PHAS21_NAM5.gff3	phasiRNA	sRNAanno (lifted v4 to NAM-5.0)		
 benchmark/truth/zmay/zma_sRNAanno_PHAS24_NAM5.gff3	phasiRNA24	sRNAanno (lifted v4 to NAM-5.0)		

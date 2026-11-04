@@ -8,6 +8,29 @@ Roles: tuning = *Drosophila melanogaster*, *Arabidopsis thaliana*, *Oryza sativa
 test = *Bombyx mori* (arthropod) and *Zea mays* (plant). All libraries are wild-type,
 single-end Illumina small-RNA-seq.
 
+## Nature of the truth sources (circularity)
+
+Not every truth file is curated annotation; benchmark results must be read with this in mind.
+
+- Curated / published sets: miRBase v23.1 and MirGeneDB v3.0 miRNA loci (all species), and the Ono et al. (2018) rice
+  24-PHAS table (published locus list, EAT1-dependent loci plus previously reported ones).
+- Algorithmic predictions, not curated: sRNAanno PHAS21 / PHAS24 loci (sRNAminer phasing-score caller on pooled public
+  libraries), sRNAanno hc-siRNA loci (repeat-based sRNAminer calls), piRNAclusterDB 2.0 clusters (proTRAC), and the Lee et al.
+  (2025) B. mori ovary clusters (proTRAC). A pipeline that also detects clusters or phased loci from reads can agree with
+  these files because it uses the same kind of signal, so recall against them measures consistency with a published
+  caller, not agreement with ground truth.
+- Seed files (tuning only): `piC_ref_dm6.bed` (Srivastav et al. 2024, strain-conserved piRNA clusters), `phas21_ref_at_TAIR10.gff3`
+  (the sRNAanno Arabidopsis PHAS21 set) and `phas_experimental_at_TAIR10.bed` (experimentally characterised TAS loci).
+- B. mori piRNA clusters carry reduced confidence (chromosome-level identity filter, no chain; `truth_index.tsv` source column).
+- Leakage check for the maize test libraries: sRNAanno lists the sRNA-seq libraries it used in
+  http://www.plantsrnas.org/SRRinfo-json/SRA_info.json (1517 libraries, retrieved 2026-11-03; page SRRinfo.jsp). It contains 58
+  Zea mays libraries (published 2009-2018, 16 studies). None of SRR15530410, SRR15530411, SRR15530418, SRR15530419 (BioProject
+  PRJNA756318 = study SRP333382, submitted 2021) is in the list, and study SRP333382 is absent. The `Best_Sample` runs cited in
+  the maize PHAS JSON files (SRR032087 ... SRR6939419) also do not include them. The maize sRNAanno files are therefore not
+  derived from the benchmark libraries and stay in the test truth. The same list contains none of the tuning/test runs for
+  Arabidopsis (PRJNA958093, SRP433690), rice (PRJDB5291, DRP003992); the rice and Arabidopsis files are still treated
+  as tuning-only.
+
 ## Libraries
 
 ### Drosophila melanogaster (tuning), ovary
@@ -130,6 +153,7 @@ All truth files were retrieved on 2026-11-03.
 - Assembly: Release_6 (GCA_000001215.4 = dm6); contig names already equal the Ensembl names. No liftover.
 - Changes: GTF converted to GFF3 (coordinates untouched, 1-based) and `ID=dme_piC_N` added by row order, because the
   attributes column of the GTF is empty.
+- Nature of the truth: proTRAC predictions from public sRNA-seq, not curated (see "Nature of the truth sources").
 - Papers: Rosenkranz et al. (2022), piRNAclusterDB 2.0; proTRAC (Rosenkranz & Zischler 2012).
 - The tuning seed `truth/seed/piC_ref_dm6.bed` (Srivastav et al. 2024) is a separate source and is listed in the
   manifest for the tuning libraries only.
@@ -147,13 +171,14 @@ All truth files were retrieved on 2026-11-03.
 - Paper: Kozomara et al. (2019), Nucleic Acids Res. 47(D1):D155-D162.
 
 `benchmark/truth/atha/ath_sRNAanno_PHAS24.gff3` (79 loci, class `phasiRNA24`) and
-`benchmark/truth/atha/ath_sRNAanno_hcsiRNA.gff3` (17482 loci, class `hcsiRNA`)
+`benchmark/truth/atha/ath_sRNAanno_hcsiRNA.gff3` (17481 loci, class `hcsiRNA`)
+- Nature: algorithmic predictions (sRNAminer), not curated (see "Nature of the truth sources").
 - Source: sRNAanno (http://www.plantsrnas.org/PHAS24/Arabidopsis_thaliana.PHAS24.gff3 and
   http://www.plantsrnas.org/hc-siRNA/Arabidopsis_thaliana.hc-siRNA.gff3), retrieved 2026-11-03; loci called with
   sRNAminer from public sRNA-seq (Chen et al. 2021). The database gives no version number.
 - Assembly: the sRNAanno genome FASTA `Arabidopsis_thaliana.genome.fasta` was checked against the Ensembl TAIR10
   FASTA (28 random 100-bp windows over all 7 sequences, read through HTTP range requests; 0 mismatches), so the
-  assembly is TAIR10. No liftover. Contigs `ChrN` rewritten to `N` (`ChrM` to `Mt`); 79/79 and 17482/17482 features kept.
+  assembly is TAIR10. No liftover. Contigs `ChrN` rewritten to `N` (`ChrM` to `Mt`); 79/79 PHAS24 features kept; hc-siRNA 17482 -> 17481 (1 invalid row dropped: contig 5, start=0, ID=Repeat13712, not valid 1-based GFF3).
 - The sRNAanno 21-PHAS file of Arabidopsis (35 loci) is byte-identical (columns 1-9) to the seed
   `phas21_ref_at_TAIR10.gff3`, so it was not added a second time; the seed stays tuning-only.
 
@@ -182,7 +207,8 @@ All truth files were retrieved on 2026-11-03.
 
 `benchmark/truth/osat/osa_sRNAanno_PHAS21.gff3` (2595 loci, `phasiRNA`),
 `benchmark/truth/osat/osa_sRNAanno_PHAS24.gff3` (804 loci, `phasiRNA24`),
-`benchmark/truth/osat/osa_sRNAanno_hcsiRNA.gff3` (194873 loci, `hcsiRNA`, 14.7 MB)
+`osa_sRNAanno_hcsiRNA.gff3` (194872 loci, `hcsiRNA`) is NOT committed (see below)
+- Nature: algorithmic predictions (sRNAminer), not curated (see "Nature of the truth sources").
 - Source: sRNAanno, http://www.plantsrnas.org/PHAS21/Oryza_sativa.PHAS21.gff3, `.../PHAS24/Oryza_sativa.PHAS24.gff3`,
   `.../hc-siRNA/Oryza_sativa.hc-siRNA.gff3`; retrieved 2026-11-03 (Chen et al. 2021). These sRNAanno PHAS loci are
   a separate source from the Ono et al. 24-PHAS table above and are not merged with it.
@@ -191,7 +217,12 @@ All truth files were retrieved on 2026-11-03.
   implies equal lengths of Chr1-Chr11). No liftover.
 - Changes: `ChrN` rewritten to `N`. The 733 hc-siRNA loci on `ChrUn` (405) and `ChrSy` (328) were dropped because
   these concatenated unplaced/Syngenta pseudo-chromosomes are not in the Ensembl assembly (which carries the
-  scaffolds AP008246/7, Syng_TIGR_*, AC*). PHAS21 and PHAS24: 2595/2595 and 804/804 kept; hc-siRNA 194873 of 195606 kept.
+  scaffolds AP008246/7, Syng_TIGR_*, AC*). PHAS21 and PHAS24: 2595/2595 and 804/804 kept; hc-siRNA 195606 -> 194873 after the contig filter, then 194872 after dropping 1 length-1 row (contig 4, 30027592-30027592).
+- Rice hc-siRNA is not in the repository: the file (14.7 MB, 194872 loci covering about 197 Mb, roughly half of the
+  genome) discriminates too little as truth (controller ruling). URL: http://www.plantsrnas.org/hc-siRNA/Oryza_sativa.hc-siRNA.gff3
+  (195606 loci). Build recipe: rename `ChrN` to `N`, drop `ChrUn`/`ChrSy` (733), drop rows with start < 1 or end <= start
+  (1), giving 194872; a built copy (md5 dfb60acf3459b9c30bbf8608850bf1cf) is on litrp3 in `~/srnaprofiler/data/truth_large/osa_sRNAanno_hcsiRNA.gff3`.
+  It has no `truth_index` row and is not in the manifest.
 - The sRNA-seq libraries that sRNAanno used for rice were not checked, so overlap with the tuning libraries
   (PRJDB5291) cannot be excluded; rice is a tuning species and these files are tuning truth only.
 
@@ -206,6 +237,7 @@ All truth files were retrieved on 2026-11-03.
 
 `benchmark/truth/zmay/zma_sRNAanno_PHAS21_NAM5.gff3` (587 loci, `phasiRNA`) and
 `benchmark/truth/zmay/zma_sRNAanno_PHAS24_NAM5.gff3` (480 loci, `phasiRNA24`)
+- Nature: algorithmic predictions (sRNAminer), not curated (see "Nature of the truth sources"). Leakage check: none of the benchmark maize runs is among the sRNAanno libraries (see there).
 - Source: sRNAanno (http://www.plantsrnas.org/PHAS21/Zea_mays.PHAS21.gff3, `.../PHAS24/Zea_mays.PHAS24.gff3`),
   retrieved 2026-11-03 (Chen et al. 2021). Independent of the test libraries (sRNAanno is a separate, pooled
   annotation; no seed material is used).
@@ -220,10 +252,10 @@ All truth files were retrieved on 2026-11-03.
 - Counts (in / lifted / dropped): PHAS21 590 / 587 / 3; PHAS24 488 / 480 / 8. All lifted features lie inside their
   contig of the Ensembl NAM-5.0 FASTA index.
 
-`zma_sRNAanno_hcsiRNA_NAM5.gff3` (hcsiRNA, 769615 loci, 59.6 MB) is NOT committed (above the 20 MB limit) and is
+`zma_sRNAanno_hcsiRNA_NAM5.gff3` (hcsiRNA, 769596 loci, 59.6 MB) is NOT committed (above the 20 MB limit) and is
 therefore not in `truth_index.tsv` or the manifest. Recipe: download
 http://www.plantsrnas.org/hc-siRNA/Zea_mays.hc-siRNA.gff3 (790569 loci, v4), run the CrossMap command above
-(790569 / 769615 / 20954), restore strand `.`. A built copy (md5 9a5fb9672dac136f6116cf4628ca90fd) is on litrp3 in
+(790569 / 769615 / 20954), restore strand `.`, then drop 19 length-1 rows (769615 -> 769596; no row had start < 1). A built copy (md5 9e95ade939a1283ddd5f69581eb91b54) is on litrp3 in
 `~/srnaprofiler/data/truth_large/`.
 
 ### bmor
@@ -238,6 +270,7 @@ http://www.plantsrnas.org/hc-siRNA/Zea_mays.hc-siRNA.gff3 (790569 loci, v4), run
 - Paper: Kozomara et al. (2019).
 
 `benchmark/truth/bmor/bmo_piC_p50ma_ovary_lee2025.gff3`
+- Nature: proTRAC predictions, not curated (see "Nature of the truth sources").
 - Content: 136 ovary piRNA clusters (class `piRNA`, proTRAC, GFF3, contigs BSVE01000001.1...).
 - Source: Lee et al. (2025), Sci. Data 12:359, https://doi.org/10.1038/s41597-025-04679-5; file
   `p50ma_Ovary_piCs.gtf` (243 clusters) of the figshare record https://doi.org/10.6084/m9.figshare.26303761 (v2,
@@ -253,6 +286,7 @@ http://www.plantsrnas.org/hc-siRNA/Zea_mays.hc-siRNA.gff3 (790569 loci, v4), run
 - Filter (not a liftover): only clusters on the 22 verified chromosomes were kept (136 of 243); the 107 on Chr05, 07, 11, 19,
   20, 24 and W (14, 11, 9, 6, 10, 32, 25) were dropped. Contigs were renamed to GenBank accessions. Coordinates are unchanged
   (1-based GTF kept as GFF3 start/end).
+- REDUCED CONFIDENCE: this file is marked so in `truth_index.tsv`. There is no chain; identity is shown by a chromosome-level filter only.
 - Limitation: identity is shown for the gene-bearing sequence only; the piRNA-cluster intervals themselves (largely
   repeats) were not independently compared. The small-RNA data behind these clusters (p50ma ovary) are not the benchmark
   library (DRR377498, Kiuchi et al. 2023).
@@ -266,10 +300,10 @@ by `benchmark/tests/test_truth_index.py`. Counts are features loaded by `load_re
 | Species (role) | miRNA | piRNA | siRNA | phasiRNA (21) | phasiRNA24 | hcsiRNA |
 |---|---|---|---|---|---|---|
 | D. melanogaster (tuning) | 140 MirGeneDB | 196 piRNAclusterDB 2.0; 90 seed | none obtained | n/a (animal) | n/a | n/a |
-| A. thaliana (tuning) | 296 miRBase | n/a (plant) | none obtained | 35 seed (sRNAanno) + 8 seed TAS | 79 sRNAanno | 17482 sRNAanno |
-| O. sativa (tuning) | 508 miRBase | n/a | none obtained | 2595 sRNAanno | 804 sRNAanno; 104 Ono 2018 | 194873 sRNAanno |
+| A. thaliana (tuning) | 296 miRBase | n/a (plant) | none obtained | 35 seed (sRNAanno) + 8 seed TAS | 79 sRNAanno | 17481 sRNAanno |
+| O. sativa (tuning) | 508 miRBase | n/a | none obtained | 2595 sRNAanno | 804 sRNAanno; 104 Ono 2018 | built, not committed (194872) |
 | B. mori (test) | 403 miRBase | 136 Lee 2025 (ovary, 22 verified chromosomes) | none obtained | n/a | n/a | n/a |
-| Z. mays (test) | 172 miRBase | n/a | none obtained | 587 sRNAanno (lifted) | 480 sRNAanno (lifted) | 769615 sRNAanno (lifted), not committed (60 MB) |
+| Z. mays (test) | 172 miRBase | n/a | none obtained | 587 sRNAanno (lifted) | 480 sRNAanno (lifted) | 769596 sRNAanno (lifted), not committed (60 MB) |
 
 Why nothing usable exists (siRNA): the endo-siRNA / hp-RNA loci of Drosophila (Czech et al. 2008; Ghildiyal et al. 2008;
 Okamura et al. 2008) are given in the supplements of those papers, which Europe PMC does not serve as open-access files
@@ -283,9 +317,10 @@ are given as `hcsiRNA`.
 |---|---|---|---|---|---|
 | zma_sRNAanno_PHAS21_NAM5.gff3 | B73 RefGen_v4 | CrossMap 0.7.3 + MaizeGDB v4-to-NAM-5.0 chain | 590 | 587 | 3 |
 | zma_sRNAanno_PHAS24_NAM5.gff3 | B73 RefGen_v4 | same | 488 | 480 | 8 |
-| zma_sRNAanno_hcsiRNA_NAM5.gff3 (not committed) | B73 RefGen_v4 | same | 790569 | 769615 | 20954 |
+| zma_sRNAanno_hcsiRNA_NAM5.gff3 (not committed) | B73 RefGen_v4 | same, then drop length-1 rows | 790569 | 769596 | 20954 + 19 |
 | bmo_piC_p50ma_ovary_lee2025.gff3 | p50ma (Bomo_Chr names) | filter to sequence-verified chromosomes, rename | 243 | 136 | 107 |
-| osa_sRNAanno_hcsiRNA.gff3 | IRGSP-1.0 | contig filter (ChrUn, ChrSy) | 195606 | 194873 | 733 |
+| osa_sRNAanno_hcsiRNA.gff3 (not committed) | IRGSP-1.0 | contig filter (ChrUn, ChrSy), then drop length-1 rows | 195606 | 194872 | 733 + 1 |
+| ath_sRNAanno_hcsiRNA.gff3 | TAIR10 | drop invalid row (start=0) | 17482 | 17481 | 1 |
 | all other new files | already on the manifest assembly | contig rename only | all kept | | 0 |
 
 Tools: CrossMap 0.7.3 (conda env `srnabench` on litrp3, bioconda; Zhao et al. 2014), pysam for the sequence checks.
@@ -295,7 +330,7 @@ Downloaded genomes and intermediates stay in `~/srnaprofiler/data/` on litrp3 (g
 
 - Bombyx mori has one library only; no replicate exists in the verified study.
 - Classes with no usable truth (see the coverage table in "Truth expansion"): siRNA (endo-siRNA/hp-RNA loci) for D. melanogaster
-  and B. mori; piRNA for the plants is not applicable; plant `siRNA` (non-hc) has no curated locus set; maize hc-siRNA is
+  and B. mori; piRNA for the plants is not applicable; plant `siRNA` (non-hc) has no curated locus set; maize and rice hc-siRNA are
   built but not committed (size).
 - piRBase (bigdata.ibp.ac.cn) and the Mainz piRNAclusterDB host could not be reached from the Mac or from litrp3 (DNS/connection
   failures, the piRBase page earlier also returned 403); piRNAclusterDB 2.0 itself was reached at www.pirnaclusterdb.org and has
