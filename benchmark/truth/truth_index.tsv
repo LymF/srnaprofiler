@@ -16,3 +16,5 @@ benchmark/truth/zmay/zma_sRNAanno_PHAS24_NAM5.gff3	phasiRNA24	sRNAanno (lifted v
 benchmark/truth/seed/piC_ref_dm6.bed	piRNA	seed: Srivastav et al. 2024 piC (tuning only)		
 benchmark/truth/seed/phas21_ref_at_TAIR10.gff3	phasiRNA	seed: sRNAanno Arabidopsis PHAS21 (tuning only)		benchmark/truth/seed/contig_aliases.tsv
 benchmark/truth/seed/phas_experimental_at_TAIR10.bed	phasiRNA	seed: experimental TAS loci (tuning only)		benchmark/truth/seed/contig_aliases.tsv
+benchmark/truth/dmel/dme_mirbase_v23.1.gff3	miRNA	miRBase v23.1	miRNA_primary_transcript,pre_miRNA	benchmark/truth/dmel/dme_contig_aliases.tsv
+benchmark/truth/dmel/dme_endosiRNA_2008_dm6.bed	siRNA	Czech et al. 2008 (Tables S1/S2, lifted dm3 to dm6)		

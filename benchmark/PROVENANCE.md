@@ -227,6 +227,38 @@ All truth files were retrieved on 2026-11-03.
   "Nature of the truth sources"): none of the rice tuning runs (PRJDB5291, DRP003992) is in the sRNAanno library list, so
   no overlap was found. Rice is still a tuning species and these files are tuning truth only.
 
+`benchmark/truth/dmel/dme_mirbase_v23.1.gff3` (Task 8c) and `benchmark/truth/dmel/dme_contig_aliases.tsv`
+- Content: **258 loci** (`miRNA_primary_transcript` precursors; 741 features in total with the mature `miRNA` features), on
+  chr2L/2R/3L/3R/4/X. The research note quoted 259; the file served on 2026-11-04 has 258 precursors.
+- Source: https://mirbase.org/download/CURRENT/genomes/dme.gff3 (miRBase v23.1, header `date 2026-9-16`), retrieved 2026-11-04,
+  md5 of the served file 34e9a580373bf8326540f04928253521.
+- Assembly: header `genome-build-id: Release_6`, `GCA_000001215.4` (= dm6 = Ensembl BDGP6.54); no liftover.
+- Changes: HTML wrapper removed (`<br>` to newline, `&quot;` to `"`, one comment line added); coordinates and contig names unchanged.
+  miRBase writes `chr2L`; the Ensembl FASTA uses `2L`, so the contig names are mapped by the alias file
+  (`chr2L 2L`, `chr2R 2R`, `chr3L 3L`, `chr3R 3R`, `chr4 4`, `chrX X`) listed in the `aliases` column of `truth_index.tsv`.
+  `check_contigs_fasta` against the BDGP6.54 FASTA passes for all 258 loci.
+- Circularity: none for the pipeline (curated-ish). It is a superset of MirGeneDB (140 precursors) and keeps low-confidence
+  entries MirGeneDB rejects, so it is a separate truth set, not a merge. Paper: Kozomara et al. (2019).
+
+`benchmark/truth/dmel/dme_endosiRNA_2008_dm6.bed` (Task 8c, class `siRNA`)
+- Content: **76 loci** (BED6: dm6 0-based half-open, name `Czech2008_<table>:<annotation>`, strand `.`), on 2L/2R/3L/3R/X.
+- Source: Supplementary Information of Czech et al. (2008), Nature 453:798-802, Table S1 (endo-siRNA loci in ovaries) and Table S2
+  (S2 cells): https://static-content.springer.com/esm/art%3A10.1038%2Fnature07007/MediaObjects/41586_2008_BFnature07007_MOESM268_ESM.pdf
+  (md5 1763fd418ddbb295e738975805ffea4f), retrieved 2026-11-04; kept outside git. The tables are text in the PDF and are parsed
+  by `benchmark/scripts/build_dme_endosirna_truth.py` (`pdftotext -layout`, one regex; the script asserts `stop - start == size`
+  on every row, so the coordinates are BED-like).
+- Original build: Drosophila release 5 genome (dm3), stated in the SI. Liftover: CrossMap 0.7.3 `bed` with UCSC
+  https://hgdownload.soe.ucsc.edu/goldenPath/dm3/liftOver/dm3ToDm6.over.chain.gz (md5 582f6f4067e41542a4b77a7401dadd45),
+  then `chrN` renamed to `N`. All contigs checked against the BDGP6.54 FASTA with `check_contigs_fasta`.
+- Counts: 99 table rows parsed (S1 and S2), 7 transgene ("vector") rows dropped = 92, overlapping S1/S2 loci merged into their
+  union (e.g. esi1) = 77 loci, lifted 77 / failed 0; dropped for overlapping existing truth: 0 MirGeneDB miRNA precursors,
+  0 miRBase dme precursors, 1 piRNAclusterDB 2.0 cluster; kept **76**. Two kept loci overlap the tuning seed piC set
+  (`seed/piC_ref_dm6.bed`), which was not used as an exclusion filter because it is tuning material.
+- Circularity: low; experimental (small-RNA cloning in ovary and S2 cells), curated in the paper, independent of the tool and of the
+  benchmark libraries. Caveat: Table S1/S2 loci are coverage-defined clusters of uniquely mapping siRNAs (several tens to a few
+  thousand bp), not hairpin annotations, and S2/ovary data predate dm6.
+- Paper: Czech et al. (2008). Ghildiyal 2008 and Okamura 2008 are not included (see "Not included").
+
 ### zmay
 
 `benchmark/truth/zmay/zma_mirbase_v23.1.gff3`
@@ -300,13 +332,13 @@ by `benchmark/tests/test_truth_index.py`. Counts are features loaded by `load_re
 
 | Species (role) | miRNA | piRNA | siRNA | phasiRNA (21) | phasiRNA24 | hcsiRNA |
 |---|---|---|---|---|---|---|
-| D. melanogaster (tuning) | 140 MirGeneDB | 196 piRNAclusterDB 2.0; 90 seed | none obtained | n/a (animal) | n/a | n/a |
+| D. melanogaster (tuning) | 140 MirGeneDB; 258 miRBase (8c) | 196 piRNAclusterDB 2.0; 90 seed | 76 Czech 2008 (8c) | n/a (animal) | n/a | n/a |
 | A. thaliana (tuning) | 296 miRBase | n/a (plant) | none obtained | 35 seed (sRNAanno) + 8 seed TAS | 79 sRNAanno | 17481 sRNAanno |
 | O. sativa (tuning) | 508 miRBase | n/a | none obtained | 2595 sRNAanno | 804 sRNAanno; 104 Ono 2018 | built, not committed (194872) |
 | B. mori (test) | 403 miRBase | 136 Lee 2025 (ovary, 22 verified chromosomes) | none obtained | n/a | n/a | n/a |
 | Z. mays (test) | 172 miRBase | n/a | none obtained | 587 sRNAanno (lifted) | 480 sRNAanno (lifted) | 769596 sRNAanno (lifted), not committed (60 MB) |
 
-Why nothing usable exists (siRNA): the endo-siRNA / hp-RNA loci of Drosophila (Czech et al. 2008; Ghildiyal et al. 2008;
+Why little siRNA truth exists (Task 8c later added 76 Czech 2008 loci for D. melanogaster): the endo-siRNA / hp-RNA loci of Drosophila (Czech et al. 2008; Ghildiyal et al. 2008;
 Okamura et al. 2008) are given in the supplements of those papers, which Europe PMC does not serve as open-access files
 and the publisher/PMC pages block automated download; no machine-readable coordinate table on dm6 was found. No B. mori
 endo-siRNA locus set was found. Plant non-heterochromatic siRNA loci have no curated public set; the 24-nt hc-siRNA loci
@@ -322,10 +354,24 @@ are given as `hcsiRNA`.
 | bmo_piC_p50ma_ovary_lee2025.gff3 | p50ma (Bomo_Chr names) | filter to sequence-verified chromosomes, rename | 243 | 136 | 107 |
 | osa_sRNAanno_hcsiRNA.gff3 (not committed) | IRGSP-1.0 | contig filter (ChrUn, ChrSy), then drop length-1 rows | 195606 | 194872 | 733 + 1 |
 | ath_sRNAanno_hcsiRNA.gff3 | TAIR10 | drop invalid row (start=0) | 17482 | 17481 | 1 |
+| dme_endosiRNA_2008_dm6.bed | dm3 (Release 5) | CrossMap 0.7.3 + UCSC dm3ToDm6 chain; transgene rows dropped, S1/S2 merged, overlap with miRNA/piRNA truth dropped | 99 | 76 | 0 lift failures; 7 vector + 15 merged + 1 piRNA overlap |
 | all other new files | already on the manifest assembly | contig rename only | all kept | | 0 |
 
 Tools: CrossMap 0.7.3 (conda env `srnabench` on litrp3, bioconda; Zhao et al. 2014), pysam for the sequence checks.
 Downloaded genomes and intermediates stay in `~/srnaprofiler/data/` on litrp3 (git-ignored).
+
+### Not included (Task 8c)
+
+- Maize PHAS loci of Zhai et al. (2015) and Teng et al. (2020): not extracted. Zhai 2015 lists its loci in Datasets S1-S7 (xlsx);
+  the PNAS site returns HTTP 403 and the PMC copy (PMC4364226, `/articles/instance/4364226/bin/pnas.1418918112.sd0N.xlsx`) answers
+  with a JavaScript proof-of-work page ("Preparing to download ...") instead of the file. Solving it would circumvent a bot check, which is not done
+  (same rule as for the Axtell portal); Europe PMC reports the article as not open access for its supplement service.
+  Teng 2020 (https://doi.org/10.1038/s41467-020-16634-6): its only spreadsheet is Source Data for figures (MOESM4, 10 sheets);
+  the PDF supplement has Supplementary Figures and Tables 1 to 3 and no PHAS locus table. No BED or script was written for maize.
+- Ghildiyal et al. (2008) and Okamura et al. (2008) endo-siRNA/hpRNA loci: Science SI is blocked (HTTP 403, PMC proof-of-work);
+  the Okamura 2008 SI PDF (nature07015) holds figures only, with a few example coordinates in figure legends and no locus table.
+  Czech 2008 is the only one of the three that could be parsed by a script.
+- The seed (tuning) hpRNA/endo-siRNA material is unaffected.
 
 ## Download method
 
