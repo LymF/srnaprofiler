@@ -94,3 +94,57 @@ def test_fetch_genome_plain_and_skip(tmp_path, monkeypatch):
     assert out.suffix == ".fa" and out.read_text() == ">c\nA\n"
     fetch.fetch_genome(lib, tmp_path)
     assert len(seen) == 1
+
+
+def test_stale_temp_dir_is_ignored(tmp_path, monkeypatch):
+    stale = tmp_path / ".iseq_SRR000001"
+    stale.mkdir()
+    (stale / "old.fastq.gz").write_bytes(b"truncated")
+    monkeypatch.setattr(fetch.subprocess, "run", fake_run_factory([], ["SRR000001.fastq.gz"]))
+    out = fetch.fetch_library(make_lib(), tmp_path)
+    assert out.read_bytes() == b"data"
+    assert not stale.exists()
+
+
+def test_temp_dir_removed_after_success(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.subprocess, "run", fake_run_factory([], ["SRR000001.fastq.gz"]))
+    fetch.fetch_library(make_lib(), tmp_path)
+    assert not list(tmp_path.glob(".iseq_*"))
+
+
+def test_no_output_raises_and_cleans_up(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.subprocess, "run", fake_run_factory([], []))
+    with pytest.raises(FileNotFoundError):
+        fetch.fetch_library(make_lib(), tmp_path)
+    assert not list(tmp_path.glob(".iseq_*"))
+
+
+def test_called_process_error_propagates_and_cleans_up(tmp_path, monkeypatch):
+    def failing(cmd, **kwargs):
+        raise fetch.subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(fetch.subprocess, "run", failing)
+    with pytest.raises(fetch.subprocess.CalledProcessError):
+        fetch.fetch_library(make_lib(), tmp_path)
+    assert not list(tmp_path.glob(".iseq_*")) and not (tmp_path / "SRR000001.fastq.gz").exists()
+
+
+def test_single_file_with_pair_suffix_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch.subprocess, "run", fake_run_factory([], ["SRR000001_1.fastq.gz"]))
+    with pytest.raises(ValueError, match="paired"):
+        fetch.fetch_library(make_lib(), tmp_path)
+    assert not (tmp_path / "SRR000001.fastq.gz").exists()
+
+
+def test_iseq_bin_directory_prepended_to_path(tmp_path, monkeypatch):
+    envs = []
+    inner = fake_run_factory([], ["SRR000001.fastq.gz"])
+
+    def capture(cmd, **kwargs):
+        envs.append(kwargs["env"])
+        return inner(cmd, **kwargs)
+
+    monkeypatch.setenv("ISEQ_BIN", "/opt/srnabench/bin/iseq")
+    monkeypatch.setattr(fetch.subprocess, "run", capture)
+    fetch.fetch_library(make_lib(), tmp_path)
+    assert envs[0]["PATH"].startswith("/opt/srnabench/bin")

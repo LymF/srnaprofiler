@@ -23,22 +23,25 @@ def fetch_library(lib: Library, dest: Path) -> Path:
     if target.exists():
         return target
     tmp = dest / f".iseq_{lib.accession}"
-    tmp.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(tmp, ignore_errors=True)  # discard leftovers of interrupted runs
+    tmp.mkdir(parents=True)
     binary = _iseq_bin()
     env = os.environ.copy()
     if os.sep in binary:  # iSeq needs its sibling tools (axel, pigz, sra-tools) on PATH
         env["PATH"] = str(Path(binary).resolve().parent) + os.pathsep + env.get("PATH", "")
-    subprocess.run([binary, "-i", lib.accession, "-g", "-o", str(tmp)], check=True, env=env)
-    files = sorted(tmp.rglob("*.fastq.gz"))
-    if len(files) > 1:
-        names = ", ".join(f.name for f in files)
-        raise ValueError(f"{lib.accession}: paired-end run not supported ({names})")
-    if not files:
-        raise FileNotFoundError(f"iSeq produced no fastq.gz for {lib.accession}")
-    if files[0].name.endswith(("_1.fastq.gz", "_2.fastq.gz", "_R1.fastq.gz", "_R2.fastq.gz")):
-        raise ValueError(f"{lib.accession}: paired-end run not supported ({files[0].name})")
-    shutil.move(str(files[0]), target)
-    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        subprocess.run([binary, "-i", lib.accession, "-g", "-o", str(tmp)], check=True, env=env)
+        files = sorted(tmp.rglob("*.fastq.gz"))
+        if len(files) > 1:
+            names = ", ".join(f.name for f in files)
+            raise ValueError(f"{lib.accession}: paired-end run not supported ({names})")
+        if not files:
+            raise FileNotFoundError(f"iSeq produced no fastq.gz for {lib.accession}")
+        if files[0].name.endswith(("_1.fastq.gz", "_2.fastq.gz", "_R1.fastq.gz", "_R2.fastq.gz")):
+            raise ValueError(f"{lib.accession}: paired-end run not supported ({files[0].name})")
+        shutil.move(str(files[0]), target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return target
 
 
