@@ -17,10 +17,35 @@ def _union_bp(spans: list[tuple[int, int]]) -> int:
     return total
 
 
+def locus_counts(loci: list[dict], cfg: Config) -> dict:
+    """Tiny and low-read locus counts over all loci (not tied to any truth source)."""
+    return {
+        "tiny_counts": {bp: sum(1 for l in loci if l["end"] - l["start"] <= bp)
+                        for bp in cfg.tiny_bp},
+        "low_read_counts": {r: sum(1 for l in loci if l["reads"] < r) for r in cfg.low_reads},
+    }
+
+
+def _joins_distinct(regions: list[Region], gap_bp: int) -> bool:
+    """True if two regions are more than gap_bp apart (overlapping ones are never distinct)."""
+    ordered = sorted(regions, key=lambda r: r.start)
+    min_end = ordered[0].end
+    for r in ordered[1:]:
+        if r.start - min_end > gap_bp:
+            return True
+        min_end = min(min_end, r.end)
+    return False
+
+
 def delimitation_metrics(loci: list[dict], clusters: list[Region], cfg: Config) -> dict:
-    """Score cluster delimitation; locus class is ignored (every locus counts)."""
+    """Score cluster delimitation against the clusters of ONE truth source.
+
+    Locus class is ignored (every locus counts). Pass one source at a time: clusters of
+    different sources overlap each other and would be double counted. A locus counts in
+    merged_distinct when it overlaps two clusters more than cfg.merge_gap_bp apart.
+    """
     index = IntervalIndex([(l["chrom"], l["start"], l["end"]) for l in loci])
-    regions_hit = [0] * len(loci)  # distinct truth regions each locus overlaps
+    regions_hit: list[list[Region]] = [[] for _ in loci]  # clusters each locus overlaps
 
     per_cluster = []
     for c in clusters:
@@ -28,7 +53,7 @@ def delimitation_metrics(loci: list[dict], clusters: list[Region], cfg: Config) 
         for idx, _ in index.overlapping(c.chrom, c.start, c.end):
             loc = loci[idx]
             spans.append((max(loc["start"], c.start), min(loc["end"], c.end)))
-            regions_hit[idx] += 1
+            regions_hit[idx].append(c)
         per_cluster.append({
             "name": c.name, "chrom": c.chrom, "start": c.start, "end": c.end,
             "recovered_fraction": _union_bp(spans) / (c.end - c.start),
@@ -38,10 +63,8 @@ def delimitation_metrics(loci: list[dict], clusters: list[Region], cfg: Config) 
     n = len(per_cluster)
     return {
         "per_cluster": per_cluster,
-        "merged_distinct": sum(1 for h in regions_hit if h >= 2),
-        "tiny_counts": {bp: sum(1 for l in loci if l["end"] - l["start"] <= bp)
-                        for bp in cfg.tiny_bp},
-        "low_read_counts": {r: sum(1 for l in loci if l["reads"] < r) for r in cfg.low_reads},
+        "merged_distinct": sum(1 for h in regions_hit
+                               if len(h) >= 2 and _joins_distinct(h, cfg.merge_gap_bp)),
         "summary": {
             "n_clusters": n,
             "mean_recovered_fraction": sum(p["recovered_fraction"] for p in per_cluster) / n if n else 0.0,

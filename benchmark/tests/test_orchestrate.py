@@ -12,13 +12,15 @@ CLUSTER_HEADER = "chrom\tstart\tend\treads\tcls\tconfidence\n"
 
 
 def setup(tmp_path, monkeypatch, *, truth_chrom="chr1", index_rows=None, role="test",
-          truth_sources=None):
+          truth_sources=None, extra_files=None):
     repo = tmp_path / "repo"
     (repo / "benchmark" / "truth").mkdir(parents=True)
     (repo / "rules.yaml").write_text("a: 1\n")
     (repo / "rules.plant.yaml").write_text("a: 2\n")
     (repo / "pirna.bed").write_text(f"{truth_chrom}\t100\t200\tpic1\n")
     (repo / "mirna.bed").write_text(f"{truth_chrom}\t500\t560\tmir1\n")
+    for name, text in (extra_files or {}).items():
+        (repo / name).write_text(text)
     rows = ["path\tcls\tsource\tfeature_types\taliases"]
     if index_rows is None:
         index_rows = ["pirna.bed\tpiRNA\tSrcPi\t\t", "mirna.bed\tmiRNA\tSrcMi\t\t"]
@@ -79,16 +81,37 @@ def test_run_writes_metrics_json(tmp_path, monkeypatch):
     m = json.loads(path.read_text())
     assert set(m) == {"accession", "organism", "role", "classification", "delimitation",
                       "by_source", "n_loci"}
+    assert set(m["delimitation"]) == {"global", "by_source"}
+    assert set(m["delimitation"]["global"]) == {"tiny_counts", "low_read_counts"}
+    assert m["delimitation"]["global"]["tiny_counts"] == {"50": 0}
     assert m["n_loci"] == 2 and m["role"] == "test"
     assert set(m["by_source"]) == {"SrcPi", "SrcMi"}
     # delimitation only sees the piRNA cluster, not the miRNA precursor
-    assert m["delimitation"]["summary"]["n_clusters"] == 1
+    assert set(m["delimitation"]["by_source"]) == {"SrcPi"}
+    assert m["delimitation"]["by_source"]["SrcPi"]["summary"]["n_clusters"] == 1
     assert "miRNA" in m["classification"]["per_class"]
     assert (path.parent / "benchmark_run.json").exists()
     assert seen["rules"] == orchestrate.REPO / "rules.yaml"
     assert seen["threads"] == 4
     assert seen["genome_dest"] == tmp_path / "data" / "genomes" / "Bombyx_mori"
     assert seen["reads_dest"] == tmp_path / "data" / "reads"
+
+
+def test_delimitation_is_per_source_and_independent_of_other_sources(tmp_path, monkeypatch):
+    base_manifest, _ = setup(tmp_path / "a", monkeypatch)
+    base = json.loads(go(tmp_path / "a", base_manifest).read_text())
+    # a second source overlapping the piRNA cluster must not change SrcPi's numbers
+    rows = ["pirna.bed\tpiRNA\tSrcPi\t\t", "mirna.bed\tmiRNA\tSrcMi\t\t",
+            "other.bed\tsiRNA\tSrcOther\t\t"]
+    manifest, _ = setup(tmp_path / "b", monkeypatch, index_rows=rows,
+                        truth_sources=["pirna.bed", "mirna.bed", "other.bed"],
+                        extra_files={"other.bed": "chr1\t90\t210\toth1\nchr1\t150\t300\toth2\n"})
+    both = json.loads(go(tmp_path / "b", manifest).read_text())
+    d = both["delimitation"]["by_source"]
+    assert set(d) == {"SrcPi", "SrcOther"}
+    assert d["SrcPi"] == base["delimitation"]["by_source"]["SrcPi"]
+    assert d["SrcOther"]["summary"]["n_clusters"] == 2
+    assert both["delimitation"]["global"] == base["delimitation"]["global"]
 
 
 def test_run_aborts_on_contig_mismatch(tmp_path, monkeypatch):

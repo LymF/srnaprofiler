@@ -86,21 +86,28 @@ def _species_section(species: str, items: list[tuple[LibraryResult, str]]) -> li
             _fmt(r.metrics["classification"]["unknown"]["count"])]
          for r, st in items])
 
-    tiny = _num_sorted(items[0][0].metrics["delimitation"]["tiny_counts"])
-    low = _num_sorted(items[0][0].metrics["delimitation"]["low_read_counts"])
-    lines += ["Delimitation", ""]
-    rows = []
-    for r, st in items:
-        d = r.metrics["delimitation"]
-        s = d["summary"]
-        rows.append([r.lib.accession, st, _fmt(s["n_clusters"]),
-                     _fmt(s["mean_recovered_fraction"]), _fmt(s["mean_fragments"]),
-                     _fmt(d["merged_distinct"])]
-                    + [_fmt(d["tiny_counts"].get(k)) for k in tiny]
-                    + [_fmt(d["low_read_counts"].get(k)) for k in low])
-    lines += _table(["library", "status", "n_clusters", "mean_recovered_fraction",
-                     "mean_fragments", "merged_distinct"]
-                    + [f"tiny<={k}" for k in tiny] + [f"reads<{k}" for k in low], rows)
+    tiny = _num_sorted(items[0][0].metrics["delimitation"]["global"]["tiny_counts"])
+    low = _num_sorted(items[0][0].metrics["delimitation"]["global"]["low_read_counts"])
+    lines += ["Loci counts (all loci, independent of truth source)", ""]
+    lines += _table(["library", "status"] + [f"tiny<={k}" for k in tiny] + [f"reads<{k}" for k in low],
+                    [[r.lib.accession, st]
+                     + [_fmt(r.metrics["delimitation"]["global"]["tiny_counts"].get(k)) for k in tiny]
+                     + [_fmt(r.metrics["delimitation"]["global"]["low_read_counts"].get(k)) for k in low]
+                     for r, st in items])
+    delim_sources = sorted({s for r, _ in items for s in r.metrics["delimitation"]["by_source"]})
+    for src in delim_sources:
+        lines += [f"Delimitation: {src}", ""]
+        rows = []
+        for r, st in items:
+            d = r.metrics["delimitation"]["by_source"].get(src)
+            if d is None:
+                continue
+            s = d["summary"]
+            rows.append([r.lib.accession, st, _fmt(s["n_clusters"]),
+                         _fmt(s["mean_recovered_fraction"]), _fmt(s["mean_fragments"]),
+                         _fmt(d["merged_distinct"])])
+        lines += _table(["library", "status", "n_clusters", "mean_recovered_fraction",
+                         "mean_fragments", "merged_distinct"], rows)
 
     sources = sorted({s for r, _ in items for s in r.metrics["by_source"]})
     for src in sources:

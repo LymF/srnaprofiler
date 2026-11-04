@@ -20,10 +20,14 @@ def metrics(precision=0.9, fdr=0.1):
             "ece": 0.0123,
         },
         "delimitation": {
-            "summary": {"n_clusters": 4, "mean_recovered_fraction": 0.6, "mean_fragments": 1.5},
-            "merged_distinct": 2,
-            "tiny_counts": {"50": 3, "100": 5},
-            "low_read_counts": {"20": 8, "50": 9, "100": 10},
+            "global": {"tiny_counts": {"50": 3, "100": 5},
+                       "low_read_counts": {"20": 8, "50": 9, "100": 10}},
+            "by_source": {
+                "SrcA": {"summary": {"n_clusters": 4, "mean_recovered_fraction": 0.6,
+                                     "mean_fragments": 1.5}, "merged_distinct": 2},
+                "SrcB": {"summary": {"n_clusters": 9, "mean_recovered_fraction": 0.7,
+                                     "mean_fragments": 2.5}, "merged_distinct": 6},
+            },
         },
         "by_source": {"SrcA": {"piRNA": {"precision": 0.8, "fdr": 0.2, "recall": 0.4, "tp": 1, "fp": 1}}},
         "n_loci": 10,
@@ -86,6 +90,10 @@ def test_report_has_delimitation_and_source_tables(tmp_path):
     assert "mean_recovered_fraction" in text
     assert "tiny<=50" in text and "reads<100" in text
     assert "SrcA" in text
+    # one delimitation table per source, not pooled
+    assert "Delimitation: SrcA" in text and "Delimitation: SrcB" in text
+    sec_a = text.split("Delimitation: SrcA")[1].split("Delimitation: SrcB")[0]
+    assert "| 4 | 0.600 | 1.500 | 2 |" in sec_a and "| 9 |" not in sec_a
 
 
 def test_collect_results_reads_metrics_and_meta(tmp_path):

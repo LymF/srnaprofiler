@@ -9,7 +9,7 @@ import pysam
 from benchmark.fetch import fetch_genome, fetch_library
 from benchmark.manifest import Library, load_config, load_manifest
 from benchmark.metrics_class import classification_metrics, read_loci
-from benchmark.metrics_delim import delimitation_metrics
+from benchmark.metrics_delim import delimitation_metrics, locus_counts
 from benchmark.run import run_library
 from benchmark.truth import (Region, check_contigs, guard_seed_use, load_aliases,
                              load_regions)
@@ -67,12 +67,20 @@ def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir:
     loci = read_loci(res.clusters_tsv)
     clusters = [r for r in regions if r.cls != "miRNA"]
     sources = sorted({r.source for r in regions})
+    cluster_sources = sorted({r.source for r in clusters})
     metrics = {
         "accession": acc,
         "organism": lib.organism,
         "role": lib.role,
         "classification": classification_metrics(loci, regions, cfg),
-        "delimitation": delimitation_metrics(loci, clusters, cfg),
+        # one delimitation per source: sources overlap each other, so pooling double counts
+        "delimitation": {
+            "global": locus_counts(loci, cfg),
+            "by_source": {
+                s: delimitation_metrics(loci, [r for r in clusters if r.source == s], cfg)
+                for s in cluster_sources
+            },
+        },
         "by_source": {
             s: classification_metrics(loci, [r for r in regions if r.source == s], cfg)["per_class"]
             for s in sources

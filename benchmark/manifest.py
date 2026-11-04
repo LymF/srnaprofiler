@@ -35,6 +35,7 @@ class Config:
     tiny_bp: list[int]
     low_reads: list[int]
     min_overlap_frac: float
+    merge_gap_bp: int = 200  # regions closer than this are one locus, not distinct
 
 
 def load_config(path: Path) -> Config:
@@ -43,6 +44,7 @@ def load_config(path: Path) -> Config:
         tiny_bp=[int(x) for x in data["tiny_bp"]],
         low_reads=[int(x) for x in data["low_reads"]],
         min_overlap_frac=float(data["min_overlap_frac"]),
+        merge_gap_bp=int(data.get("merge_gap_bp", 200)),
     )
 
 
