@@ -28,6 +28,34 @@ def read_loci(path: Path) -> list[dict]:
     return loci
 
 
+class IntervalIndex:
+    """Per-chrom index over (chrom, start, end) intervals, sorted by start, for overlap queries."""
+
+    def __init__(self, intervals: list[tuple[str, int, int]]):
+        by_chrom: dict[str, list[tuple[int, int, int]]] = defaultdict(list)
+        for idx, (chrom, start, end) in enumerate(intervals):
+            by_chrom[chrom].append((start, idx, end))
+        self._items = by_chrom
+        self._starts: dict[str, list[int]] = {}
+        self._max_len: dict[str, int] = {}
+        for chrom, items in by_chrom.items():
+            items.sort()
+            self._starts[chrom] = [s for s, _, _ in items]
+            self._max_len[chrom] = max(e - s for s, _, e in items)
+
+    def overlapping(self, chrom: str, start: int, end: int):
+        """Yield (idx, overlap_bp) for each indexed interval with > 0 bp overlap, by start order."""
+        if chrom not in self._items:
+            return
+        starts = self._starts[chrom]
+        hi = bisect_left(starts, end)  # intervals with start < end
+        lo = bisect_left(starts, start - self._max_len[chrom])
+        for s, idx, e in self._items[chrom][lo:hi]:
+            ov = min(e, end) - max(s, start)
+            if ov > 0:
+                yield idx, ov
+
+
 def match_loci(loci: list[dict], regions: list[Region],
                min_overlap_frac: float) -> list[tuple[dict, Region | None]]:
     """Pair each locus with its best-overlapping region (or None), in input order.
@@ -35,31 +63,16 @@ def match_loci(loci: list[dict], regions: list[Region],
     A region matches when overlap/locus_len or overlap/region_len >= min_overlap_frac.
     Ties on overlap go to the region that comes first in `regions`.
     """
-    by_chrom: dict[str, list[tuple[int, int, int]]] = defaultdict(list)
-    for idx, r in enumerate(regions):
-        by_chrom[r.chrom].append((r.start, idx, r.end))
-    starts: dict[str, list[int]] = {}
-    max_len: dict[str, int] = {}
-    for chrom, items in by_chrom.items():
-        items.sort()
-        starts[chrom] = [s for s, _, _ in items]
-        max_len[chrom] = max(e - s for s, _, e in items)
-
+    index = IntervalIndex([(r.chrom, r.start, r.end) for r in regions])
     out = []
     for loc in loci:
-        chrom, ls, le = loc["chrom"], loc["start"], loc["end"]
+        ls, le = loc["start"], loc["end"]
         best, best_ov, best_idx = None, 0, -1
-        if chrom in by_chrom:
-            items = by_chrom[chrom]
-            hi = bisect_left(starts[chrom], le)  # regions with start < le
-            lo = bisect_left(starts[chrom], ls - max_len[chrom])
-            for s, idx, e in items[lo:hi]:
-                ov = min(e, le) - max(s, ls)
-                if ov <= 0:
-                    continue
-                if ov / (le - ls) >= min_overlap_frac or ov / (e - s) >= min_overlap_frac:
-                    if ov > best_ov or (ov == best_ov and idx < best_idx):
-                        best, best_ov, best_idx = regions[idx], ov, idx
+        for idx, ov in index.overlapping(loc["chrom"], ls, le):
+            r = regions[idx]
+            if ov / (le - ls) >= min_overlap_frac or ov / (r.end - r.start) >= min_overlap_frac:
+                if ov > best_ov or (ov == best_ov and idx < best_idx):
+                    best, best_ov, best_idx = r, ov, idx
         out.append((loc, best))
     return out
 
