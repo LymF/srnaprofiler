@@ -3,7 +3,8 @@ import bisect
 from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments, read_region, reference_lengths, base_null
-from clustering import call_islands, merge_compatible, carve_out
+from clustering import (call_islands, merge_compatible, carve_out,
+                        profile_from_mass)
 from signals import (offset_spectrum, pingpong_zscore, phase_test,
                      PHASE_WINDOW_CYCLES)
 from evidence import (base_bias_score, strand_bias_score, strand_balance_score,
@@ -263,7 +264,9 @@ def island_profiles(islands, alns, min_reads=0, size_windows=None,
     The size call is the class window holding most of the read mass, which
     survives the handful of reads a raw island has -- the modal length does not,
     and flips with one read either way. No window over `min_window_frac` of the
-    mass means unknown, and unknown never blocks a merge.
+    mass means unknown, and unknown never blocks a merge. The masses (`mass`,
+    `plus`, `window_mass`) are reported even for an unknown island: the merge
+    adds them up to profile the running cluster.
     """
     sizes = [Counter() for _ in islands]
     plus = [0.0] * len(islands)
@@ -280,18 +283,13 @@ def island_profiles(islands, alns, min_reads=0, size_windows=None,
             plus[j] += w
     out = []
     for j in range(len(islands)):
-        if not total[j] or total[j] < min_reads:
-            out.append({"size": None, "window": None, "frac_top": None})
-            continue
-        window = None
+        wmass = None
         if size_windows:
-            mass = [sum(v for L, v in sizes[j].items() if lo <= L <= hi)
-                    for lo, hi in size_windows]
-            best = max(range(len(mass)), key=lambda i: mass[i])
-            if mass[best] / total[j] > min_window_frac:
-                window = best
-        out.append({"size": sizes[j].most_common(1)[0][0], "window": window,
-                    "frac_top": round(plus[j] / total[j], 4)})
+            wmass = [sum(v for L, v in sizes[j].items() if lo <= L <= hi)
+                     for lo, hi in size_windows]
+        size = sizes[j].most_common(1)[0][0] if total[j] else None
+        out.append(profile_from_mass(total[j], plus[j], wmass, size,
+                                     min_reads, min_window_frac))
     return out
 
 
@@ -313,7 +311,9 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
                                size_windows=config.get("size_windows"))
     merged = merge_compatible(islands, profiles, pad,
                               chrom_len=chrom_len or None,
-                              size_windows=config.get("size_windows"))
+                              size_windows=config.get("size_windows"),
+                              strand_min_reads=config.get("strand_min_reads"),
+                              profile_min_reads=config.get("profile_min_reads", 0))
     # Known miRNA loci become loci of their own instead of being swallowed.
     regions = [(chrom, s, e) for (s, e) in carve_out(merged, carve)]
     if not regions:

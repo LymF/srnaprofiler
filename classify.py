@@ -38,7 +38,13 @@ def class_size_windows(config):
         size = (spec or {}).get("size")
         if size and "lo" in size and "hi" in size:
             out.append((size["lo"], size["hi"]))
-    return out
+    # Merging compares window INDICES, so a window equal to or inside another
+    # splits loci of one pathway: 24-nt-only islands got phasiRNA24's index and
+    # 23/24 mixes got hcsiRNA's (13,186 -> 13,696 rice loci on enabling it).
+    # Windows that merely overlap stay apart; they are different groupings.
+    return [w for i, w in enumerate(out)
+            if w not in out[:i]
+            and not any(o != w and o[0] <= w[0] and w[1] <= o[1] for o in out)]
 
 
 def mincov_to_depth(mincov_rpm, lib_size):
@@ -130,6 +136,9 @@ def run_classify(args):
     ext_cfg["size_windows"] = class_size_windows(config)
     ext_cfg["profile_min_reads"] = (config.get("clustering", {}) or {}).get(
         "profile_min_reads", 2)
+    # None (absent or null in the YAML): the strand test never blocks a merge.
+    ext_cfg["strand_min_reads"] = (config.get("clustering", {}) or {}).get(
+        "strand_min_reads")
     threads = getattr(args, "threads", 1) or 1
     pad = resolve_pad(getattr(args, "pad", None), config)
 
