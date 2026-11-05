@@ -20,6 +20,11 @@
 # --mirna-loci (overlap with a curated BED) and bypasses the scorer.
 clustering:
   pad: 500
+  # Provisional: pending Task 12 calibration. A strand fraction on fewer reads
+  # than this is noise, so the strand test only blocks a merge when both the
+  # running cluster and the new island carry this much 1/NH-weighted mass.
+  # null (or absent) means the strand test never blocks.
+  strand_min_reads: 20
 extractor:
   dicermin: 18
   dicermax: 35
@@ -86,13 +91,19 @@ classes:
   # against truth yet -- Arabidopsis cannot calibrate a pathway it lacks. Rice
   # (804 PHAS24 loci in sRNAanno) is where that number gets tested.
   phasiRNA24:
-    # OFF by default, and the default is the honest one: this is a MONOCOT
-    # pathway. 24-nt reproductive phasiRNA come from DCL5, which rice and maize
-    # have and Arabidopsis does not. Enabled on Arabidopsis it took 3514 loci
-    # and 46.4% of the read mass -- with a median phase_pvalue of 1.000, because
-    # they are simply the deepest hc-siRNA loci. Turn it on for a species that
-    # has the pathway (`enabled: true`), not by default.
-    enabled: false
+    # ON, because the phasing gate below is what makes it safe. This is a
+    # MONOCOT pathway: 24-nt reproductive phasiRNA come from DCL5, which rice
+    # and maize have and Arabidopsis does not -- so Arabidopsis is the
+    # specificity control, and it should get ~0 calls. Ungated it took 4337
+    # calls at precision 0.006 (earlier: 3514 loci and 46.4% of the read mass):
+    # phase_number >= 5 is common by chance in the deepest hc-siRNA loci, whose
+    # phase_pvalue is ~1.0. The true rice calls have a median phase_pvalue of
+    # 0.007 (222 calls at precision 1.0).
+    enabled: true
+    # Provisional: chosen on tuning libraries only (rice, fly, Arabidopsis).
+    # A record with a larger phase_pvalue gets no phase term and no phase
+    # defining strength, whatever its phase_number.
+    phase_max_pvalue: 0.01
     size: {lo: 24, hi: 24}
     w_size: 1.0
     w_phase: 4.0

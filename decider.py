@@ -129,6 +129,24 @@ class RuleScorer:
         full = self.shape.get("pingpong_frac_full", 0.1)
         return min(record.pingpong_frac / full, 1.0) if full > 0 else 0.0
 
+    @staticmethod
+    def _phase_supported(spec, record):
+        """Whether the record's phasing passes the class's `phase_max_pvalue`.
+
+        Unset: always. Set: a missing, NaN or larger p-value means no phasing
+        signal. `phase_number` alone counts runs in register that chance makes
+        too, and in a class with a deep, abundant background (24-nt hcsiRNA)
+        chance is plenty.
+        """
+        limit = spec.get("phase_max_pvalue")
+        if limit is None:
+            return True
+        try:
+            p = float(getattr(record, "phase_pvalue", None))
+        except (TypeError, ValueError):
+            return False
+        return not math.isnan(p) and p <= limit
+
     def _score_class(self, name, spec, record):
         size = self._size(record)
         edge = self.shape.get("size_edge", 3.0)
@@ -162,7 +180,9 @@ class RuleScorer:
         if "w_phase" in spec:
             # Size-gated like ping-pong: phasing only counts where the size fits,
             # which is what lets one config serve plants and arthropods.
-            if spec.get("phase_on", "score") == "cycles":
+            if not self._phase_supported(spec, record):
+                signal = 0.0
+            elif spec.get("phase_on", "score") == "cycles":
                 # The run in register, with no abundance in it: phase_score's ln(mass)
                 # factor selects depth in a class that dominates the genome.
                 signal = self.phase_cycle_strength(record)
@@ -192,6 +212,8 @@ class RuleScorer:
         """`size` is computed against the class; every other name lives on the record."""
         if name == "size":
             return self.size_strength(spec, record)
+        if name == "phase" and not self._phase_supported(spec, record):
+            return 0.0
         return getattr(record, f"e_{name}", 0.0)
 
     def decide(self, record):
