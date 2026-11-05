@@ -58,6 +58,8 @@ class ClusterRecord:
     # repetition
     multimap_frac: float = 0.0
     unique_frac: float = 0.0
+    # bp from the first read start to the last read end (0 with no reads)
+    read_span: int = 0
     # proTRAC density significance vs the chromosome; None when unknown
     density_pvalue: Optional[float] = None
     # classification

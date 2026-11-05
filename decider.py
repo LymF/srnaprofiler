@@ -280,15 +280,20 @@ class RuleScorer:
     def _cluster_failures(spec, record):
         """Which of a class's optional cluster criteria the locus fails.
 
-        `cluster_min_length` (bp) and `cluster_max_density_pvalue` (proTRAC,
+        `cluster_min_length` (bp, on the span of the reads, `read_span`; falls back to
+        the window end - start when the record has none) and `cluster_max_density_pvalue` (proTRAC,
         Rosenkranz & Zischler 2012). Either key absent: not applied. A missing or
         NaN density (e.g. a replayed .clusters.tsv without the column) leaves
         only the length part.
         """
         failed = []
         min_len = spec.get("cluster_min_length")
-        if min_len is not None and record.end - record.start < min_len:
-            failed.append("length")
+        if min_len is not None:
+            span = getattr(record, "read_span", None)
+            if span is None:   # replayed .clusters.tsv without the column
+                span = record.end - record.start
+            if span < min_len:
+                failed.append("length")
         max_p = spec.get("cluster_max_density_pvalue")
         if max_p is not None:
             try:

@@ -62,6 +62,10 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     raw_n = len(local)
     if raw_n == 0:
         return r
+    # Span the reads cover, not the padded window: proTRAC's minimum cluster size
+    # is about the former.
+    r.read_span = (max(a.pos + len(a.seq) for a in local)
+                   - min(a.pos for a in local))
 
     # 1/NH: a read mapping to N places contributes 1/N at each locus, so its
     # total across the genome is 1.
@@ -302,10 +306,10 @@ def density_pvalue(reads, chrom_reads, chrom_len, locus_len):
     integers and extends it continuously, so no rounding is needed. None when
     the chromosome length or mass is unknown.
     """
+    if reads <= 0:
+        return 1.0   # P(X >= 0) = 1, whatever lambda is
     if not chrom_len or chrom_reads <= 0 or locus_len <= 0:
         return None
-    if reads <= 0:
-        return 1.0
     from scipy.special import gammainc
     return float(gammainc(reads, chrom_reads / chrom_len * locus_len))
 
@@ -350,6 +354,8 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
                             locus_seq=seqs[i]) for i in range(len(regions))]
     # Background density of this chromosome, for the piRNA-cluster criterion.
     chrom_mass = sum(1.0 / a.nh for a in alns)
+    # lambda uses the locus length (end - start): the reads assigned to it are
+    # those inside that window, so the expectation is for the same window.
     for r in records:
         r.density_pvalue = density_pvalue(r.reads, chrom_mass, chrom_len,
                                           r.end - r.start)

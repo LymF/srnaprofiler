@@ -307,8 +307,9 @@ def _pi_scorer(**keys):
                                     "min_reads": 0}})
 
 
-def _crec(length, dens, dicer="27"):
+def _crec(length, dens, dicer="27", span=None):
     return SimpleNamespace(dicer_call=dicer, reads=100, start=0, end=length,
+                           read_span=length if span is None else span,
                            density_pvalue=dens, size_counts={}, distinct_seqs=0,
                            phase_pvalue=1.0, phase_number=0)
 
@@ -388,3 +389,31 @@ def test_process_chromosome_stores_density_pvalue(monkeypatch):
     recs = features.process_chromosome("x.bam", "chr1", 1, 50, 1e6, cfg,
                                        chrom_len=300)
     assert recs[0].density_pvalue == pytest.approx(1 - 5 * math.exp(-2), abs=1e-9)
+
+
+def test_padded_window_does_not_pass_length_criterion():
+    sc = _pi_scorer(**KEYS)
+    rec = sc.decide(_crec(2000, 0.001, span=300))
+    assert rec.cls == "ambiguous"
+    assert "below_cluster_criterion(length)" in rec.evidence
+    assert sc.decide(_crec(2000, 0.001, span=1200)).cls == "piRNA"
+
+
+def test_missing_read_span_falls_back_to_window():
+    rec = _crec(1500, 0.001)
+    del rec.read_span
+    assert _pi_scorer(**KEYS).decide(rec).cls == "piRNA"
+
+
+def test_read_span_hand_checked():
+    from features import build_record
+    cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
+    alns = [CAln("c", 100, "A" * 22, 1, "+"), CAln("c", 400, "A" * 24, 1, "-")]
+    assert build_record(("c", 0, 2000), alns, 1e6, cfg).read_span == 424 - 100 + 0 + 0 + 0
+    assert build_record(("c", 0, 2000), [], 1e6, cfg).read_span == 0
+
+
+def test_density_pvalue_zero_reads_is_one():
+    from features import density_pvalue
+    assert density_pvalue(0, 0, 0, 0) == 1.0
+    assert density_pvalue(0, 100, 1000, 0) == 1.0
