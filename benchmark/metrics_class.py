@@ -103,12 +103,31 @@ def _ece(pairs: list[tuple[float, bool]]) -> float:
     return total
 
 
+def _recalled_regions(loci: list[dict], regions: list[Region],
+                      min_overlap_frac: float) -> set[int]:
+    """id() of each region overlapped by at least one locus (match_loci's overlap criterion)."""
+    if not loci or not regions:
+        return set()
+    index = IntervalIndex([(r.chrom, r.start, r.end) for r in regions])
+    hit = set()
+    for loc in loci:
+        ls, le = loc["start"], loc["end"]
+        for idx, ov in index.overlapping(loc["chrom"], ls, le):
+            r = regions[idx]
+            if ov / (le - ls) >= min_overlap_frac or ov / (r.end - r.start) >= min_overlap_frac:
+                hit.add(id(r))
+    return hit
+
+
 def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config,
                            expressed: set[int] | None = None) -> dict:
     """Per-class precision/recall plus unknown and calibration.
 
     precision is over annotated loci only: loci predicted C that match a truth region
     (tp + fp = n_matched); the n_unknown loci predicted C with no match are outside it.
+    Precision is per locus (best-matching region). recall is per truth region: a region of
+    class C is recalled when ANY non-ambiguous locus called C overlaps it (same criterion as
+    match_loci), so one locus covering several adjacent regions recalls all of them.
     expressed: id() of the truth regions with enough reads (metrics_expr); None = unknown.
     """
     matched = match_loci(loci, regions, cfg.min_overlap_frac)
@@ -122,7 +141,6 @@ def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config,
     per_class = {}
     for c in sorted(classes):
         tp = fp = n_called = 0
-        hit_regions = set()
         for loc, reg in scored:
             if loc["cls"] != c:
                 continue
@@ -131,10 +149,12 @@ def classification_metrics(loci: list[dict], regions: list[Region], cfg: Config,
                 continue
             if reg.cls == c:
                 tp += 1
-                hit_regions.add(id(reg))
             else:
                 fp += 1
         precision = tp / (tp + fp) if tp + fp else None
+        hit_regions = _recalled_regions(
+            [loc for loc, _ in scored if loc["cls"] == c],
+            [r for r in regions if r.cls == c], cfg.min_overlap_frac)
         recall = len(hit_regions) / truth_count[c] if truth_count[c] else None
         n_expr = n_expr_hit = None
         if expressed is not None:

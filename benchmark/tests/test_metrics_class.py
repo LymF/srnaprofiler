@@ -181,3 +181,56 @@ def test_match_tie_prefers_smaller_region_then_input_order():
     out = match_loci([L(0, 100, "miRNA")], list(reversed([R(0, 1000, "siRNA", name="big"),
                                                           R(0, 100, "miRNA", name="small")])), 0.5)
     assert out[0][1].name == "small"
+
+
+def _pc(loci, regions, cls="piRNA", **kw):
+    return classification_metrics(loci, regions, CFG, **kw)["per_class"][cls]
+
+
+def test_recall_one_locus_covering_three_regions_recalls_all():
+    regions = [R(0, 100, "piRNA", name="a"), R(110, 210, "piRNA", name="b"),
+               R(220, 320, "piRNA", name="c")]
+    pc = _pc([L(0, 320, "piRNA")], regions)
+    assert pc["recall"] == pytest.approx(1.0)  # each region fully inside the locus
+    assert pc["precision"] == pytest.approx(1.0)
+    assert pc["tp"] == 1 and pc["fp"] == 0 and pc["n_called"] == 1  # per-locus counts unchanged
+
+
+def test_recall_ignores_loci_of_other_class():
+    regions = [R(0, 100, "piRNA")]
+    m = classification_metrics([L(0, 100, "siRNA")], regions, CFG)["per_class"]
+    assert m["piRNA"]["recall"] == 0.0
+
+
+def test_recall_ignores_ambiguous_loci():
+    regions = [R(0, 100, "piRNA")]
+    assert _pc([L(0, 100, "ambiguous", conf=None)], regions)["recall"] == 0.0
+
+
+def test_recall_overlap_criterion_both_directions():
+    # small region inside a big locus: overlap/region_len = 1.0
+    assert _pc([L(0, 1000, "piRNA")], [R(100, 150, "piRNA")])["recall"] == 1.0
+    # small locus inside a big region: overlap/locus_len = 1.0
+    assert _pc([L(100, 150, "piRNA")], [R(0, 1000, "piRNA")])["recall"] == 1.0
+    # exactly 0.5 of the locus counts; just below on both fractions does not
+    assert _pc([L(0, 100, "piRNA")], [R(50, 1000, "piRNA")])["recall"] == 1.0
+    assert _pc([L(0, 100, "piRNA")], [R(51, 1000, "piRNA")])["recall"] == 0.0
+
+
+def test_recall_region_lost_to_other_class_best_match_still_counts():
+    # locus is piRNA; its best match is the larger-overlap siRNA region (fp), but the
+    # piRNA region it also overlaps (>= 0.5 of the region) is still recalled
+    regions = [R(0, 60, "piRNA", name="a"), R(50, 400, "siRNA", name="b")]
+    loci = [L(0, 200, "piRNA")]
+    m = classification_metrics(loci, regions, CFG)["per_class"]
+    assert m["piRNA"]["recall"] == 1.0
+    assert m["piRNA"]["tp"] == 0 and m["piRNA"]["fp"] == 1
+
+
+def test_recall_expressed_counts_any_overlap_over_expressed_only():
+    regions = [R(0, 100, "piRNA", name="a"), R(110, 210, "piRNA", name="b"),
+               R(220, 320, "piRNA", name="c")]
+    expressed = {id(regions[0]), id(regions[1])}
+    pc = _pc([L(0, 210, "piRNA")], regions, expressed=expressed)
+    assert pc["recall"] == pytest.approx(2 / 3)
+    assert pc["recall_expressed"] == pytest.approx(1.0)

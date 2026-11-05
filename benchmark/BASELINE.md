@@ -60,7 +60,7 @@ Engines: miRDeep2 (Friedländer et al., 2012) for animals, miRDeep-P2 (Kuang et 
 
 - Tuning and test are strictly separate. **Tuning (Ajuste)** numbers may guide development. **Test (Teste)** numbers must not be used for tuning, thresholds or model selection; they are for reporting only.
 - Precision is computed on **annotated loci only**: a called locus counts as true positive if it overlaps a truth region of the called class and as false positive if it overlaps an annotated region of another class. Loci that match no truth region ("unknown") are **not counted as false positives**, so precision is not a measure of novelty or of total false discovery. FDR = 1 - precision.
-- Recall = fraction of truth regions of the class hit by at least one locus called in that class. `recall_expressed` restricts the denominator to truth regions with enough reads in the library BAM (at least 10 alignments, `expressed_min_reads` in `benchmark/config.yaml`); it separates "not expressed in this library" from "not detected". Recall columns use the **primary truth source** of each class (secondary sources are listed separately).
+- Recall = fraction of truth regions of the class hit by at least one locus called in that class (a region counts as hit when any such locus overlaps it by at least `min_overlap_frac` of the locus or of the region, so one locus covering several adjacent regions recalls all of them; precision stays per locus). `recall_expressed` restricts the denominator to truth regions with enough reads in the library BAM (at least 10 alignments, `expressed_min_reads` in `benchmark/config.yaml`); it separates "not expressed in this library" from "not detected". Recall columns use the **primary truth source** of each class (secondary sources are listed separately).
 - Precision, FDR, n_called come from the merged-truth classification table (all truth sources of the species together, so cross-class confusions are visible). "Precision (primary source only)" is the same quantity restricted to the primary source; it is trivially high when that source holds one class only.
 - Values are mean (min-max) over the libraries of a species (one library: single value). "—" means undefined (no calls or no truth). Precision `0.000 (no truth)` with "—" recall means that no truth of that class exists in the benchmark; it is not a measured failure.
 - Primary truth sources per class: fly miRNA MirGeneDB v3.0 (miRBase v23.1 secondary); fly piRNA piRNAclusterDB 2.0 (Srivastav seed secondary); fly siRNA Czech et al. 2008; plants miRNA miRBase v23.1, PHAS and hc-siRNA sRNAanno (rice 24-PHAS also Ono et al. 2018 as secondary); Arabidopsis 21-nt phasiRNA only has seed material (tuning only); Bombyx piRNA Lee et al. 2025; Bombyx and maize miRNA miRBase v23.1.
@@ -276,6 +276,8 @@ hcsiRNA calls (merged truth): tp = loci matching hc-siRNA truth, fp = loci match
 | phasiRNA | 0.967 | 0.732 | 0.800 | 0.033 |
 | phasiRNA24 | — | 0.000 | 0.000 | — |
 | siRNA | 0.000 | — | — | 1.000 |
+
+> Note (2026-11-05): the recall and recall_expressed values in sections 3 and 4 were computed with the earlier one-to-one rule (each locus paired with a single best region before recall was counted). The current code counts a truth region as recalled when any locus of its class overlaps it, so rescoring (`python -m benchmark metrics`) gives equal or higher recall. Precision, FDR and the other columns are unaffected. The numbers above are kept unchanged as a dated record.
 
 ## 5. Key observations and targets for the ML stage
 
