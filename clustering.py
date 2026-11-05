@@ -100,7 +100,19 @@ def _add_profiles(a, b, min_reads=0, min_window_frac=0.5):
                              min_reads, min_window_frac)
 
 
-def _compatible(a, b, max_strand_diff, size_windows=None, strand_min_reads=None):
+def _opposite_strands(ta, tb, cutoff):
+    """Both fractions are stranded (ShortStack's call) and on opposite strands.
+
+    ShortStack calls '+' at FracTop >= cutoff, '-' at <= 1 - cutoff, '.' between.
+    An unstranded side ('.') is no evidence of a different strand.
+    """
+    # eps: 1 - 0.8 is 0.19999999999999996, which would leave a fraction of
+    # exactly 0.2 unstranded.
+    lo = 1 - cutoff + 1e-9
+    return (ta >= cutoff and tb <= lo) or (tb >= cutoff and ta <= lo)
+
+
+def _compatible(a, b, strand_cutoff, size_windows=None, strand_min_reads=None):
     """Whether two neighbouring profiles may be merged."""
     wa, wb = a.get("window"), b.get("window")
     if wa is not None and wb is not None:
@@ -113,7 +125,8 @@ def _compatible(a, b, max_strand_diff, size_windows=None, strand_min_reads=None)
             and not _same_size_group(a["size"], b["size"], size_windows)):
         return False
     ta, tb = a["frac_top"], b["frac_top"]
-    if (ta is not None and tb is not None and abs(ta - tb) > max_strand_diff
+    if (ta is not None and tb is not None
+            and _opposite_strands(ta, tb, strand_cutoff)
             and strand_min_reads is not None
             # Few reads make a strand fraction noise, not a strand: it blocks
             # only when both sides have enough mass to mean it.
@@ -123,7 +136,7 @@ def _compatible(a, b, max_strand_diff, size_windows=None, strand_min_reads=None)
     return True
 
 
-def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5,
+def merge_compatible(islands, profiles, pad, chrom_len=None, strand_cutoff=0.8,
                      size_windows=None, strand_min_reads=None,
                      profile_min_reads=0, min_window_frac=0.5):
     """Extend and merge, but only across neighbours with a compatible profile.
@@ -131,7 +144,8 @@ def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5
     Unknown values (None) never block a merge. A new island is compared with
     the profile of everything merged into the running cluster so far, not with
     its first island: a locus drifts, and the first island says little about
-    its far end. `strand_min_reads` None means the strand test never blocks.
+    its far end. The strand test blocks only two sides stranded at `strand_cutoff`
+    on opposite strands; `strand_min_reads` None means it never blocks.
     """
     if not islands:
         return []
@@ -147,7 +161,7 @@ def merge_compatible(islands, profiles, pad, chrom_len=None, max_strand_diff=0.5
         if cur_s is None:
             cur_s, cur_e, cur_raw_e, cur_prof = s, e, raw_e, prof
             continue
-        if s <= cur_e and _compatible(cur_prof, prof, max_strand_diff,
+        if s <= cur_e and _compatible(cur_prof, prof, strand_cutoff,
                                       size_windows, strand_min_reads):
             cur_e, cur_raw_e = max(cur_e, e), max(cur_raw_e, raw_e)
             cur_prof = _add_profiles(cur_prof, prof, profile_min_reads,
@@ -192,7 +206,7 @@ def carve_out(regions, intervals, min_piece=20):
 
 
 def cluster_regions(sam_path, mincov, pad, strand_min_reads=None,
-                    profile_min_reads=0):
+                    profile_min_reads=0, strand_cutoff=0.8):
     """Builds per-chromosome coverage and calls islands.
 
     Same rule as the per-chromosome path in `features`: raw islands, then a
@@ -215,6 +229,7 @@ def cluster_regions(sam_path, mincov, pad, strand_min_reads=None,
                                    min_reads=profile_min_reads)
         for start, end in merge_compatible(
                 islands, profiles, pad, strand_min_reads=strand_min_reads,
+                strand_cutoff=strand_cutoff,
                 profile_min_reads=profile_min_reads):
             regions.append((chrom, start, end))
     return regions

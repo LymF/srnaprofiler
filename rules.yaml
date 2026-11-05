@@ -1,9 +1,13 @@
 # rules.yaml — per-organism scoring config (generic default)
 clustering:
   pad: 500
-  # Provisional: pending Task 12 calibration. A strand fraction on fewer reads
-  # than this is noise, so the strand test only blocks a merge when both the
-  # running cluster and the new island carry this much 1/NH-weighted mass.
+  # The strand test blocks a merge only when both sides are stranded (ShortStack
+  # strand_cutoff, under `extractor`) and on opposite strands, and both carry at
+  # least this much 1/NH-weighted read mass (a fraction on fewer reads is noise).
+  # No published tool splits neighbours on strand (ShortStack, PHASIS, PhaseTank,
+  # PICB split on gap only; strand is a label). The rule is ours, kept because
+  # removing it lost piRNA recall in fly (0.951 -> 0.906) and PHAS21 recall in
+  # rice (0.855 -> 0.717) on tuning libraries; 20 chosen from {10, 20, none}.
   # null (or absent) means the strand test never blocks.
   strand_min_reads: 20
 extractor:
@@ -46,4 +50,10 @@ classes:
     w_pingpong: 1.5
     w_1u: 1.0
     w_phase: 0.5
+    # piRNA-cluster criterion (proTRAC, Rosenkranz & Zischler 2012, BMC
+    # Bioinformatics 13:5: min cluster size 1 kb, hit-density p = 0.01). A locus
+    # that wins as piRNA but fails either is reported ambiguous (review), per the
+    # user's decision; it never changes which class wins. Optional, any class.
+    cluster_min_length: 1000
+    cluster_max_density_pvalue: 0.01
     defining_evidence: [[1u, pingpong], size]

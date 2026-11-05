@@ -293,6 +293,23 @@ def island_profiles(islands, alns, min_reads=0, size_windows=None,
     return out
 
 
+def density_pvalue(reads, chrom_reads, chrom_len, locus_len):
+    """proTRAC-style significance of a locus's read density on its chromosome.
+
+    Poisson upper tail P(X >= reads) with lambda = chrom_reads / chrom_len *
+    locus_len. The 1/NH-weighted read mass is not an integer; the regularized
+    lower incomplete gamma P(reads, lambda) equals the Poisson upper tail at
+    integers and extends it continuously, so no rounding is needed. None when
+    the chromosome length or mass is unknown.
+    """
+    if not chrom_len or chrom_reads <= 0 or locus_len <= 0:
+        return None
+    if reads <= 0:
+        return 1.0
+    from scipy.special import gammainc
+    return float(gammainc(reads, chrom_reads / chrom_len * locus_len))
+
+
 def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
                        xm_as_nh=False, chrom_len=0, carve=(), genome_path=None):
     """Cluster and extract features for a single chromosome of an indexed BAM.
@@ -312,6 +329,7 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     merged = merge_compatible(islands, profiles, pad,
                               chrom_len=chrom_len or None,
                               size_windows=config.get("size_windows"),
+                              strand_cutoff=config.get("strand_cutoff", 0.8),
                               strand_min_reads=config.get("strand_min_reads"),
                               profile_min_reads=config.get("profile_min_reads", 0))
     # Known miRNA loci become loci of their own instead of being swallowed.
@@ -328,8 +346,14 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
                     seqs[i] = fa.fetch(c, s, e)
                 except (KeyError, ValueError):
                     pass
-    return [build_record(regions[i], buckets[i], lib_size, config, locus_seq=seqs[i])
-            for i in range(len(regions))]
+    records = [build_record(regions[i], buckets[i], lib_size, config,
+                            locus_seq=seqs[i]) for i in range(len(regions))]
+    # Background density of this chromosome, for the piRNA-cluster criterion.
+    chrom_mass = sum(1.0 / a.nh for a in alns)
+    for r in records:
+        r.density_pvalue = density_pvalue(r.reads, chrom_mass, chrom_len,
+                                          r.end - r.start)
+    return records
 
 
 def _chrom_job(job):

@@ -20,9 +20,13 @@
 # --mirna-loci (overlap with a curated BED) and bypasses the scorer.
 clustering:
   pad: 500
-  # Provisional: pending Task 12 calibration. A strand fraction on fewer reads
-  # than this is noise, so the strand test only blocks a merge when both the
-  # running cluster and the new island carry this much 1/NH-weighted mass.
+  # The strand test blocks a merge only when both sides are stranded (ShortStack
+  # strand_cutoff, under `extractor`) and on opposite strands, and both carry at
+  # least this much 1/NH-weighted read mass (a fraction on fewer reads is noise).
+  # No published tool splits neighbours on strand (ShortStack, PHASIS, PhaseTank,
+  # PICB split on gap only; strand is a label). The rule is ours, kept because
+  # removing it lost piRNA recall in fly (0.951 -> 0.906) and PHAS21 recall in
+  # rice (0.855 -> 0.717) on tuning libraries; 20 chosen from {10, 20, none}.
   # null (or absent) means the strand test never blocks.
   strand_min_reads: 20
 extractor:

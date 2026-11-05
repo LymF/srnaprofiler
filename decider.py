@@ -219,9 +219,18 @@ class RuleScorer:
     def decide(self, record):
         scores = {}
         evidence = {}
-        for name, spec in self.enabled_classes(self.cfg).items():
+        classes = self.enabled_classes(self.cfg)
+        # A class whose gated defining evidence fails does not compete: scored,
+        # it still enters the softmax through its size term and splits the
+        # confidence of every locus of a neighbouring class. If that leaves
+        # nothing, score them all (defensive; the gate then only zeroes terms).
+        competing = {n: sp for n, sp in classes.items()
+                     if self._phase_supported(sp, record)} or classes
+        for name, spec in competing.items():
             scores[name], evidence[name] = self._score_class(name, spec, record)
-        record.class_scores = {k: round(v, 3) for k, v in scores.items()}
+        # Excluded classes are reported as None (NA in the .clusters.tsv).
+        record.class_scores = {k: (round(scores[k], 3) if k in scores else None)
+                               for k in classes}
         # softmax for confidence
         ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
         top_name, top_score = ordered[0]
@@ -254,7 +263,41 @@ class RuleScorer:
             # means, and clearing it would let these pass a `review == False` filter.
             record.review = True
             record.evidence = f"nearest={top_name}; " + record.evidence
+        else:
+            failed = self._cluster_failures(self.cfg["classes"][top_name], record)
+            if failed:
+                # Same downgrade as above: the class still names the nearest, but
+                # the locus is not a cluster of it.
+                record.cls = self.AMBIGUOUS
+                record.score = None
+                record.review = True
+                record.evidence = (f"nearest={top_name}; "
+                                   f"below_cluster_criterion({','.join(failed)}); "
+                                   + record.evidence)
         return record
+
+    @staticmethod
+    def _cluster_failures(spec, record):
+        """Which of a class's optional cluster criteria the locus fails.
+
+        `cluster_min_length` (bp) and `cluster_max_density_pvalue` (proTRAC,
+        Rosenkranz & Zischler 2012). Either key absent: not applied. A missing or
+        NaN density (e.g. a replayed .clusters.tsv without the column) leaves
+        only the length part.
+        """
+        failed = []
+        min_len = spec.get("cluster_min_length")
+        if min_len is not None and record.end - record.start < min_len:
+            failed.append("length")
+        max_p = spec.get("cluster_max_density_pvalue")
+        if max_p is not None:
+            try:
+                p = float(getattr(record, "density_pvalue", None))
+            except (TypeError, ValueError):
+                p = float("nan")
+            if not math.isnan(p) and p > max_p:
+                failed.append("density")
+        return failed
 
     def _outside_window(self, spec, record):
         """True when the locus's dominant size is not inside this class's window."""
