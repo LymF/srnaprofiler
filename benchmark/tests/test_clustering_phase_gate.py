@@ -417,3 +417,29 @@ def test_density_pvalue_zero_reads_is_one():
     from features import density_pvalue
     assert density_pvalue(0, 0, 0, 0) == 1.0
     assert density_pvalue(0, 100, 1000, 0) == 1.0
+
+
+def test_default_record_read_span_is_none_and_falls_back_to_window():
+    from records import ClusterRecord
+    rec = ClusterRecord(chrom="c", start=0, end=1500)
+    assert rec.read_span is None and rec.density_pvalue is None
+    rec.dicer_call = "27"
+    assert _pi_scorer(**KEYS).decide(rec).cls == "piRNA"
+    short = ClusterRecord(chrom="c", start=0, end=800, dicer_call="27")
+    assert _pi_scorer(**KEYS).decide(short).cls == "ambiguous"
+
+
+def test_writer_emits_na_for_unknown_span_and_density(tmp_path):
+    from reporter import write_tsv
+    from records import ClusterRecord
+    write_tsv([ClusterRecord(chrom="c", start=0, end=10)], str(tmp_path / "o.tsv"))
+    rows = [l.rstrip("\n").split("\t") for l in open(tmp_path / "o.tsv")]
+    row = dict(zip(*rows))
+    assert row["read_span"] == "NA" and row["density_pvalue"] == "NA"
+
+
+def test_strand_call_agrees_with_merge_at_exact_cutoff():
+    from features import build_record
+    cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
+    alns = [CAln("c", 0, "A" * 22, 1, "+")] * 2 + [CAln("c", 0, "A" * 22, 1, "-")] * 8
+    assert build_record(("c", 0, 100), alns, 1e6, cfg).strand_call == "-"

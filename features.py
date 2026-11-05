@@ -61,6 +61,7 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     local = region_alns
     raw_n = len(local)
     if raw_n == 0:
+        r.read_span = 0
         return r
     # Span the reads cover, not the padded window: proTRAC's minimum cluster size
     # is about the former.
@@ -111,7 +112,7 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     r.frac_top = round(strand_count["+"] / r.reads, 4)
     if r.frac_top >= scut:
         r.strand_call = "+"
-    elif r.frac_top <= 1 - scut:
+    elif r.frac_top <= 1 - scut + 1e-9:   # same epsilon as the merge test
         r.strand_call = "-"
     else:
         r.strand_call = "."
