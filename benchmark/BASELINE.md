@@ -309,7 +309,7 @@ python -m benchmark run --library <ACC> --results-dir <R> --threads N   # one ca
 python -m benchmark report --results-dir <R> --out report.md
 ```
 
-`python -m benchmark metrics --library <ACC> --results-dir <R>` rebuilds `metrics.json` from an existing work directory (used when only truth files change). A library whose pipeline hash differs from the others of its role is marked stale (tuning) or INVALID (test) and excluded from the aggregate.
+`python -m benchmark metrics --library <ACC> --results-dir <R>` rebuilds `metrics.json` from an existing work directory (used when only truth files change). A library whose recorded pipeline hash differs from the hash of the checkout that runs `report` is marked stale (tuning) or INVALID (test). Only test libraries with status ok enter the aggregate; tuning libraries never do.
 
 ## Referências
 
