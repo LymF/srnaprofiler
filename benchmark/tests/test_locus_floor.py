@@ -133,3 +133,63 @@ def test_run_classify_all_fragments(monkeypatch, tmp_path):
     assert rows[0] == "chrom\tstart\tend\treads\tread_span\treason"
     assert rows[1:] == ["chr1\t10\t90\t3.00\t40\tmin_reads",
                         "chr2\t5\t50\t1.50\t20\tmin_reads,min_span"]
+
+
+FLOOR = {"locus_min_reads": 20, "locus_min_span": 50}
+
+
+def test_span_exempt_keeps_strong_narrow_stack(monkeypatch):
+    cfg = dict(FLOOR, locus_span_exempt_reads=100)
+    recs, frags = _run(monkeypatch, _reads(200, 150, length=25), [(150, 300)], cfg)
+    assert frags == [] and len(recs) == 1
+
+
+def test_span_exempt_weak_narrow_stack_is_fragment(monkeypatch):
+    cfg = dict(FLOOR, locus_span_exempt_reads=100)
+    recs, frags = _run(monkeypatch, _reads(200, 60, length=25), [(150, 300)], cfg)
+    assert recs == [] and frags[0]["reason"] == "min_span"
+
+
+def test_span_exempt_absent_is_backward_compatible(monkeypatch):
+    recs, frags = _run(monkeypatch, _reads(200, 150, length=25), [(150, 300)], FLOOR)
+    assert recs == [] and frags[0]["reason"] == "min_span"
+
+
+def test_span_exempt_does_not_touch_min_reads(monkeypatch):
+    cfg = {"locus_min_reads": 200, "locus_span_exempt_reads": 100}
+    _, frags = _run(monkeypatch, _reads(200, 150, length=25), [(150, 300)], cfg)
+    assert frags[0]["reason"] == "min_reads"
+
+
+def test_overlapping_carve_flank_is_floored(monkeypatch):
+    # carve_out skips the second interval (cs < pos); the flank (1100, 3000)
+    # overlaps it but is not contained in it, so it is trimmed and floored.
+    alns = _reads(2000, 5)
+    merged = [(500, 3000)]
+    recs, frags = _run(monkeypatch, alns, merged,
+                       dict(FLOOR, trim_to_reads=True),
+                       carve=[(1000, 1100), (1050, 1150)])
+    assert [(r.start, r.end) for r in recs] == [(1000, 1100)]
+    assert [(f["start"], f["end"]) for f in frags] == [(500, 1000), (2000, 2022)]
+    assert frags[1]["reason"] == "min_reads,min_span"
+
+
+def test_flank_next_to_carve_is_floored_and_carve_kept(monkeypatch):
+    alns = _reads(420, 3) + _reads(600, 5)
+    recs, frags = _run(monkeypatch, alns, [(400, 480), (480, 700)], FLOOR,
+                       carve=[(400, 480)])
+    assert [(r.start, r.end) for r in recs] == [(400, 480)]
+    assert frags[0]["reason"] == "min_reads,min_span"
+
+
+def test_trim_to_reads_strict_parsing(monkeypatch):
+    import pytest
+    for val, want in [(True, True), (False, False), ("true", True),
+                      ("False", False), ("TRUE", True)]:
+        assert features.parse_trim_to_reads(val) is want
+    assert features.parse_trim_to_reads(None) is False
+    for bad in ("yes", 1, "", "0"):
+        with pytest.raises(ValueError, match="trim_to_reads"):
+            features.parse_trim_to_reads(bad)
+    with pytest.raises(ValueError, match="trim_to_reads"):
+        _run(monkeypatch, _reads(200, 3), [(150, 300)], {"trim_to_reads": "maybe"})

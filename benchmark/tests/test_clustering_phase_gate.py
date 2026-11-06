@@ -493,3 +493,4 @@ def test_floor_keys_set_from_calibration():
         assert cl["locus_min_reads"] == 20
         assert cl["locus_min_span"] == 50
         assert cl["trim_to_reads"] is True
+        assert cl["locus_span_exempt_reads"] == 100

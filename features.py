@@ -344,9 +344,10 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     buckets = _assign_reads(regions, alns)
     regions, buckets, fragments = _trim_and_floor(
         regions, buckets, carve,
-        trim=bool(config.get("trim_to_reads", False)),
+        trim=parse_trim_to_reads(config.get("trim_to_reads", False)),
         min_reads=config.get("locus_min_reads"),
-        min_span=config.get("locus_min_span"))
+        min_span=config.get("locus_min_span"),
+        span_exempt_reads=config.get("locus_span_exempt_reads"))
     if not regions:
         return [], fragments
     seqs = [None] * len(regions)
@@ -370,8 +371,18 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     return records, fragments
 
 
+def parse_trim_to_reads(value):
+    """Strict `clustering.trim_to_reads`: bool or "true"/"false" (any case)."""
+    if value is None or isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    raise ValueError("clustering.trim_to_reads must be true or false, got %r"
+                     % (value,))
+
+
 def _trim_and_floor(regions, buckets, carve, trim=False, min_reads=None,
-                    min_span=None):
+                    min_span=None, span_exempt_reads=None):
     """Bounds each non-carved region by its reads, then applies the locus floor.
 
     Trimmed bounds are clipped to the original window, so neighbouring loci
@@ -379,13 +390,17 @@ def _trim_and_floor(regions, buckets, carve, trim=False, min_reads=None,
     `min_reads`, or read span under `min_span`) is not a locus: it is returned
     as a fragment dict and its reads are not reassigned. A region overlapping a
     `carve` interval (a known miRNA) is never trimmed nor made a fragment.
+    The `min_span` test applies only below `span_exempt_reads` read mass (None:
+    always), so a strongly expressed narrow stack stays a locus.
     Returns (regions, buckets, fragments) for the survivors.
     """
     if not trim and min_reads is None and min_span is None:
         return regions, buckets, []
     out_r, out_b, fragments = [], [], []
     for (c, s, e), bucket in zip(regions, buckets):
-        if any(cs < e and s < ce for cs, ce in carve):
+        # Containment, not overlap: a flank that merely touches an interval
+        # carve_out skipped (overlapping annotations) is an ordinary region.
+        if any(cs <= s and e <= ce for cs, ce in carve):
             out_r.append((c, s, e))
             out_b.append(bucket)
             continue
@@ -401,7 +416,8 @@ def _trim_and_floor(regions, buckets, carve, trim=False, min_reads=None,
         why = []
         if min_reads is not None and mass < min_reads:
             why.append("min_reads")
-        if min_span is not None and span < min_span:
+        if (min_span is not None and span < min_span
+                and (span_exempt_reads is None or mass < span_exempt_reads)):
             why.append("min_span")
         if why:
             fragments.append({"chrom": c, "start": s, "end": e, "reads": mass,

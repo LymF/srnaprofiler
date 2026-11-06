@@ -19,6 +19,8 @@ clustering:
   # reads) and gains phasiRNA precision 0.229 -> 0.247; kept (ruling 2026-11-06).
   locus_min_reads: 20
   locus_min_span: 50
+  # A narrow stack with >= 100 reads is real expression (e.g. an unannotated miRNA or tRNA/snoRNA fragment), not a leftover piece; it stays a locus and the classifier decides it (ruling 2026-11-06 after final review).
+  locus_span_exempt_reads: 100
   trim_to_reads: true
 extractor:
   dicermin: 18

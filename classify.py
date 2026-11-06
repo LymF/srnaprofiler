@@ -1,7 +1,7 @@
 """Orchestrator for the `classify` subcommand."""
 import os
 from collections import defaultdict
-from features import extract_by_chrom
+from features import extract_by_chrom, parse_trim_to_reads
 from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
                    prefers_xm_as_nh, weighted_library_size,
                    reference_alignment_counts)
@@ -143,7 +143,8 @@ def run_classify(args):
     clus = config.get("clustering", {}) or {}
     ext_cfg["locus_min_reads"] = clus.get("locus_min_reads")
     ext_cfg["locus_min_span"] = clus.get("locus_min_span")
-    ext_cfg["trim_to_reads"] = bool(clus.get("trim_to_reads", False))
+    ext_cfg["locus_span_exempt_reads"] = clus.get("locus_span_exempt_reads")
+    ext_cfg["trim_to_reads"] = parse_trim_to_reads(clus.get("trim_to_reads", False))
     threads = getattr(args, "threads", 1) or 1
     pad = resolve_pad(getattr(args, "pad", None), config)
 
