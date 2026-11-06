@@ -24,8 +24,27 @@ def read_loci(path: Path) -> list[dict]:
             row["reads"] = float(row["reads"])
             conf = row.get("confidence")
             row["confidence"] = None if conf in (None, "", "NA") else float(conf)
+            span = row.get("read_span")
+            row["read_span"] = None if span in (None, "", "NA") else int(span)
             loci.append(row)
     return loci
+
+
+def read_fragments(clusters_path: Path) -> list[dict] | None:
+    """Parse the <prefix>.fragments.tsv next to a clusters.tsv; None when absent (older runs)."""
+    path = Path(str(clusters_path).removesuffix(".clusters.tsv") + ".fragments.tsv")
+    if not path.exists():
+        return None
+    frags = []
+    with open(path, newline="") as fh:
+        for row in csv.DictReader(fh, delimiter="\t"):
+            row["start"] = int(row["start"])
+            row["end"] = int(row["end"])
+            row["reads"] = float(row["reads"])
+            span = row.get("read_span")
+            row["read_span"] = None if span in (None, "", "NA") else int(span)
+            frags.append(row)
+    return frags
 
 
 class IntervalIndex:

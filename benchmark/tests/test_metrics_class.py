@@ -27,6 +27,16 @@ def test_read_loci(tmp_path):
     assert loci[1]["confidence"] is None and loci[1]["end"] == 20
 
 
+def test_read_loci_read_span(tmp_path):
+    p = tmp_path / "c.tsv"
+    p.write_text("chrom\tstart\tend\treads\tread_span\tcls\n"
+                 "c1\t0\t10\t5\t8\tpiRNA\nc1\t10\t20\t1\tNA\tpiRNA\n")
+    loci = read_loci(p)
+    assert loci[0]["read_span"] == 8 and loci[1]["read_span"] is None
+    p.write_text("chrom\tstart\tend\treads\tcls\nc1\t0\t10\t5\tpiRNA\n")
+    assert read_loci(p)[0]["read_span"] is None
+
+
 def test_match_best_overlap_and_threshold():
     regions = [R(0, 100, "piRNA", name="a"), R(50, 400, "siRNA", name="b")]
     out = match_loci([L(40, 200, "piRNA"), L(1000, 1100, "piRNA"),

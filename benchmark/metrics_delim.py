@@ -17,12 +17,31 @@ def _union_bp(spans: list[tuple[int, int]]) -> int:
     return total
 
 
-def locus_counts(loci: list[dict], cfg: Config) -> dict:
-    """Tiny and low-read locus counts over all loci (not tied to any truth source)."""
+def _span(locus: dict) -> int:
+    """Read span of a locus, falling back to its window when the run did not record one."""
+    span = locus.get("read_span")
+    return locus["end"] - locus["start"] if span is None else span
+
+
+def locus_counts(loci: list[dict], cfg: Config, fragments: list[dict] | None = None) -> dict:
+    """Tiny and low-read locus counts over all loci (not tied to any truth source).
+
+    Tiny counts use the read span and skip miRNA loci (hairpin loci are legitimately short).
+    fragments is the parsed fragments.tsv (None for runs that predate it): n_fragments and
+    fragment_read_frac (fragment reads over fragment plus locus reads) are None then.
+    """
+    n_frag = frac = None
+    if fragments is not None:
+        n_frag = len(fragments)
+        frag_reads = sum(f["reads"] for f in fragments)
+        total = frag_reads + sum(l["reads"] for l in loci)
+        frac = frag_reads / total if total else None
+    non_mirna = [l for l in loci if l.get("cls") != "miRNA"]
     return {
-        "tiny_counts": {bp: sum(1 for l in loci if l["end"] - l["start"] <= bp)
-                        for bp in cfg.tiny_bp},
+        "tiny_counts": {bp: sum(1 for l in non_mirna if _span(l) <= bp) for bp in cfg.tiny_bp},
         "low_read_counts": {r: sum(1 for l in loci if l["reads"] < r) for r in cfg.low_reads},
+        "n_fragments": n_frag,
+        "fragment_read_frac": frac,
     }
 
 

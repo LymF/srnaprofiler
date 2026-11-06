@@ -8,7 +8,7 @@ import pysam
 
 from benchmark.fetch import fetch_genome, fetch_library
 from benchmark.manifest import Config, Library, load_config, load_manifest
-from benchmark.metrics_class import classification_metrics, read_loci
+from benchmark.metrics_class import classification_metrics, read_fragments, read_loci
 from benchmark.metrics_delim import delimitation_metrics, locus_counts
 from benchmark.metrics_expr import expressed_regions
 from benchmark.run import result_paths, run_library
@@ -72,7 +72,7 @@ def _write_metrics(lib: Library, regions: list[Region], cfg: Config, workdir: Pa
         "classification": classification_metrics(loci, regions, cfg, expressed),
         # one delimitation per source: sources overlap each other, so pooling double counts
         "delimitation": {
-            "global": locus_counts(loci, cfg),
+            "global": locus_counts(loci, cfg, read_fragments(paths.clusters_tsv)),
             "by_source": {
                 s: delimitation_metrics(loci, [r for r in clusters if r.source == s], cfg)
                 for s in cluster_sources

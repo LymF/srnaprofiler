@@ -90,7 +90,8 @@ def test_run_writes_metrics_json(tmp_path, monkeypatch):
     assert set(m) == {"accession", "organism", "role", "classification", "delimitation",
                       "by_source", "n_loci"}
     assert set(m["delimitation"]) == {"global", "by_source"}
-    assert set(m["delimitation"]["global"]) == {"tiny_counts", "low_read_counts"}
+    assert set(m["delimitation"]["global"]) == {"tiny_counts", "low_read_counts",
+                                                   "n_fragments", "fragment_read_frac"}
     assert m["delimitation"]["global"]["tiny_counts"] == {"50": 0}
     assert m["n_loci"] == 2 and m["role"] == "test"
     assert set(m["by_source"]) == {"SrcPi", "SrcMi"}

@@ -24,7 +24,8 @@ def metrics(precision=0.9, fdr=0.1, recall_expressed=0.25):
         },
         "delimitation": {
             "global": {"tiny_counts": {"50": 3, "100": 5},
-                       "low_read_counts": {"20": 8, "50": 9, "100": 10}},
+                       "low_read_counts": {"20": 8, "50": 9, "100": 10},
+                       "n_fragments": 12, "fragment_read_frac": 0.2},
             "by_source": {
                 "SrcA": {"summary": {"n_clusters": 4, "mean_recovered_fraction": 0.6,
                                      "mean_fragments": 1.5}, "merged_distinct": 2},
@@ -130,6 +131,7 @@ def test_report_has_delimitation_and_source_tables(tmp_path):
     text = build_report([res("SRRTEST", "test", sha)], tmp_path)
     assert "mean_recovered_fraction" in text
     assert "tiny<=50" in text and "reads<100" in text
+    assert "fragments | fragment_reads" in text and "| 12 | 0.200 |" in text
     assert "SrcA" in text
     # one delimitation table per source, not pooled
     assert "Delimitation: SrcA" in text and "Delimitation: SrcB" in text
@@ -190,3 +192,12 @@ def test_aggregate_skips_missing_values_at_each_level(tmp_path):
     text = build_report([a, b], tmp_path)
     agg = text.split("### Aggregate")[1]
     assert "0.200" in agg and "None" not in agg
+
+
+def test_report_fragments_absent_rendered_as_dash(tmp_path):
+    _, sha = make_rules(tmp_path)
+    r = res("SRRTEST", "test", sha)
+    r.metrics["delimitation"]["global"].pop("n_fragments")
+    r.metrics["delimitation"]["global"].pop("fragment_read_frac")
+    text = build_report([r], tmp_path)
+    assert "fragment_reads" in text and "None" not in text

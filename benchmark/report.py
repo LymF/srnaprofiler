@@ -101,10 +101,13 @@ def _species_section(species: str, items: list[tuple[LibraryResult, str]]) -> li
     tiny = _num_sorted(items[0][0].metrics["delimitation"]["global"]["tiny_counts"])
     low = _num_sorted(items[0][0].metrics["delimitation"]["global"]["low_read_counts"])
     lines += ["Loci counts (all loci, independent of truth source)", ""]
-    lines += _table(["library", "status"] + [f"tiny<={k}" for k in tiny] + [f"reads<{k}" for k in low],
+    lines += _table(["library", "status"] + [f"tiny<={k}" for k in tiny] + [f"reads<{k}" for k in low]
+                    + ["fragments", "fragment_reads"],
                     [[r.lib.accession, st]
                      + [_fmt(r.metrics["delimitation"]["global"]["tiny_counts"].get(k)) for k in tiny]
                      + [_fmt(r.metrics["delimitation"]["global"]["low_read_counts"].get(k)) for k in low]
+                     + [_fmt(r.metrics["delimitation"]["global"].get("n_fragments")),
+                        _fmt(r.metrics["delimitation"]["global"].get("fragment_read_frac"))]
                      for r, st in items])
     delim_sources = sorted({s for r, _ in items for s in r.metrics["delimitation"]["by_source"]})
     for src in delim_sources:

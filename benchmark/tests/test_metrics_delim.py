@@ -1,4 +1,5 @@
 from benchmark.manifest import Config
+from benchmark.metrics_class import read_fragments
 from benchmark.metrics_delim import delimitation_metrics, locus_counts
 from benchmark.truth import Region
 
@@ -134,7 +135,8 @@ def test_empty_inputs():
     out = delimitation_metrics([], [], CFG)
     assert out["per_cluster"] == [] and out["merged_distinct"] == 0
     assert locus_counts([], CFG) == {"tiny_counts": {50: 0, 100: 0},
-                                     "low_read_counts": {20: 0, 50: 0, 100: 0}}
+                                     "low_read_counts": {20: 0, 50: 0, 100: 0},
+                                     "n_fragments": None, "fragment_read_frac": None}
     assert out["summary"] == {"n_clusters": 0, "mean_recovered_fraction": 0.0,
                               "mean_fragments": 0.0}
     out = delimitation_metrics([], [R(0, 100)], CFG)
@@ -142,3 +144,29 @@ def test_empty_inputs():
     assert out["per_cluster"][0]["n_fragments"] == 0
     out = delimitation_metrics([L(0, 10)], [], CFG)
     assert out["per_cluster"] == [] and "tiny_counts" not in out
+
+
+def test_tiny_counts_use_read_span_and_skip_mirna():
+    mir = {**L(0, 70, cls="miRNA"), "read_span": 22}
+    sirna = {**L(0, 1000, cls="siRNA"), "read_span": 70}
+    windowed = L(0, 1000)  # no read_span: falls back to the window
+    out = locus_counts([mir, sirna, windowed], CFG)
+    assert out["tiny_counts"] == {50: 0, 100: 1}
+
+
+def test_fragment_read_frac_and_absent():
+    loci = [L(0, 100, reads=40.0), L(200, 300, reads=40.0)]
+    frags = [{"reads": 10.0}, {"reads": 10.0}]
+    out = locus_counts(loci, CFG, frags)
+    assert out["n_fragments"] == 2 and out["fragment_read_frac"] == 0.2
+    out = locus_counts(loci, CFG)
+    assert out["n_fragments"] is None and out["fragment_read_frac"] is None
+    assert locus_counts([], CFG, [])["fragment_read_frac"] is None
+
+
+def test_read_fragments(tmp_path):
+    assert read_fragments(tmp_path / "x.clusters.tsv") is None
+    (tmp_path / "x.fragments.tsv").write_text(
+        "chrom\tstart\tend\treads\tread_span\treason\nc1\t0\t10\t2.50\t8\tlow\n")
+    assert read_fragments(tmp_path / "x.clusters.tsv") == [
+        {"chrom": "c1", "start": 0, "end": 10, "reads": 2.5, "read_span": 8, "reason": "low"}]
