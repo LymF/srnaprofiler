@@ -386,7 +386,7 @@ def test_process_chromosome_stores_density_pvalue(monkeypatch):
                             start=region[1], end=region[2], reads=3.0))
     cfg = {"strand_cutoff": 0.8}
     # chrom mass 3 over 300 bp -> 0.01/bp; locus 200 bp -> lambda 2; k = 3
-    recs = features.process_chromosome("x.bam", "chr1", 1, 50, 1e6, cfg,
+    recs, _ = features.process_chromosome("x.bam", "chr1", 1, 50, 1e6, cfg,
                                        chrom_len=300)
     assert recs[0].density_pvalue == pytest.approx(1 - 5 * math.exp(-2), abs=1e-9)
 

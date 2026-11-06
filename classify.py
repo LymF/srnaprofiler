@@ -7,7 +7,7 @@ from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
                    reference_alignment_counts)
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
-from reporter import write_tsv, write_gff3, write_run_json
+from reporter import write_tsv, write_gff3, write_run_json, write_fragments_tsv
 from utils import log
 
 
@@ -139,6 +139,11 @@ def run_classify(args):
     # None (absent or null in the YAML): the strand test never blocks a merge.
     ext_cfg["strand_min_reads"] = (config.get("clustering", {}) or {}).get(
         "strand_min_reads")
+    # Locus floor / read-bounded edges: absent -> today's behaviour.
+    clus = config.get("clustering", {}) or {}
+    ext_cfg["locus_min_reads"] = clus.get("locus_min_reads")
+    ext_cfg["locus_min_span"] = clus.get("locus_min_span")
+    ext_cfg["trim_to_reads"] = bool(clus.get("trim_to_reads", False))
     threads = getattr(args, "threads", 1) or 1
     pad = resolve_pad(getattr(args, "pad", None), config)
 
@@ -193,7 +198,7 @@ def run_classify(args):
             f"(this would be an OOM kill, not a slowdown)", "WARN")
         threads = safe
     log(f"Clustering + features across {len(chroms)} reference(s) with {threads} thread(s)...", "INFO")
-    records = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
+    records, fragments = extract_by_chrom(bam_path, chroms, lib_size, ext_cfg,
                                min_depth, pad, threads, xm_as_nh, mirna_intervals,
                                genome_path=args.genome)
     log(f"{len(records)} clusters", "INFO")
@@ -207,6 +212,13 @@ def run_classify(args):
             scorer.decide(r)
 
     write_tsv(records, base + ".clusters.tsv")
+    write_fragments_tsv(fragments, base + ".fragments.tsv")
+    frag_mass = sum(f["reads"] for f in fragments)
+    total_mass = frag_mass + sum(r.reads for r in records)
+    pct = 100.0 * frag_mass / total_mass if total_mass else 0.0
+    log(f"{len(fragments)} fragments below the locus floor "
+        f"({frag_mass:.0f} reads, {pct:.2f}% of the assigned read mass) "
+        f"-> {base}.fragments.tsv", "INFO")
     write_gff3(records, base + ".clusters.gff3")
     params = {k: v for k, v in vars(args).items() if not callable(v)}
     write_run_json(params, base + ".run.json")

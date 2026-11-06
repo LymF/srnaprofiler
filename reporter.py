@@ -26,6 +26,15 @@ def write_tsv(records, path):
             fh.write("\t".join(_cell(getattr(r, c)) for c in _COLS) + "\n")
 
 
+def write_fragments_tsv(fragments, path):
+    """Regions below the locus floor: reported, never silently dropped."""
+    with open(path, "w") as fh:
+        fh.write("chrom\tstart\tend\treads\tread_span\treason\n")
+        for f in fragments:
+            fh.write(f"{f['chrom']}\t{f['start']}\t{f['end']}\t"
+                     f"{f['reads']:.2f}\t{f['read_span']}\t{f['reason']}\n")
+
+
 def write_gff3(records, path):
     with open(path, "w") as fh:
         fh.write("##gff-version 3\n")

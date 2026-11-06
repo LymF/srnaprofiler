@@ -325,7 +325,7 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     """
     alns = list(read_region(bam_path, chrom, xm_as_nh=xm_as_nh))
     if not alns:
-        return []
+        return [], []
     depth = chromosome_depth(alns)
     islands = call_islands(depth, mincov, 0)
     profiles = island_profiles(islands, alns,
@@ -340,8 +340,15 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     # Known miRNA loci become loci of their own instead of being swallowed.
     regions = [(chrom, s, e) for (s, e) in carve_out(merged, carve)]
     if not regions:
-        return []
+        return [], []
     buckets = _assign_reads(regions, alns)
+    regions, buckets, fragments = _trim_and_floor(
+        regions, buckets, carve,
+        trim=bool(config.get("trim_to_reads", False)),
+        min_reads=config.get("locus_min_reads"),
+        min_span=config.get("locus_min_span"))
+    if not regions:
+        return [], fragments
     seqs = [None] * len(regions)
     if genome_path:
         import pysam
@@ -360,7 +367,49 @@ def process_chromosome(bam_path, chrom, mincov, pad, lib_size, config,
     for r in records:
         r.density_pvalue = density_pvalue(r.reads, chrom_mass, chrom_len,
                                           r.end - r.start)
-    return records
+    return records, fragments
+
+
+def _trim_and_floor(regions, buckets, carve, trim=False, min_reads=None,
+                    min_span=None):
+    """Bounds each non-carved region by its reads, then applies the locus floor.
+
+    Trimmed bounds are clipped to the original window, so neighbouring loci
+    never overlap. A region below the floor (read mass `sum(1/NH)` under
+    `min_reads`, or read span under `min_span`) is not a locus: it is returned
+    as a fragment dict and its reads are not reassigned. A region overlapping a
+    `carve` interval (a known miRNA) is never trimmed nor made a fragment.
+    Returns (regions, buckets, fragments) for the survivors.
+    """
+    if not trim and min_reads is None and min_span is None:
+        return regions, buckets, []
+    out_r, out_b, fragments = [], [], []
+    for (c, s, e), bucket in zip(regions, buckets):
+        if any(cs < e and s < ce for cs, ce in carve):
+            out_r.append((c, s, e))
+            out_b.append(bucket)
+            continue
+        if bucket:
+            lo = min(a.pos for a in bucket)
+            hi = max(a.pos + len(a.seq) for a in bucket)
+            span = hi - lo
+            if trim:
+                s, e = max(s, lo), min(e, hi)
+        else:
+            span = 0
+        mass = sum(1.0 / a.nh for a in bucket)
+        why = []
+        if min_reads is not None and mass < min_reads:
+            why.append("min_reads")
+        if min_span is not None and span < min_span:
+            why.append("min_span")
+        if why:
+            fragments.append({"chrom": c, "start": s, "end": e, "reads": mass,
+                              "read_span": span, "reason": ",".join(why)})
+        else:
+            out_r.append((c, s, e))
+            out_b.append(bucket)
+    return out_r, out_b, fragments
 
 
 def _chrom_job(job):
@@ -388,7 +437,8 @@ def extract_by_chrom(bam_path, chroms, lib_size, config, mincov, pad, threads=1,
             results = pool.map(_chrom_job, jobs)
     else:
         results = [_chrom_job(j) for j in jobs]
-    records = []
-    for rs in results:
+    records, fragments = [], []
+    for rs, fr in results:
         records.extend(rs)
-    return records
+        fragments.extend(fr)
+    return records, fragments
