@@ -388,8 +388,8 @@ def _trim_and_floor(regions, buckets, carve, trim=False, min_reads=None,
     Trimmed bounds are clipped to the original window, so neighbouring loci
     never overlap. A region below the floor (read mass `sum(1/NH)` under
     `min_reads`, or read span under `min_span`) is not a locus: it is returned
-    as a fragment dict and its reads are not reassigned. A region overlapping a
-    `carve` interval (a known miRNA) is never trimmed nor made a fragment.
+    as a fragment dict and its reads are not reassigned. A region contained in
+    a `carve` interval (a known miRNA) is never trimmed nor made a fragment.
     The `min_span` test applies only below `span_exempt_reads` read mass (None:
     always), so a strongly expressed narrow stack stays a locus.
     Returns (regions, buckets, fragments) for the survivors.
