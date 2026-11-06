@@ -446,8 +446,10 @@ themselves are defined there. Every module takes --help.
                          "using the library size, so it transfers between runs.")
     cl.add_argument("--pad", type=int, default=None,
                     help="Extend each island by this many bp on both sides before "
-                         "merging (default: from the config; 500 in both shipped "
-                         "configs)")
+                         "merging: pad sets the merge distance (2*pad gap). "
+                         "With clustering.trim_to_reads on, the reported locus "
+                         "bounds come from the reads, not the padding (default: "
+                         "from the config; 500 in both shipped configs)")
     cl.add_argument("--mirna-loci", dest="mirna_loci", help="High-confidence miRNA BED")
     cl.add_argument("--organelle-contigs", dest="organelle_contigs",
                     help="Comma-separated contigs to leave out, e.g. chloroplast "

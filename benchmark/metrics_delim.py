@@ -28,7 +28,7 @@ def locus_counts(loci: list[dict], cfg: Config, fragments: list[dict] | None = N
 
     Tiny counts use the read span and skip miRNA loci (hairpin loci are legitimately short).
     fragments is the parsed fragments.tsv (None for runs that predate it): n_fragments and
-    fragment_read_frac (fragment reads over fragment plus locus reads) are None then.
+    fragment_read_frac are None then. fragment_read_frac = fragment read mass / (fragment + locus read mass), miRNA loci included (which dilutes it in miRNA-rich libraries); reads overlapping two regions count in both, so it is a share of bucketed mass, not of library mass.
     """
     n_frag = frac = None
     if fragments is not None:

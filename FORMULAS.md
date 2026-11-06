@@ -29,6 +29,14 @@ fail split the gap between them.
 Profiles are compared by mass rather than by modal length, because with a handful of reads per
 raw island the mode is noise.
 
+With `trim_to_reads` on, each non-carved locus is then bounded by its reads, `[min read start,
+max read end)` clipped to the merged window, and the locus floor is applied: read mass
+`sum 1/NH` below `locus_min_reads`, or read span below `locus_min_span` (when the mass is under
+`locus_span_exempt_reads`), makes the region a fragment (`<prefix>.fragments.tsv`). The locus
+bounds therefore come from the reads, not from `pad`, and the piRNA density p-value uses
+lambda for that same read-bounded window (shorter than span + 2 x pad, so the test is more
+permissive than before trimming).
+
 Intervals from `--mirna-loci` are carved out before merging and become loci of their own, with
 the flanks continuing separately. A hairpin is about 90 bp and a locus is 600–1000 bp, so an
 uncarved precursor gets whatever class the rest of the locus has.

@@ -75,7 +75,7 @@ mirdeep-p2 for plants; the wrong one halves precision), `-g/--genome`, `--index-
 `--reads`, `--species`, `--mature`/`--hairpin` (miRBase FASTA, optional), `--no-validate`.
 
 **`classify`** — `--sam` (SAM or BAM), `-g/--genome`, `--mincov` (seeding depth in **reads per
-million**, default 1.0), `--pad` (island extension in bp), `--config` (`rules.yaml` or
+million**, default 1.0), `--pad` (island extension in bp; sets the merge distance, and with `trim_to_reads` the reported bounds come from the reads), `--config` (`rules.yaml` or
 `rules.plant.yaml`), `--mirna-loci` (BED), `--organelle-contigs` (comma-separated contig names
 to drop), `--norm`, `--threads`.
 
@@ -93,6 +93,10 @@ One file per kingdom, and it is meant to be edited. Everything below is per clas
 | key | meaning |
 |---|---|
 | `clustering.pad` | how far a coverage island grows on each side before neighbours may merge |
+| `clustering.locus_min_reads` | read mass (`sum 1/NH`) below which a region is not a locus but a fragment (shipped: 20) |
+| `clustering.locus_min_span` | read span in bp (first read start to last read end) below which a region is a fragment (shipped: 50) |
+| `clustering.locus_span_exempt_reads` | the span test applies only below this read mass (shipped: 100), so a narrow stack with that many reads, such as an unannotated miRNA or a tRNA/snoRNA fragment, stays a locus. `null`/absent: the span test always applies. `locus_min_reads` is unaffected |
+| `clustering.trim_to_reads` | `true`/`false` (strict; other values are an error). When on, each locus is bounded by its reads (clipped to the merged window) instead of the padded window. Known-miRNA loci (`--mirna-loci`) are never trimmed or made fragments |
 | `extractor.dicermin` / `dicermax` | read lengths kept (18–35) |
 | `extractor.strand_cutoff` | above this share on one strand, the locus is called single-stranded |
 
@@ -101,7 +105,7 @@ One file per kingdom, and it is meant to be edited. Everything below is per clas
 | key | meaning |
 |---|---|
 | `decision.review_confidence` | below this softmax confidence, the locus is flagged `review`. Its rigour depends on how many classes exist, so it is not comparable between configs |
-| `decision.min_reads` | weighted read count below which a locus is flagged `review` (a flag, not a filter; use `--mincov` to remove noise) |
+| `decision.min_reads` | weighted read count below which a locus is flagged `review` (a flag, not a filter; use `--mincov` to remove noise). With the locus floor on, loci below `clustering.locus_min_reads` are already fragments, so with the shipped configs (floor 20 > 10) this flag never fires on non-miRNA loci |
 | `decision.min_margin` | minimum gap to the runner-up; a no-op with only two classes |
 
 **Per class**
@@ -127,7 +131,15 @@ into a class whose length range it does not occupy.
 
 ## Output
 
-`classify` writes `<prefix>.clusters.tsv`, `<prefix>.clusters.gff3` and `<prefix>.run.json`.
+`classify` writes `<prefix>.clusters.tsv`, `<prefix>.clusters.gff3`, `<prefix>.run.json` and
+`<prefix>.fragments.tsv`.
+
+`<prefix>.fragments.tsv` lists the regions rejected by the locus floor, so nothing is dropped
+silently. Columns: `chrom`, `start`, `end` (the region, trimmed when `trim_to_reads` is on),
+`reads` (1/NH-weighted read mass), `read_span` (bp from first read start to last read end; 0 for a
+region with no reads) and `reason` (`min_reads`, `min_span` or `min_reads,min_span`). Fragment
+reads are not reassigned to neighbouring loci. The file is header-only when the floor is off or
+nothing falls below it.
 
 **Counts are 1/NH-weighted.** A read mapping to *N* places contributes 1/*N* to each, so
 counts are *not* comparable with tools that assign a multi-read to a single position. Those
