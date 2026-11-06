@@ -484,12 +484,12 @@ def test_phasirna_replay_without_read_span_uses_window():
     assert RuleScorer(_plant_cfg()).decide(_phasi_rec(100)).cls == "phasiRNA"
 
 
-def test_floor_keys_present_and_off():
+def test_floor_keys_set_from_calibration():
     import pathlib
     import yaml
     root = pathlib.Path(__file__).resolve().parents[2]
     for name in ("rules.yaml", "rules.plant.yaml"):
         cl = yaml.safe_load((root / name).read_text())["clustering"]
-        assert "locus_min_reads" in cl and cl["locus_min_reads"] is None
-        assert "locus_min_span" in cl and cl["locus_min_span"] is None
-        assert cl["trim_to_reads"] is False
+        assert cl["locus_min_reads"] == 20
+        assert cl["locus_min_span"] == 50
+        assert cl["trim_to_reads"] is True

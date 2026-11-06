@@ -30,9 +30,15 @@ clustering:
   # null (or absent) means the strand test never blocks.
   strand_min_reads: 20
   # Locus floor (user decision 2026-11-06): a region below it is not a locus; it goes to <prefix>.fragments.tsv. trim_to_reads bounds each locus by its reads instead of padding. Values set by tuning-only calibration (fly, Arabidopsis, rice).
-  locus_min_reads: null
-  locus_min_span: null
-  trim_to_reads: false
+  # Calibration (fly SRR30544370, Arabidopsis SRR24236124, rice DRR076318; grid
+  # trim off/on x {none, 10r/30bp, 10r/50bp, 20r/50bp}): 20 reads / 50 bp is the
+  # strictest setting with no class losing > 0.01 recall or precision versus trim
+  # alone; fragments hold <= 0.3% of the read mass. Trimming costs Arabidopsis
+  # hcsiRNA recall 0.718 -> 0.705 (credit the padding earned over regions without
+  # reads) and gains phasiRNA precision 0.229 -> 0.247; kept (ruling 2026-11-06).
+  locus_min_reads: 20
+  locus_min_span: 50
+  trim_to_reads: true
 extractor:
   dicermin: 18
   dicermax: 35
