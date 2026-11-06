@@ -443,3 +443,53 @@ def test_strand_call_agrees_with_merge_at_exact_cutoff():
     cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     alns = [CAln("c", 0, "A" * 22, 1, "+")] * 2 + [CAln("c", 0, "A" * 22, 1, "-")] * 8
     assert build_record(("c", 0, 100), alns, 1e6, cfg).strand_call == "-"
+
+
+# --- phased classes need four cycles of read span ----------------------------
+
+def _plant_cfg():
+    import pathlib
+    import yaml
+    root = pathlib.Path(__file__).resolve().parents[2]
+    return yaml.safe_load((root / "rules.plant.yaml").read_text())
+
+
+def test_plant_phasirna_min_span_is_four_cycles():
+    cls = _plant_cfg()["classes"]
+    assert cls["phasiRNA"]["cluster_min_length"] == 84
+    assert cls["phasiRNA24"]["cluster_min_length"] == 96
+    assert "cluster_max_density_pvalue" not in cls["phasiRNA"]
+    assert "cluster_max_density_pvalue" not in cls["phasiRNA24"]
+
+
+def _phasi_rec(span, start=0, end=120):
+    return SimpleNamespace(dicer_call="21", reads=100, start=start, end=end,
+                           read_span=span, density_pvalue=0.5,
+                           size_counts={21: 100}, distinct_seqs=10,
+                           phase_pvalue=0.0001, phase_number=10,
+                           phase_score=20.0, pct_1u=0.8, pct_5a=0.1,
+                           frac_top=0.5, pingpong_frac=0.0, e_phase=1.0,
+                           e_1u=0.5, e_5a=0.0, e_fractop_bid=0.5)
+
+
+def test_phasirna_short_span_downgraded():
+    rec = RuleScorer(_plant_cfg()).decide(_phasi_rec(60))
+    assert rec.cls == "ambiguous" and rec.review is True
+    assert rec.evidence.startswith("nearest=phasiRNA; below_cluster_criterion(length); ")
+
+
+def test_phasirna_replay_without_read_span_uses_window():
+    rec = RuleScorer(_plant_cfg()).decide(_phasi_rec(None))
+    assert rec.cls == "phasiRNA"
+    assert RuleScorer(_plant_cfg()).decide(_phasi_rec(100)).cls == "phasiRNA"
+
+
+def test_floor_keys_present_and_off():
+    import pathlib
+    import yaml
+    root = pathlib.Path(__file__).resolve().parents[2]
+    for name in ("rules.yaml", "rules.plant.yaml"):
+        cl = yaml.safe_load((root / name).read_text())["clustering"]
+        assert "locus_min_reads" in cl and cl["locus_min_reads"] is None
+        assert "locus_min_span" in cl and cl["locus_min_span"] is None
+        assert cl["trim_to_reads"] is False

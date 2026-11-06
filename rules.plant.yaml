@@ -29,6 +29,10 @@ clustering:
   # rice (0.855 -> 0.717) on tuning libraries; 20 chosen from {10, 20, none}.
   # null (or absent) means the strand test never blocks.
   strand_min_reads: 20
+  # Locus floor (user decision 2026-11-06): a region below it is not a locus; it goes to <prefix>.fragments.tsv. trim_to_reads bounds each locus by its reads instead of padding. Values set by tuning-only calibration (fly, Arabidopsis, rice).
+  locus_min_reads: null
+  locus_min_span: null
+  trim_to_reads: false
 extractor:
   dicermin: 18
   dicermax: 35
@@ -75,6 +79,8 @@ classes:
     phase_scale: 1.5
     w_1u: 0.3
     defining_evidence: [phase, size]
+    # 4 phase cycles of read span (21/24 nt x 4): fewer cycles cannot show phasing; PhaseTank requires >= 4 phased reads within 84 nt (Guo et al., 2015). Below it the locus is downgraded to ambiguous/review (user decision 2026-11-06).
+    cluster_min_length: 84
   # Reproductive phasiRNA: 24 nt, phased, from DCL5 (DCL3b) on miR2275-triggered
   # precursors. A monocot pathway -- Arabidopsis has no DCL5, and measured there
   # this class takes ZERO loci, which is the right answer and the specificity
@@ -113,6 +119,8 @@ classes:
     w_phase: 4.0
     phase_on: cycles
     defining_evidence: [phase, size]
+    # 4 phase cycles of read span (21/24 nt x 4): fewer cycles cannot show phasing; PhaseTank requires >= 4 phased reads within 84 nt (Guo et al., 2015). Below it the locus is downgraded to ambiguous/review (user decision 2026-11-06).
+    cluster_min_length: 96
   # DCL3 products from RDR2 dsRNA: 24 nt, 5'A, AGO4/RdDM. Repeat- and
   # TE-derived, dual-strand, and NOT phased.
   hcsiRNA:
