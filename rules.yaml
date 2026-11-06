@@ -37,6 +37,9 @@ decision:
   # Raising it does not help: it only relabels loci without retaining more
   # signal (see the calibration table in the README) — filter noise with
   # --mincov instead.
+  # Inert with the shipped locus floor: every non-miRNA locus already has
+  # >= clustering.locus_min_reads (20) and carved miRNA loci are not decided,
+  # so this only fires if the floor is lowered below it or switched off.
   min_reads: 10
 # Size is a defining evidence, not only a weight: `w_size` picks the class, but
 # without `size` in this list the reported `score` ignores it, so a locus with a
@@ -66,6 +69,10 @@ classes:
     # Bioinformatics 13:5: min cluster size 1 kb, hit-density p = 0.01). A locus
     # that wins as piRNA but fails either is reported ambiguous (review), per the
     # user's decision; it never changes which class wins. Optional, any class.
+    # Both are measured on the locus window, which with trim_to_reads: true is
+    # the read span (not the span + 2 x pad these values were first set on), so
+    # the density test is more permissive than before trimming; the end-to-end
+    # effect was checked only on fly piRNA, re-check at the next calibration.
     cluster_min_length: 1000
     cluster_max_density_pvalue: 0.01
     defining_evidence: [[1u, pingpong], size]

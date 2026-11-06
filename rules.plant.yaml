@@ -54,6 +54,10 @@ decision:
   # 0.41 margin. Keeping 0.6 sent 39.6% of loci to review on confidence alone.
   review_confidence: 0.43
   min_margin: 0.15
+  # Review flag for loci with a weighted (1/NH) read count below this. Inert with
+  # the shipped locus floor: every non-miRNA locus already has
+  # >= clustering.locus_min_reads (20) and carved miRNA loci are not decided,
+  # so this only fires if the floor is lowered below it or switched off.
   min_reads: 10
 # Size is a defining evidence, not only a weight: `w_size` picks the class, but
 # without `size` in this list the reported `score` ignores it, so a locus with a
