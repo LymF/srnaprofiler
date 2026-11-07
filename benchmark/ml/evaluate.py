@@ -12,6 +12,7 @@ import pandas as pd
 
 from benchmark.metrics_class import _ece
 from benchmark.ml.folds import chromosome_units
+from mlmodels import ML_EXCLUDED_CLASSES
 
 AMBIGUOUS = "ambiguous"
 THRESHOLDS = [round(0.05 * i, 2) for i in range(20)]
@@ -71,7 +72,7 @@ def choose_threshold(factory, table_train: pd.DataFrame, features: list[str], se
     `factory` is a zero-arg callable returning a fresh unfitted Model. Probabilities are pooled
     from an inner 3-fold split by chromosome unit (units grouped, seeded; as many groups as
     units, minimum 2). With a single unit the split falls back to a seeded random 3-fold split
-    of rows. Carved rows are not scored. The rules are compared on the same annotated rows.
+    of rows. Carved rows and rows labelled with an ML-excluded class (miRNA) are not scored. The rules are compared on the same annotated rows.
     """
     table_train = table_train.reset_index(drop=True)
     groups = _inner_groups(table_train, seed)
@@ -96,6 +97,7 @@ def choose_threshold(factory, table_train: pd.DataFrame, features: list[str], se
     carved = table_train["carved"].to_numpy(dtype=bool)[idx] if "carved" in table_train \
         else np.zeros(len(idx), bool)
     ann = np.array([l is not None and not pd.isna(l) for l in label]) & ~carved
+    ann &= ~np.isin(label, ML_EXCLUDED_CLASSES)   # cannot be predicted by the ML
     conf, pred, label, rule = conf[ann], pred[ann], label[ann], rule[ann]
     target = _macro_precision(rule, label)
     target = 0.0 if target is None else target

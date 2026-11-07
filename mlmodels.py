@@ -8,6 +8,10 @@ labelspread and svm fit on a seeded subsample of at most MAX_FIT_ROWS rows (labe
 always kept) and predict for all rows (1-nearest-neighbour cluster lookup for hier/hdbscan,
 the estimator's own prediction otherwise). Carved miRNA rows (carved == True) are never fitted.
 
+miRNA comes only from miRDeep2 (user decision 2026-11-07): ML_EXCLUDED_CLASSES lists the classes
+the ML never outputs. Loci labelled with one of them stay PU positives (they are real) but are
+unlabelled for the class model, so `classes_` and `predict_proba` never contain them.
+
 p_real: PU classifier (positive = any label) with Elkan & Noto correction, c = mean score of a
 seeded 10% held-out share of the positives, p = clip(g(x)/c, 0, 1). The PU base is logistic
 regression for kmeans/gmm/hier (clustering has no supervised estimator); every supervised and
@@ -33,6 +37,7 @@ from sklearn.svm import SVC
 MAX_FIT_ROWS = 20000
 K_NEIGHBOURS = 15
 PU_HOLDOUT = 0.1
+ML_EXCLUDED_CLASSES = ("miRNA",)
 
 
 def _prep(features):
@@ -168,9 +173,11 @@ class _Model:
         self.prep_ = _prep(self.features)
         Z = self.prep_.fit_transform(X[self.features].to_numpy(float)[keep])
         y = y[keep].reset_index(drop=True)
+        real = y.notna().to_numpy()                      # PU positives: any label
+        y = y.where(~y.isin(ML_EXCLUDED_CLASSES), None)  # class targets: excluded -> unlabelled
         lab = y.notna().to_numpy()
         self.classes_ = sorted(y.dropna().unique())
-        self.pu_ = self._pu().fit(Z, lab)
+        self.pu_ = self._pu().fit(Z, real)
         if self.classes_:
             self._fit_model(Z, y, lab)
         return self

@@ -83,3 +83,28 @@ def test_choose_threshold_random_model_perfect_rules_returns_fallback():
     t, y = _table()
     t["rule_cls"] = y
     assert ev.choose_threshold(lambda: Oracle(False), t, [], 0) == 0.95
+
+
+def test_decide_never_mirna_on_noncarved():
+    from benchmark.ml.models import REGISTRY
+    from benchmark.tests.test_ml_models import FEATS, make_table, with_mirna
+    df = with_mirna(make_table())
+    df.loc[:9, "carved"] = True
+    m = REGISTRY["logreg"](0, FEATS)
+    m.fit(df, df["label"])
+    out = ev.decide(m, df, FEATS, 0.0)
+    assert (out[df["carved"]] == "miRNA").all()
+    assert not (out[~df["carved"]] == "miRNA").any()
+
+
+def test_choose_threshold_ignores_mirna_labelled_rows():
+    t, y = _table()
+    t["rule_cls"] = y
+    base = ev.choose_threshold(lambda: Oracle(True), t, [], 0)
+    assert base == 0.0
+    extra = t.iloc[:30].copy()
+    extra["label"] = "miRNA"
+    extra["rule_cls"] = "ambiguous"
+    both = pd.concat([t, extra], ignore_index=True)
+    # miRNA rows get zero probability everywhere; counting them as errors would raise t
+    assert ev.choose_threshold(lambda: Oracle(True), both, [], 0) == 0.0

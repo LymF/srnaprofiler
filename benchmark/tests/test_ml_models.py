@@ -9,7 +9,7 @@ from benchmark.ml import folds
 from benchmark.ml.models import REGISTRY
 from mlfeatures import FEATURES
 
-CLASSES = ["miRNA", "siRNA", "piRNA"]
+CLASSES = ["rasiRNA", "siRNA", "piRNA"]   # miRNA is never an ML class (see mlmodels)
 FEATS = FEATURES[:6] + ["ctx_te", "ctx_gene"] + ["repro_frac"]
 
 
@@ -30,6 +30,14 @@ def make_table(n=150, seed=0):
     df["organism"] = "sp"
     df["profile"] = "arthropod"
     df["chrom"] = rng.choice(["c1", "c2"], n)
+    return df
+
+
+def with_mirna(df):
+    """Same table with the rasiRNA labels (and truth) renamed to non-carved miRNA labels."""
+    df = df.copy()
+    df["label"] = df["label"].replace("rasiRNA", "miRNA")
+    df["true"] = df["true"].replace("rasiRNA", "miRNA")
     return df
 
 
@@ -87,7 +95,7 @@ def test_mapping_fitted_on_train_only():
         m = REGISTRY[name](0, FEATS).fit(train, y_tr)
         P = m.predict_proba(df)
         assert "piRNA" not in P.columns
-        assert set(P.columns) == {"miRNA", "siRNA"}
+        assert set(P.columns) == {"rasiRNA", "siRNA"}
 
 
 def test_rules_passthrough():
@@ -176,3 +184,30 @@ def test_p_real_uses_each_algorithms_own_estimator():
     assert not np.allclose(out["logreg"], out["rf"])
     assert not np.allclose(out["rf"], out["svm"])
     assert not np.allclose(out["logreg"], out["labelprop"])
+
+
+@pytest.mark.parametrize("name", sorted(set(REGISTRY) - {"rules"}))
+def test_ml_never_has_mirna_class(name):
+    df = with_mirna(make_table())
+    assert (df["label"] == "miRNA").any()          # non-carved miRNA-labelled rows present
+    m = _skip_missing(name)
+    m.fit(df, df["label"])
+    assert "miRNA" not in m.classes_
+    P = m.predict_proba(df)
+    assert "miRNA" not in P.columns and list(P.columns) == ["piRNA", "siRNA"]
+    p = m.p_real(df)
+    assert p.shape == (len(df),) and ((p >= 0) & (p <= 1)).all()
+
+
+def test_excluded_constant():
+    assert models.ML_EXCLUDED_CLASSES == ("miRNA",)
+
+
+def test_mirna_labels_still_pu_positives():
+    df = with_mirna(make_table(n=200))
+    lab = pd.Series(np.where(df["true"] == "miRNA", "miRNA", None), dtype=object)
+    m = _skip_missing("logreg")
+    m.fit(df, lab)
+    assert m.classes_ == [] and m.predict_proba(df).shape == (len(df), 0)
+    p = m.p_real(df)
+    assert p[(df["true"] == "miRNA").to_numpy()].mean() > p[(df["true"] != "miRNA").to_numpy()].mean()
