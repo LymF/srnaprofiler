@@ -10,7 +10,10 @@ the estimator's own prediction otherwise). Carved miRNA rows (carved == True) ar
 
 p_real: PU classifier (positive = any label) with Elkan & Noto correction, c = mean score of a
 seeded 10% held-out share of the positives, p = clip(g(x)/c, 0, 1). The PU base is logistic
-regression. hdbscan instead uses 1 - share of noise-labelled training loci among the k=15
+regression for kmeans/gmm/hier (clustering has no supervised estimator); every supervised and
+semi-supervised model uses its own estimator family as the base (logreg, rf, xgb, lgbm,
+calibrated SVC, selftrain's gradient boosting; labelprop/labelspread propagate positive vs a
+same-size unlabelled sample), so p_real differs between algorithms. hdbscan instead uses 1 - share of noise-labelled training loci among the k=15
 nearest training loci.
 """
 import numpy as np
@@ -81,11 +84,25 @@ def _normalise(P):
     return np.where(s > 0, P / np.where(s > 0, s, 1), 1.0 / P.shape[1])
 
 
-class _PU:
-    """Elkan & Noto positive-unlabelled real score."""
+def _col1(est, Z):
+    """Probability of class 1 from a fitted binary estimator (any classes_ ordering)."""
+    P = est.predict_proba(Z)
+    cls = list(np.asarray(est.classes_).astype(int))
+    return P[:, cls.index(1)] if 1 in cls else np.zeros(len(Z))
 
-    def __init__(self, seed):
-        self.seed = seed
+
+class _PU:
+    """Elkan & Noto positive-unlabelled real score.
+
+    The binary base is the algorithm's own estimator family (ruling R20), supplied as
+    `build(s) -> unfitted estimator`. mode "prop" (label propagation/spreading) fits that
+    estimator on positives (1), an equally sized seeded sample of unlabelled rows (0) and the
+    remaining unlabelled rows (-1). `cap` limits the fit to MAX_FIT_ROWS rows (positives kept).
+    """
+
+    def __init__(self, seed, build=None, mode="std", cap=False):
+        self.seed, self.mode, self.cap = seed, mode, cap
+        self.build = build or (lambda s: LogisticRegression(max_iter=1000, random_state=seed))
         self.model = None
         self.c = 1.0
         self.const = None
@@ -105,17 +122,27 @@ class _PU:
         s = positive.astype(int).copy()
         s[held] = 0
         fit_idx = np.setdiff1d(np.arange(len(Z)), held)
-        self.model = LogisticRegression(max_iter=1000, random_state=self.seed)
-        self.model.fit(Z[fit_idx], s[fit_idx])
+        if self.cap and len(fit_idx) > MAX_FIT_ROWS:   # stratified on positive vs unlabelled
+            sub = _stratified(np.arange(len(fit_idx)), s[fit_idx], MAX_FIT_ROWS, rng)
+            fit_idx = fit_idx[np.sort(sub)]
+        sf = s[fit_idx]
+        if self.mode == "prop":
+            p_i = np.flatnonzero(sf == 1)
+            u_i = np.flatnonzero(sf == 0)
+            neg = rng.choice(u_i, min(len(p_i), len(u_i)), replace=False)
+            y = np.full(len(fit_idx), -1)
+            y[p_i], y[neg] = 1, 0
+            sf = y
+        self.model = self.build(sf).fit(Z[fit_idx], sf)
         if len(held):
-            c = float(self.model.predict_proba(Z[held])[:, 1].mean())
+            c = float(_col1(self.model, Z[held]).mean())
             self.c = c if c > 0 else 1.0
         return self
 
     def score(self, Z):
         if self.const is not None:
             return np.full(len(Z), self.const)
-        return np.clip(self.model.predict_proba(Z)[:, 1] / self.c, 0.0, 1.0)
+        return np.clip(_col1(self.model, Z) / self.c, 0.0, 1.0)
 
 
 class _Model:
@@ -143,10 +170,14 @@ class _Model:
         y = y[keep].reset_index(drop=True)
         lab = y.notna().to_numpy()
         self.classes_ = sorted(y.dropna().unique())
-        self.pu_ = _PU(self.seed).fit(Z, lab)
+        self.pu_ = self._pu().fit(Z, lab)
         if self.classes_:
             self._fit_model(Z, y, lab)
         return self
+
+    def _pu(self):
+        """PU real-score base; clustering models have no supervised estimator, so logistic."""
+        return _PU(self.seed)
 
     def predict_proba(self, X):
         Z = self.prep_.transform(X[self.features].to_numpy(float))
@@ -180,6 +211,9 @@ class _Supervised(_Model):
 
     def _build(self, yy):
         return self.make(self.seed)
+
+    def _pu(self):
+        return _PU(self.seed, self._build, "std", self.cap)
 
     def _proba(self, Z):
         if self.const_ is not None:
@@ -219,6 +253,11 @@ class _SVM(_Supervised):
 
 class _SemiSup(_Model):
     """labelprop/labelspread/selftrain: labelled rows kept, unlabelled subsampled to the cap."""
+
+    def _pu(self):
+        if self.name in ("labelprop", "labelspread"):
+            return _PU(self.seed, lambda s: self.make(self.seed), "prop", True)
+        return _PU(self.seed, lambda s: _hgb(self.seed), "std", False)   # selftrain base
 
     def _fit_model(self, Z, y, lab):
         idx = _subsample(len(Z), lab, self.seed, y.to_numpy())

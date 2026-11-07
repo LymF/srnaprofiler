@@ -165,3 +165,14 @@ def test_cap_stratified_keeps_rare_class(name, monkeypatch):
     assert list(P.columns) == sorted(CLASSES) and len(P) == len(df)
     assert np.allclose(P.sum(axis=1), 1.0, atol=1e-6)
     assert df["label"].iloc[m.fit_rows_].eq("piRNA").sum() == 3
+
+
+def test_p_real_uses_each_algorithms_own_estimator():
+    df = make_table(300)
+    out = {}
+    for name in ("logreg", "rf", "labelprop", "selftrain", "svm", "kmeans"):
+        out[name] = REGISTRY[name](0, FEATS).fit(df, df["label"]).p_real(df)
+        assert ((out[name] >= 0) & (out[name] <= 1)).all()
+    assert not np.allclose(out["logreg"], out["rf"])
+    assert not np.allclose(out["rf"], out["svm"])
+    assert not np.allclose(out["logreg"], out["labelprop"])
