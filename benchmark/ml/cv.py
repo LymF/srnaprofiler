@@ -21,7 +21,7 @@ from benchmark.ml.dataset import build_table
 from benchmark.ml.evaluate import (TableFit, choose_threshold, complete_rules, decide,
                                    fold_metrics)
 from benchmark.ml.folds import split
-from benchmark.ml.models import REGISTRY
+from mlmodels import REGISTRY
 from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS
 
 log = logging.getLogger(__name__)

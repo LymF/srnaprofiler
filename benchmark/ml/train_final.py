@@ -10,7 +10,7 @@ from benchmark.manifest import load_manifest
 from benchmark.ml.cv import VARIANTS, tuning_accessions
 from benchmark.ml.dataset import build_table
 from benchmark.ml.evaluate import TableFit, choose_threshold
-from benchmark.ml.models import REGISTRY
+from mlmodels import REGISTRY
 from benchmark.run import REPO, pipeline_sha256
 from mlfeatures import FEATURES
 
