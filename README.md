@@ -77,7 +77,19 @@ mirdeep-p2 for plants; the wrong one halves precision), `-g/--genome`, `--index-
 **`classify`** — `--sam` (SAM or BAM), `-g/--genome`, `--mincov` (seeding depth in **reads per
 million**, default 1.0), `--pad` (island extension in bp; sets the merge distance, and with `trim_to_reads` the reported bounds come from the reads), `--config` (`rules.yaml` or
 `rules.plant.yaml`), `--mirna-loci` (BED), `--organelle-contigs` (comma-separated contig names
-to drop), `--norm`, `--threads`.
+to drop), `--norm`, `--threads`, `--classifier {rules,ml}` (default `rules`) and `--ml-model`.
+
+**Optional ML classifier.** `--classifier ml` replaces the rule scoring with a trained model
+that gives each locus a class (or `ambiguous` when its top probability is below the model's
+threshold) and `p_real`, the probability that the locus is a real small-RNA locus. Loci carved
+from `--mirna-loci` keep `miRNA` and get `p_real = NA`. `--ml-model` points to the `.joblib`;
+by default it is the `ml.model` key of `--config` (`models/arthropod.joblib` for `rules.yaml`,
+`models/plant.joblib` for `rules.plant.yaml`), read from the repo root. A `<model>.schema.json`
+(features, classes, threshold, algorithm, seed, commit) must sit beside it, and its feature list
+must equal `mlfeatures.FEATURES`. The default `rules` mode needs none of the packages below:
+`pip install scikit-learn joblib` (plus `xgboost` or `lightgbm` if the model uses them). Models
+are produced by `python -m benchmark ml-train --profile {arthropod,plant} --algorithm <name>
+-o models/<profile>.joblib`.
 
 **`classplots`** — `--clusters` (the `.clusters.tsv`), `--bam`, `--top-n`, `--classes`,
 `--region`, `--logo-format`.
@@ -166,6 +178,7 @@ are larger by the multiplicity factor, 3.19× in one Drosophila library.
 | `multimap_frac`, `unique_frac` | share of alignments that are multi-mapping, and share of the mass from uniquely mapping reads. `unique_frac` near 0 marks a locus whose signature is borrowed from repeats |
 | `cls`, `confidence` | assigned class and softmax confidence |
 | `review` | true when the classes compete, the locus is too shallow, or evidence is thin. A flag to inspect, not a rejection |
+| `p_real` | `--classifier ml` only: probability the locus is real; `NA` in rules mode and for carved miRNA |
 | `score` | strength of the weakest defining evidence, in [0, 1]; a normalized Wilson lower bound against each signature's null, so it ranks reliability rather than sample size |
 | `s_1u`, `s_5a`, `s_fractop_bid`, `s_pingpong`, `s_phase` | the individual p-values, as −log10 |
 | `evidence` | which terms fired for the assigned class |

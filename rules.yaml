@@ -76,3 +76,7 @@ classes:
     cluster_min_length: 1000
     cluster_max_density_pvalue: 0.01
     defining_evidence: [[1u, pingpong], size]
+
+# Model used by `classify --classifier ml` (path from the repo root; --ml-model overrides). Ignored in the default rules mode.
+ml:
+  model: models/arthropod.joblib

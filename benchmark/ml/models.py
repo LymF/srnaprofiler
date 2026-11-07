@@ -124,6 +124,10 @@ class _Model:
     def __init__(self, name, seed, features, make):
         self.name, self.seed, self.features, self.make = name, seed, list(features), make
 
+    def __getstate__(self):
+        # `make` is a lambda/closure and cannot be pickled; a loaded model only predicts.
+        return {**self.__dict__, "make": None}
+
     # --- API
     def fit(self, X, y):
         keep, y = _usable(X, y)

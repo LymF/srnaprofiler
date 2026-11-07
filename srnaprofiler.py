@@ -460,6 +460,13 @@ themselves are defined there. Every module takes --help.
     cl.add_argument("--norm", type=int, help="Library size for RPM")
     cl.add_argument("--threads", type=int, default=4,
                     help="Threads for BAM sorting and per-chromosome processing (default: %(default)s)")
+    cl.add_argument("--classifier", choices=["rules", "ml"], default="rules",
+                    help="rules: hand-set scoring (default, no extra dependencies). "
+                         "ml: a trained model (needs scikit-learn; see README)")
+    cl.add_argument("--ml-model", dest="ml_model", default=None,
+                    help="Model .joblib for --classifier ml (default: the `ml.model` "
+                         "key of --config; a relative path is read from the repo root). "
+                         "<model>.schema.json must sit beside it")
     cl.set_defaults(func=run_classify)
 
     from classplots import run_classplots

@@ -19,6 +19,23 @@ FALLBACK_T = 0.95
 INNER_FOLDS = 3
 
 
+class TableFit:
+    """Adapts a Model (fit(X, y)) to the fit(table) interface choose_threshold expects."""
+
+    def __init__(self, model):
+        self.model = model
+
+    def fit(self, table):
+        self.model.fit(table, table["label"])
+        return self
+
+    def predict_proba(self, table):
+        return self.model.predict_proba(table)
+
+    def p_real(self, table):
+        return self.model.p_real(table)
+
+
 def _macro_precision(pred, label):
     """Mean precision over classes with >= 1 annotated row predicted as that class
     (abstentions and unlabeled rows ignored). None when no class qualifies."""

@@ -9,7 +9,7 @@ _COLS = [
     *[f"szp_{L}" for L in range(18, 36)],
     *[f"szm_{L}" for L in range(18, 36)],
     "start_entropy", "top_start_frac", "starts_per_kb",
-    "cls", "confidence", "score",
+    "cls", "confidence", "score", "p_real",
     "s_1u", "s_5a", "s_fractop", "s_fractop_bal", "s_fractop_bid", "s_pingpong", "s_phase",
     "review", "evidence",
 ]

@@ -1,5 +1,6 @@
 """Orchestrator for the `classify` subcommand."""
 import os
+from pathlib import Path
 from collections import defaultdict
 from features import extract_by_chrom, parse_trim_to_reads
 from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
@@ -72,6 +73,17 @@ def safe_thread_count(requested, ref_alignments, available_mb, headroom=0.8):
             break
         fits += 1
     return max(1, min(requested, fits))
+
+
+def resolve_ml_model(cli_path, config):
+    """--ml-model, else the YAML `ml.model`; a relative YAML path is taken from the repo root."""
+    if cli_path:
+        return Path(cli_path)
+    rel = (config.get("ml", {}) or {}).get("model")
+    if not rel:
+        raise ValueError("--classifier ml needs --ml-model (the config has no ml.model)")
+    p = Path(rel)
+    return p if p.is_absolute() else Path(__file__).resolve().parent / p
 
 
 def parse_mirna_bed(path):
@@ -207,10 +219,16 @@ def run_classify(args):
     if mirna_intervals:
         mark_mirna(records, mirna_intervals)
 
-    scorer = RuleScorer(config)
-    for r in records:
-        if r.cls != "miRNA":
-            scorer.decide(r)
+    if getattr(args, "classifier", "rules") == "ml":
+        import mlclassify   # lazy: rules mode must not need scikit-learn
+        model_path = resolve_ml_model(getattr(args, "ml_model", None), config)
+        log(f"--classifier ml: {model_path}", "INFO")
+        mlclassify.load(model_path).decide_all(records)
+    else:
+        scorer = RuleScorer(config)
+        for r in records:
+            if r.cls != "miRNA":
+                scorer.decide(r)
 
     write_tsv(records, base + ".clusters.tsv")
     write_fragments_tsv(fragments, base + ".fragments.tsv")

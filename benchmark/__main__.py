@@ -72,6 +72,18 @@ def ml_cv(args: argparse.Namespace) -> int:
     return 0
 
 
+def ml_train(args: argparse.Namespace) -> int:
+    from benchmark.ml.train_final import train_final
+    try:
+        schema = train_final(args.profile, args.algorithm, args.variant, args.seed,
+                             args.output, args.results_dir, args.manifest)
+    except (ValueError, FileNotFoundError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    print(f"{args.output} (classes {schema['classes']}, t={schema['threshold']})")
+    return 0
+
+
 def ml_select(args: argparse.Namespace) -> int:
     from benchmark.ml.select import SelectionError, select
     algs = [a for a in args.algorithms.split(",") if a] if args.algorithms else None
@@ -126,6 +138,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--variants", default="main,stack,repro")
     p.add_argument("--algorithms", default=None, help="comma list to rank (default: all in file)")
     p.set_defaults(func=ml_select)
+    p = sub.add_parser("ml-train", help="freeze a model on all tuning rows of a profile")
+    p.add_argument("--profile", choices=["arthropod", "plant"], required=True)
+    p.add_argument("--algorithm", required=True)
+    p.add_argument("--variant", default="main")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
+    p.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    p.add_argument("-o", "--output", type=Path, required=True)
+    p.set_defaults(func=ml_train)
     return parser
 
 

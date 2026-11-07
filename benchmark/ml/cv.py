@@ -3,7 +3,7 @@
 Resumable: lines already present (without "error") are skipped; each result is appended and
 flushed by the parent process as soon as it finishes. A fold that raises writes a line with
 "error" and no metrics (retried on the next run; ml-select refuses while it is unresolved).
-Real models take fit(X, y) while evaluate.choose_threshold calls fit(table); `_TableFit`
+Real models take fit(X, y) while evaluate.choose_threshold calls fit(table); `evaluate.TableFit`
 adapts (y = table["label"]).
 """
 import functools
@@ -18,7 +18,8 @@ import pandas as pd
 
 from benchmark.manifest import load_manifest
 from benchmark.ml.dataset import build_table
-from benchmark.ml.evaluate import choose_threshold, complete_rules, decide, fold_metrics
+from benchmark.ml.evaluate import (TableFit, choose_threshold, complete_rules, decide,
+                                   fold_metrics)
 from benchmark.ml.folds import split
 from benchmark.ml.models import REGISTRY
 from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS
@@ -27,21 +28,6 @@ log = logging.getLogger(__name__)
 VARIANTS = {"main": list(FEATURES), "stack": list(FEATURES) + list(RULE_COLS),
             "repro": list(FEATURES) + list(REPRO_COLS)}
 XSPECIES = ("Arabidopsis thaliana", "Oryza sativa")
-
-
-class _TableFit:
-    def __init__(self, model):
-        self.model = model
-
-    def fit(self, table):
-        self.model.fit(table, table["label"])
-        return self
-
-    def predict_proba(self, table):
-        return self.model.predict_proba(table)
-
-    def p_real(self, table):
-        return self.model.p_real(table)
 
 
 def folds_for(table: pd.DataFrame, profile: str):
@@ -74,7 +60,7 @@ def _run_fold(table_path, profile, variant, algorithm, seed, unit, tr, va, nseed
             t, pred, conf = None, rule, None
         else:
             def factory():
-                return _TableFit(REGISTRY[algorithm](seed, feats))
+                return TableFit(REGISTRY[algorithm](seed, feats))
             t = choose_threshold(factory, train, feats, seed)
             model = factory().fit(train)
             pred = decide(model, val, feats, t).to_numpy(dtype=object)

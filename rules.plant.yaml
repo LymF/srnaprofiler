@@ -148,3 +148,7 @@ classes:
     w_size: 1.0
     w_fractop_mid: 1.0
     defining_evidence: [fractop_bid, size]
+
+# Model used by `classify --classifier ml` (path from the repo root; --ml-model overrides). Ignored in the default rules mode.
+ml:
+  model: models/plant.joblib
