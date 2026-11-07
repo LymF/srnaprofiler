@@ -61,6 +61,47 @@ class ClusterRecord:
     # bp from the first read start to the last read end (0 with no reads); None
     # when unknown (e.g. replayed .clusters.tsv without the column)
     read_span: Optional[int] = None
+    # per-strand size histogram: fraction of the locus's 1/NH mass per length
+    szp_18: float = 0.0
+    szp_19: float = 0.0
+    szp_20: float = 0.0
+    szp_21: float = 0.0
+    szp_22: float = 0.0
+    szp_23: float = 0.0
+    szp_24: float = 0.0
+    szp_25: float = 0.0
+    szp_26: float = 0.0
+    szp_27: float = 0.0
+    szp_28: float = 0.0
+    szp_29: float = 0.0
+    szp_30: float = 0.0
+    szp_31: float = 0.0
+    szp_32: float = 0.0
+    szp_33: float = 0.0
+    szp_34: float = 0.0
+    szp_35: float = 0.0
+    szm_18: float = 0.0
+    szm_19: float = 0.0
+    szm_20: float = 0.0
+    szm_21: float = 0.0
+    szm_22: float = 0.0
+    szm_23: float = 0.0
+    szm_24: float = 0.0
+    szm_25: float = 0.0
+    szm_26: float = 0.0
+    szm_27: float = 0.0
+    szm_28: float = 0.0
+    szm_29: float = 0.0
+    szm_30: float = 0.0
+    szm_31: float = 0.0
+    szm_32: float = 0.0
+    szm_33: float = 0.0
+    szm_34: float = 0.0
+    szm_35: float = 0.0
+    # read-start shape (None when unknown)
+    start_entropy: Optional[float] = None
+    top_start_frac: Optional[float] = None
+    starts_per_kb: Optional[float] = None
     # proTRAC density significance vs the chromosome; None when unknown
     density_pvalue: Optional[float] = None
     # classification

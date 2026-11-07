@@ -1,5 +1,6 @@
 """Per-cluster feature extraction → ClusterRecord."""
 import bisect
+import math
 from collections import Counter, defaultdict
 from records import ClusterRecord
 from samio import read_alignments, read_region, reference_lengths, base_null
@@ -78,6 +79,8 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     n_1u = n_10a = n_5a = 0.0
     multimap = 0
     unique_w = 0.0
+    sz_w = Counter()      # (strand, length) -> weight, window lengths only
+    start_w = Counter()   # (strand, 5' position) -> weight
 
     for a in local:
         w = 1.0 / a.nh
@@ -91,6 +94,8 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
             seq_lens["long"] += w
         else:
             seq_lens[str(L)] += w
+            sz_w[(a.strand, L)] += w
+        start_w[(a.strand, a.pos if a.strand == "+" else a.pos + len(a.seq) - 1)] += w
         gc_bases += w * sum(1 for b in oriented if b in "GCgc")
         total_bases += w * L
         if oriented[:1] in ("T", "U"):
@@ -128,6 +133,19 @@ def build_record(region, region_alns, lib_size, config, locus_seq=None):
     r.frac_in_window = round(in_window / r.reads, 4)
     r.dicer_call = str(predom_len) if r.frac_in_window >= 0.8 else "N"
     summarize_sizes(r, seq_lens)
+    for (strand, L), c in sz_w.items():
+        setattr(r, f"sz{'p' if strand == '+' else 'm'}_{L}", round(c / r.reads, 4))
+    total_start = sum(start_w.values())
+    n_starts = len(start_w)
+    r.top_start_frac = round(max(start_w.values()) / total_start, 4)
+    if n_starts > 1:
+        h = -sum((c / total_start) * math.log2(c / total_start)
+                 for c in start_w.values())
+        r.start_entropy = round(h / math.log2(n_starts), 4)
+    else:
+        r.start_entropy = 0.0
+    r.starts_per_kb = (round(n_starts / (r.read_span / 1000.0), 4)
+                       if r.read_span else None)
     r.pct_1u = round(n_1u / r.reads, 4)
     r.pct_10a = round(n_10a / r.reads, 4)
     r.pct_5a = round(n_5a / r.reads, 4)
