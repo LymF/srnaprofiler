@@ -26,7 +26,7 @@ def _index_rows() -> dict[str, dict]:
         return {row["path"]: row for row in csv.DictReader(fh, delimiter="\t")}
 
 
-def _load_truth(lib: Library) -> list[Region]:
+def load_truth(lib: Library) -> list[Region]:
     index = _index_rows()
     regions: list[Region] = []
     for path in lib.truth_sources:
@@ -40,6 +40,9 @@ def _load_truth(lib: Library) -> list[Region]:
         regions += load_regions(full, row["cls"], row["source"],
                                 feature_types=types, aliases=aliases)
     return regions
+
+
+_load_truth = load_truth
 
 
 def _library(acc: str, manifest: Path) -> Library:
