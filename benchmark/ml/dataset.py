@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from benchmark.manifest import load_manifest
 from benchmark.metrics_class import match_loci, read_loci
@@ -10,7 +11,14 @@ from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS, derive
 
 __all__ = ["FEATURES", "RULE_COLS", "REPRO_COLS", "build_table"]
 
-MIN_OVERLAP_FRAC = 0.5
+CONFIG = Path(__file__).with_name("config.yaml")
+
+
+def load_ml_config(path: Path = CONFIG) -> dict:
+    with open(path) as fh:
+        return yaml.safe_load(fh)
+
+
 META = ["acc", "organism", "tissue", "replicate", "profile", "chrom", "start", "end",
         "rule_cls", "label", "is_control", "carved"]
 
@@ -21,6 +29,7 @@ def _opt(value):
 
 def build_table(accessions: list[str], results_dir: Path, manifest: Path,
                 final_test: bool = False) -> pd.DataFrame:
+    min_overlap_frac = float(load_ml_config()["min_overlap_frac"])
     libs = {l.accession: l for l in load_manifest(Path(manifest))}
     chosen = []
     for acc in accessions:
@@ -33,7 +42,7 @@ def build_table(accessions: list[str], results_dir: Path, manifest: Path,
     for lib in chosen:
         path = Path(results_dir) / lib.accession / "work" / f"{lib.accession}.clusters.tsv"
         loci = read_loci(path)
-        pairs = match_loci(loci, load_truth(lib), MIN_OVERLAP_FRAC)
+        pairs = match_loci(loci, load_truth(lib), min_overlap_frac)
         for loc, region in pairs:
             rule_cls = loc.get("cls")
             row = {"acc": lib.accession, "organism": lib.organism, "tissue": lib.tissue,

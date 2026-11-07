@@ -1,5 +1,5 @@
 # ML classifier settings (benchmark/ml)
 min_overlap_frac: 0.5   # a locus takes the class of the truth region match_loci picks at this overlap
-folds:                  # fold rule of Task 5
-  unit: chromosome      # whole chromosomes/contigs per fold, never split a chromosome
-  n_folds: 5
+folds:                  # fold rule of Task 5 (leave-one-unit-out)
+  min_share: 0.05       # a chromosome holding >= 5% of its species' loci is its own fold unit;
+                        # smaller contigs are pooled into "other"
