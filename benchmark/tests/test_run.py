@@ -387,6 +387,7 @@ def test_switching_classifier_reruns_classify_once(fake, tmp_path):
     calls, _ = fake
     model = tmp_path / "m.joblib"
     model.write_bytes(b"model")
+    os.utime(model, (500, 500))  # older than the outputs: only the classifier switch can rerun
     _prepare_fresh_run(tmp_path)  # fresh rules-mode outputs and meta
     calls.clear()
     go(tmp_path, classifier="ml", ml_model=model)
@@ -399,6 +400,7 @@ def test_switching_classifier_reruns_classify_once(fake, tmp_path):
     assert calls == []
     # a different model forces classify again
     model.write_bytes(b"other model")
+    os.utime(model, (500, 500))  # new bytes, still old mtime
     calls.clear()
     go(tmp_path, classifier="ml", ml_model=model)
     assert [c[2] for c in calls] == ["classify"]
