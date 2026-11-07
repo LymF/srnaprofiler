@@ -3,3 +3,9 @@ min_overlap_frac: 0.5   # a locus takes the class of the truth region match_loci
 folds:                  # fold rule of Task 5 (leave-one-unit-out)
   min_share: 0.05       # a chromosome holding >= 5% of its species' loci is its own fold unit;
                         # smaller contigs are pooled into "other"
+controls:               # organism -> benchmark/truth/<dir>/controls.bed (generated on the server, not committed)
+  Drosophila melanogaster: dmel
+  Arabidopsis thaliana: atha
+  Oryza sativa: osat
+  Zea mays: zmay
+  Bombyx mori: bmor

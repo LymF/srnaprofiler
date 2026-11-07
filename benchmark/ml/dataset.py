@@ -1,4 +1,5 @@
 """Locus feature table from benchmark runs: one row per locus, labelled by truth match."""
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -7,11 +8,16 @@ import yaml
 from benchmark.manifest import load_manifest
 from benchmark.metrics_class import match_loci, read_loci
 from benchmark.orchestrate import load_truth
+from benchmark.ml.controls import is_control
+from benchmark.ml.replicates import repro_features
 from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS, derive
 
 __all__ = ["FEATURES", "RULE_COLS", "REPRO_COLS", "build_table"]
 
 CONFIG = Path(__file__).with_name("config.yaml")
+TRUTH_DIR = Path(__file__).resolve().parents[1] / "truth"
+
+log = logging.getLogger(__name__)
 
 
 def load_ml_config(path: Path = CONFIG) -> dict:
@@ -29,7 +35,8 @@ def _opt(value):
 
 def build_table(accessions: list[str], results_dir: Path, manifest: Path,
                 final_test: bool = False) -> pd.DataFrame:
-    min_overlap_frac = float(load_ml_config()["min_overlap_frac"])
+    cfg = load_ml_config()
+    min_overlap_frac = float(cfg["min_overlap_frac"])
     libs = {l.accession: l for l in load_manifest(Path(manifest))}
     chosen = []
     for acc in accessions:
@@ -57,6 +64,17 @@ def build_table(accessions: list[str], results_dir: Path, manifest: Path,
                 row[c] = float("nan")
             rows.append(row)
     df = pd.DataFrame(rows, columns=[*META, *FEATURES, *RULE_COLS, *REPRO_COLS])
+    df["is_control"] = False
+    for org in df["organism"].unique():
+        sub = cfg.get("controls", {}).get(org)
+        bed = TRUTH_DIR / sub / "controls.bed" if sub else None
+        if bed is None or not bed.exists():
+            log.warning("no controls.bed for %s (%s); is_control stays False", org, bed)
+            continue
+        m = df["organism"] == org
+        df.loc[m, "is_control"] = is_control(df[m], bed, min_overlap_frac)
+    if len(df):
+        df[REPRO_COLS] = repro_features(df, min_overlap_frac)[REPRO_COLS]
     for c in ("label", "rule_cls"):
         df[c] = df[c].astype(object).where(df[c].notna(), None)
     return df
