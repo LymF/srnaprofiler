@@ -32,7 +32,7 @@ def run(args: argparse.Namespace) -> int:
         path = run_benchmark_library(args.library, args.manifest, args.data_dir,
                                      args.results_dir, args.threads,
                                      classifier=args.classifier, ml_model=args.ml_model)
-    except ValueError as exc:
+    except (ValueError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 1
     print(path)

@@ -190,3 +190,16 @@ def test_metrics_subcommand(tmp_path, monkeypatch, capsys):
     rc = main(["metrics", "--library", "SRR9", "--manifest", str(manifest),
                "--results-dir", str(tmp_path / "results")])
     assert rc == 0 and path.exists()
+
+
+def test_run_subcommand_missing_model_is_clean_error(tmp_path, monkeypatch, capsys):
+    from benchmark.__main__ import main
+
+    def boom(*a, **kw):
+        raise FileNotFoundError("ML model not found: /nope.joblib")
+
+    monkeypatch.setattr(orchestrate, "run_benchmark_library", boom)
+    rc = main(["run", "--library", "SRR9", "--classifier", "ml", "--ml-model", "/nope.joblib",
+               "--results-dir", str(tmp_path)])
+    assert rc == 1
+    assert "ML model not found" in capsys.readouterr().err

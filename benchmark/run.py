@@ -154,21 +154,28 @@ def run_library(
     meta = workdir / "benchmark_run.json"
     previous: dict[str, list[str]] = {}  # commands that produced the outputs we may skip
     previous_sha: str | None = None
+    previous_clf: tuple[str, str | None] = ("rules", None)  # absent fields mean rules mode
     if meta.exists():
         try:
             old = json.loads(meta.read_text())
             previous_sha = old.get("pipeline_sha256")
             previous = {c[2]: c for c in old.get("commands", [])}
+            previous_clf = (old.get("classifier") or "rules", old.get("ml_model_sha256"))
         except (ValueError, IndexError, TypeError, AttributeError):
             previous, previous_sha = {}, None
+            previous_clf = ("rules", None)
+    model_sha = hashlib.sha256(model.read_bytes()).hexdigest() if model else None
+    # clusters.tsv from another classifier or model must not be reused, whatever the mtimes
+    clf_changed = previous_clf != (classifier, model_sha)
     current_sha = pipeline_sha256()
     # outputs may be reused only if they were made by exactly this pipeline code
     can_resume = previous_sha is not None and previous_sha == current_sha
     commands: dict[str, list[str]] = {}
     skipped: list[str] = []
 
-    def step(name: str, outputs: list[Path], inputs: list[Path], argv: list[str]) -> None:
-        if can_resume and _fresh(outputs, inputs):
+    def step(name: str, outputs: list[Path], inputs: list[Path], argv: list[str],
+             force: bool = False) -> None:
+        if can_resume and not force and _fresh(outputs, inputs):
             skipped.append(name)
             if name in previous:
                 commands[name] = previous[name]
@@ -208,7 +215,8 @@ def run_library(
         if ml_model is not None:
             classify += ["--ml-model", str(ml_model)]
     step("classify", [clusters],
-         [bam, rules] + ([bed] if use_bed else []) + ([model] if model else []), classify)
+         [bam, rules] + ([bed] if use_bed else []) + ([model] if model else []), classify,
+         force=clf_changed)
 
     if not clusters.exists():
         raise FileNotFoundError(f"classify did not produce {clusters}")
@@ -224,7 +232,7 @@ def run_library(
         "rules_path": str(rules),
         "classifier": classifier,
         "ml_model_path": str(model) if model else None,
-        "ml_model_sha256": hashlib.sha256(model.read_bytes()).hexdigest() if model else None,
+        "ml_model_sha256": model_sha,
         "accession": acc,
         "organism": lib.organism,
         "role": lib.role,

@@ -381,3 +381,24 @@ def test_ml_model_defaults_to_rules_yaml_path(fake, tmp_path, monkeypatch):
     assert "--ml-model" not in _classify(fake[0])
     meta = json.loads((tmp_path / "w" / "benchmark_run.json").read_text())
     assert meta["ml_model_path"] == str(tmp_path / "models" / "x.joblib")
+
+
+def test_switching_classifier_reruns_classify_once(fake, tmp_path):
+    calls, _ = fake
+    model = tmp_path / "m.joblib"
+    model.write_bytes(b"model")
+    _prepare_fresh_run(tmp_path)  # fresh rules-mode outputs and meta
+    calls.clear()
+    go(tmp_path, classifier="ml", ml_model=model)
+    assert [c[2] for c in calls] == ["classify"]
+    set_mtimes(tmp_path / "w", 2000)
+    age_inputs(tmp_path)
+    os.utime(model, (500, 500))
+    calls.clear()
+    go(tmp_path, classifier="ml", ml_model=model)
+    assert calls == []
+    # a different model forces classify again
+    model.write_bytes(b"other model")
+    calls.clear()
+    go(tmp_path, classifier="ml", ml_model=model)
+    assert [c[2] for c in calls] == ["classify"]
