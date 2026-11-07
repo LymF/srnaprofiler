@@ -237,7 +237,8 @@ class _Hier(_Unsup):
 
 class _HDBSCAN(_Unsup):
     def _cluster(self, Z, k):
-        return HDBSCAN(min_cluster_size=max(5, min(15, len(Z) // 10))).fit_predict(Z)
+        return HDBSCAN(min_cluster_size=max(5, min(15, len(Z) // 10)),
+                       copy=True).fit_predict(Z)
 
     def p_real(self, X):
         Z = self.prep_.transform(X[self.features].to_numpy(float))
