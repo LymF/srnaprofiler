@@ -401,6 +401,24 @@ as they are. Every run records the md5 of its reads and of the genome FASTA (`re
 - Maize reads are W23 but the genome is B73; the B73 NAM-5.0 truth is the miRBase assembly.
 - The miRBase file header reads "miRBase v23.1" with date 2026-9-16, as served; it is recorded as is.
 
+## Negative controls for the ML stage (2026-11-07)
+
+Loci over rRNA and protein-coding exons are treated as degradation, a yardstick for the "is real" score of the ML classifier (`docs/superpowers/specs/2026-11-07-ml-classifier-design.md` §7.2). They are never features. Built on `litrp3` with `benchmark/scripts/build_controls.py` (commit b42b8a0): `rRNA`/`rRNA_gene` features plus `exon` features whose Parent is an `mRNA`, minus every interval overlapping any truth region of the species (all manifest truth sources of the library, with contig aliases applied, written as BED by `benchmark.orchestrate.load_truth`). The BED files are not committed (size); they live at `benchmark/truth/<dir>/controls.bed` in the server checkout and in `~/srnaprofiler/data/benchmark/annotation/`.
+
+| species | annotation (downloaded 2026-11-07) | sha256 (annotation) | controls.bed: exon / rRNA | sha256 (controls.bed) |
+|---|---|---|---|---|
+| D. melanogaster | https://ftp.ensembl.org/pub/release-116/gff3/drosophila_melanogaster/Drosophila_melanogaster.BDGP6.54.63.gff3.gz | b2b46794cd1210af05b782767b6e87c7e7aa32a4ce9aa1769ef115f365fe943c | 76 059 / 113 | 390e0e509d36c3c67307a537b737bfd92281dde1cc6ca8364f01d563e8fb4178 |
+| A. thaliana | https://ftp.ebi.ac.uk/ensemblgenomes/pub/release-63/plants/gff3/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.63.gff3.gz | 39f97354999cc9599ee93198c196d23355f1c34162ae0b98e2b82197cf325903 | 177 365 / 15 | 57251a9d6f50fc017d3d17a16d746ee5403cd00c22a5902d47bab7f868e2e251 |
+| O. sativa | https://ftp.ebi.ac.uk/ensemblgenomes/pub/release-63/plants/gff3/oryza_sativa/Oryza_sativa.IRGSP-1.0.63.gff3.gz | 6082ad6d23fe860001fab6e8954929be8172d1f6d0f5f6eb54e8982841bb4502 | 171 492 / 275 | 4f49384e1f5c7dbee03d004a689854ea10f98ac033b13913383527c7c1c0e57f |
+| Z. mays | https://ftp.ebi.ac.uk/ensemblgenomes/pub/release-63/plants/gff3/zea_mays/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.63.gff3.gz | 2d09561c3fdb729db37ed0f383610b02a177fbeb6dc3f0de4cdfd506df3e57e4 | 250 325 / 0 | 61d1f45b38b3d066161ddd57c17d9f7525bc11c0c49ca896eae00ed7e0723ca0 |
+| B. mori | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/030/269/925/GCF_030269925.1_ASM3026992v2/GCF_030269925.1_ASM3026992v2_genomic.gff.gz | 7e0c004a8da1d647bf1cc7e8de24b5c3797a627976e6c599d59d24be8cbd375c | 79 327 / 66 | 25b0926cc3eba8193bce4fcb62cc71de98c1bad4e63fdc6be6dcef2e5e0f467b |
+
+Notes:
+
+- The fly GFF3 in the Ensembl release-116 directory is named `BDGP6.54.63`; it is the only GFF3 there and its contigs match the genome (1870/1870).
+- Plant annotations come from Ensembl Plants release 63, the same tree as the manifest genomes; contig names match (Arabidopsis 7/7, rice 63/63, maize 685/685). The maize annotation has no rRNA features, so maize controls are exons only.
+- B. mori: the RefSeq annotation GCF_030269925.1 is on GCA_030269925.2, while the benchmark genome is GCA_030269925.1 (BSVE01* contigs). Contigs were paired in assembly-report order and kept only where the lengths are identical: 18 of 30 (`bmor_refseq_to_genome.tsv`, sha256 f811c372a5b66fce58e7667e7ccf6ca41f72f6fd8121846d8c345ff52687d555). Controls on the other 12 chromosomes are dropped, so the Bombyx control set is partial.
+
 ## Referências
 
 Azlan, A., Zhu, L., & Fukunaga, R. (2025). Female-germline specific protein Sakura interacts with Otu and is crucial for germline stem cell renewal and differentiation and oogenesis. *eLife*, 13, RP103828. https://doi.org/10.7554/elife.103828

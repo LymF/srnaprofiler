@@ -38,3 +38,6 @@ extras/
 
 # benchmark outputs
 benchmark/results/
+
+# ML negative controls: generated on the server (benchmark/PROVENANCE.md), not committed
+benchmark/truth/*/controls.bed
