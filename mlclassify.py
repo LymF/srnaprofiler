@@ -15,7 +15,9 @@ _NEEDS = "--classifier ml needs scikit-learn (pip install scikit-learn xgboost l
 
 
 def _attr_names():
-    return [*(n for n in mlfeatures.FEATURES if n != "dicer_len"), "dicer_call"]
+    # dicer_len derives from dicer_call; ctx_* are NaN until a context source exists
+    return [*(n for n in mlfeatures.FEATURES
+              if n != "dicer_len" and not n.startswith("ctx_")), "dicer_call"]
 
 
 def check_schema(schema_features):
@@ -44,6 +46,9 @@ class MLDecider:
         import numpy as np
         import pandas as pd
         names = _attr_names()
+        absent = [n for n in names if not hasattr(todo[0], n)]
+        if absent:
+            raise ValueError(f"records lack attributes the model's features need: {absent}")
         table = pd.DataFrame([mlfeatures.derive({n: getattr(r, n, None) for n in names})
                               for r in todo], columns=list(mlfeatures.FEATURES))
         table["rule_cls"] = AMBIGUOUS
@@ -77,4 +82,9 @@ def load(path) -> MLDecider:
         if not p.exists():
             raise FileNotFoundError(f"--classifier ml: {p} not found")
     schema = json.loads(schema_path.read_text())
-    return MLDecider(joblib.load(path), schema)
+    try:
+        model = joblib.load(path)
+    except (ImportError, AttributeError) as exc:
+        raise RuntimeError(f"{path} was trained with an incompatible mlmodels version "
+                           f"({exc}); retrain it with `python -m benchmark ml-train`") from exc
+    return MLDecider(model, schema)

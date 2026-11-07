@@ -52,7 +52,7 @@ def _tiny_model(tmp_path, records, classes=("siRNA", "piRNA")):
     """Fit a logreg on the records' own feature table; return the .joblib path."""
     import joblib
     import pandas as pd
-    from benchmark.ml.models import REGISTRY
+    from mlmodels import REGISTRY
     rows = [mlfeatures.derive({n: getattr(r, n, None) for n in
                                [*mlfeatures.FEATURES, "dicer_call"]}) for r in records]
     table = pd.DataFrame(rows)
@@ -157,3 +157,68 @@ def test_train_final_writes_model_and_schema(tmp_path):
     assert set(saved) >= {"features", "classes", "threshold", "algorithm", "variant", "seed",
                           "train_commit", "pipeline_hash"}
     assert joblib.load(out).classes_ == saved["classes"]
+
+
+def test_loaded_model_needs_no_benchmark_module(tmp_path):
+    import subprocess
+    from pathlib import Path
+    recs = _records()
+    path, _ = _tiny_model(tmp_path, recs)
+    repo = Path(classify.__file__).resolve().parent
+    code = (
+        "import sys, mlclassify\n"
+        "from types import SimpleNamespace as N\n"
+        "import mlfeatures\n"
+        "d = mlclassify.load(sys.argv[1])\n"
+        "names = [n for n in mlfeatures.FEATURES if n != 'dicer_len'] + ['dicer_call']\n"
+        "r = N(cls='', confidence=0, review=False, p_real=None, evidence='', score=0, class_scores={},\n"
+        "      **{n: 1.0 for n in names if n != 'dicer_call'}, dicer_call='21')\n"
+        "d.decide_all([r])\n"
+        "bad = [m for m in sys.modules if m.split('.')[0] == 'benchmark']\n"
+        "assert not bad, bad\n"
+        "assert r.p_real is not None\n")
+    res = subprocess.run([sys.executable, "-c", code, str(path)], cwd=repo,
+                         capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+
+
+def test_loaded_model_refuses_refit(tmp_path):
+    import joblib
+    path, _ = _tiny_model(tmp_path, _records())
+    model = joblib.load(path)
+    with pytest.raises(RuntimeError, match="loaded from an artifact"):
+        model.fit(None, None)
+
+
+def test_incompatible_artifact_is_runtime_error(tmp_path, monkeypatch):
+    import mlclassify
+    path, _ = _tiny_model(tmp_path, _records())
+    import joblib
+    (tmp_path / "gonemod.py").write_text("class Cls:\n    pass\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    import gonemod
+    joblib.dump(gonemod.Cls(), path)
+    del sys.modules["gonemod"]
+    (tmp_path / "gonemod.py").unlink()
+    with pytest.raises(RuntimeError, match="incompatible mlmodels"):
+        mlclassify.load(path)
+
+
+def test_records_missing_attribute_named(tmp_path):
+    import mlclassify
+    recs = _records()
+    path, _ = _tiny_model(tmp_path, recs)
+    bare = [SimpleNamespace(cls="", reads=1.0)]
+    with pytest.raises(ValueError, match="pingpong_z"):
+        mlclassify.load(path).decide_all(bare)
+
+
+@pytest.mark.parametrize("cfg", ["rules.yaml", "rules.plant.yaml"])
+def test_shipped_configs_with_ml_key_still_score(cfg):
+    from pathlib import Path
+    from decider import RuleScorer, load_config
+    config = load_config(Path(classify.__file__).resolve().parent / cfg)
+    assert config["ml"]["model"].startswith("models/")
+    r = _records(3)[1]
+    RuleScorer(config).decide(r)
+    assert r.cls

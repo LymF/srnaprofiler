@@ -4,7 +4,8 @@ import pytest
 
 pytest.importorskip("sklearn")
 
-from benchmark.ml import folds, models
+import mlmodels as models
+from benchmark.ml import folds
 from benchmark.ml.models import REGISTRY
 from mlfeatures import FEATURES
 
