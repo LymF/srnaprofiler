@@ -64,6 +64,7 @@ def build_table(accessions: list[str], results_dir: Path, manifest: Path,
                 row[c] = float("nan")
             rows.append(row)
     df = pd.DataFrame(rows, columns=[*META, *FEATURES, *RULE_COLS, *REPRO_COLS])
+    df = df.reset_index(drop=True)   # folds.split yields index labels: keep them unique
     df["is_control"] = False
     for org in df["organism"].unique():
         sub = cfg.get("controls", {}).get(org)

@@ -78,3 +78,14 @@ def test_derive_dicer_len_and_na():
     row["dicer_call"] = "N"
     assert math.isnan(mlfeatures.derive(row)["dicer_len"])
     assert list(d) == mlfeatures.FEATURES and len(FEATURES) == 22 + 1 + 36 + 3 + 4
+
+
+def test_build_table_index_unique_across_libraries(env):
+    results, manifest = env
+    with open(manifest, "a") as fh:
+        fh.write("\t".join(["T2", "Dmel", "tuning", "arthropod", "ovary", "2", "u", "x.gff"]) + "\n")
+    _write_clusters(results / "T2" / "work" / "T2.clusters.tsv",
+                    [("chr2", 10, 200, "siRNA"), ("chr2", 900, 1200, "siRNA")])
+    df = build_table(["T1", "T2"], results, manifest)
+    assert len(df) == 4 and df.index.is_unique
+    assert list(df.index) == list(range(4))

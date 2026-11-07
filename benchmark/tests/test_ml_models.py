@@ -123,3 +123,44 @@ def test_folds_never_mix_units():
         assert set(units[tr]).isdisjoint(set(units[va]))
         assert set(units[va]) == {unit}
         assert len(tr) + len(va) == 100
+
+
+def _cap_table(n_lab_per_class, n_unlab, rare=None, seed=0):
+    rng = np.random.default_rng(seed)
+    rows = []
+    for k, c in enumerate(CLASSES):
+        m = rare if (rare is not None and c == "piRNA") else n_lab_per_class
+        rows += [(k, c)] * m
+    rows += [(rng.integers(0, 3), None)] * n_unlab
+    cls = np.array([r[0] for r in rows])
+    df = pd.DataFrame(rng.normal(0, 0.5, (len(rows), 6)) + cls[:, None] * 4.0, columns=FEATS[:6])
+    for c in ("ctx_te", "ctx_gene", "repro_frac"):
+        df[c] = np.nan
+    df["label"] = pd.Series([r[1] for r in rows], dtype=object)
+    df["rule_cls"] = "siRNA"
+    df["carved"] = False
+    return df.sample(frac=1, random_state=seed).reset_index(drop=True)
+
+
+@pytest.mark.parametrize("name", ["hier", "hdbscan", "labelprop", "svm"])
+def test_cap_path_keeps_labelled_and_predicts_all(name, monkeypatch):
+    monkeypatch.setattr(models, "MAX_FIT_ROWS", 30)
+    df = _cap_table(4, 88)          # 12 labelled rows fit under the cap of 30
+    m = REGISTRY[name](0, FEATS).fit(df, df["label"])
+    rows = m.fit_rows_
+    assert len(rows) <= 30
+    assert set(np.flatnonzero(df["label"].notna())) <= set(rows)
+    P = m.predict_proba(df)
+    assert len(P) == len(df) and np.allclose(P.sum(axis=1), 1.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("name", ["svm", "labelprop", "hier"])
+def test_cap_stratified_keeps_rare_class(name, monkeypatch):
+    monkeypatch.setattr(models, "MAX_FIT_ROWS", 120)
+    df = _cap_table(100, 20, rare=3)    # 203 labelled > cap, piRNA has 3 rows
+    m = REGISTRY[name](0, FEATS).fit(df, df["label"])
+    assert len(m.fit_rows_) <= 120 + 3
+    P = m.predict_proba(df)
+    assert list(P.columns) == sorted(CLASSES) and len(P) == len(df)
+    assert np.allclose(P.sum(axis=1), 1.0, atol=1e-6)
+    assert df["label"].iloc[m.fit_rows_].eq("piRNA").sum() == 3

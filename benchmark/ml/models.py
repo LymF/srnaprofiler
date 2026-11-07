@@ -15,6 +15,7 @@ nearest training loci.
 """
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.cluster import HDBSCAN, AgglomerativeClustering, KMeans
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
@@ -41,15 +42,37 @@ def _usable(X, y):
     return keep, pd.Series(y).reset_index(drop=True).where(keep, None)
 
 
-def _subsample(n, labelled, seed):
-    """Indices (sorted) of at most MAX_FIT_ROWS rows; labelled rows always kept."""
+STRATA_FLOOR = 50
+
+
+def _subsample(n, labelled, seed, strata=None):
+    """Indices (sorted) of at most ~MAX_FIT_ROWS rows; labelled rows kept when they fit.
+    When labelled rows alone exceed the cap they are sampled stratified by `strata` (the
+    label per row): every class keeps at least min(count, STRATA_FLOOR) rows."""
     if n <= MAX_FIT_ROWS:
         return np.arange(n)
     rng = np.random.default_rng(seed)
     lab = np.flatnonzero(labelled)
+    if len(lab) > MAX_FIT_ROWS:
+        return np.sort(_stratified(lab, np.asarray(strata)[lab], MAX_FIT_ROWS, rng))
     rest = np.flatnonzero(~labelled)
-    room = max(MAX_FIT_ROWS - len(lab), 0)
+    room = MAX_FIT_ROWS - len(lab)
     return np.sort(np.concatenate([lab, rng.choice(rest, min(room, len(rest)), replace=False)]))
+
+
+def _stratified(idx, groups, budget, rng):
+    groups = np.asarray(groups)
+    chosen = []
+    for g in np.unique(groups):
+        members = idx[groups == g]
+        keep = min(len(members), STRATA_FLOOR)
+        chosen.append(rng.choice(members, keep, replace=False))
+    taken = np.concatenate(chosen)
+    rest = np.setdiff1d(idx, taken)
+    room = budget - len(taken)
+    if room > 0 and len(rest):
+        taken = np.concatenate([taken, rng.choice(rest, min(room, len(rest)), replace=False)])
+    return taken
 
 
 def _normalise(P):
@@ -134,32 +157,64 @@ class _Supervised(_Model):
     def _fit_model(self, Z, y, lab):
         idx = np.flatnonzero(lab)
         if self.cap and len(idx) > MAX_FIT_ROWS:
-            idx = np.sort(np.random.default_rng(self.seed).choice(idx, MAX_FIT_ROWS, replace=False))
+            idx = np.sort(_stratified(idx, y.to_numpy()[idx], MAX_FIT_ROWS,
+                                      np.random.default_rng(self.seed)))
+        self.fit_rows_ = idx
         yy = self._enc(y)[idx].astype(int)
         self.const_ = None
         if len(self.classes_) < 2:
             self.const_ = 1.0
             return
-        self.est_ = self.make(self.seed).fit(Z[idx], yy)
+        self.est_ = self._build(yy).fit(Z[idx], yy)
+
+    def _build(self, yy):
+        return self.make(self.seed)
 
     def _proba(self, Z):
         if self.const_ is not None:
             return np.ones((len(Z), 1))
-        return _normalise(self.est_.predict_proba(Z))
+        P = np.zeros((len(Z), len(self.classes_)))
+        P[:, np.asarray(self.est_.classes_).astype(int)] = self.est_.predict_proba(Z)
+        return _normalise(P)
+
+
+class _OneHotSVC:
+    """Fallback when a class has < 2 rows (too few to calibrate): hard SVC predictions."""
+
+    def __init__(self, seed):
+        self.svc = SVC(random_state=seed)
+
+    def fit(self, Z, y):
+        self.svc.fit(Z, y)
+        self.classes_ = self.svc.classes_
+        return self
+
+    def predict_proba(self, Z):
+        return (self.svc.predict(Z)[:, None] == self.classes_[None, :]).astype(float)
 
 
 class _SVM(_Supervised):
+    """SVC calibrated with CalibratedClassifierCV (sigmoid, 3-fold, single refit-free ensemble);
+    fitted on at most MAX_FIT_ROWS labelled rows, stratified by class."""
     cap = True
+
+    def _build(self, yy):
+        cv = min(3, int(np.bincount(yy).min()) if len(yy) else 0)
+        if cv < 2:
+            return _OneHotSVC(self.seed)
+        return CalibratedClassifierCV(SVC(random_state=self.seed), method="sigmoid", cv=cv,
+                                      ensemble=False)
 
 
 class _SemiSup(_Model):
     """labelprop/labelspread/selftrain: labelled rows kept, unlabelled subsampled to the cap."""
 
     def _fit_model(self, Z, y, lab):
-        idx = _subsample(len(Z), lab, self.seed)
+        idx = _subsample(len(Z), lab, self.seed, y.to_numpy())
+        self.fit_rows_ = idx
         yy = np.where(lab, self._enc(y), -1).astype(int)[idx]
         self.const_ = None
-        if len(self.classes_) < 2:
+        if len(set(yy[yy >= 0])) < 2:
             self.const_ = 1.0
             return
         self.est_ = self.make(self.seed).fit(Z[idx], yy)
@@ -176,7 +231,8 @@ class _Unsup(_Model):
     kind = "unsup"
 
     def _fit_model(self, Z, y, lab):
-        idx = _subsample(len(Z), lab, self.seed)
+        idx = _subsample(len(Z), lab, self.seed, y.to_numpy())
+        self.fit_rows_ = idx
         self.Zfit_ = Z[idx]
         k = len(self.classes_) + 2
         self.cl_ = self._cluster(self.Zfit_, k)
@@ -314,6 +370,6 @@ REGISTRY = {
         n_estimators=100, n_jobs=1, random_state=s), "rf"),
     "xgb": _factory(_Supervised, _xgb, "xgb", probe=_xgb),
     "lgbm": _factory(_Supervised, _lgbm, "lgbm", probe=_lgbm),
-    "svm": _factory(_SVM, lambda s: SVC(probability=True, random_state=s), "svm"),
+    "svm": _factory(_SVM, None, "svm"),
     "rules": lambda seed, features: _Rules(seed, features),
 }
