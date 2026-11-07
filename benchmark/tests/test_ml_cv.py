@@ -156,3 +156,48 @@ def test_xspecies_folds():
     u, tr, va = [f for f in cv.folds_for(t, "plant") if f[0] == "xspecies:Oryza sativa"][0]
     assert set(t.loc[tr, "organism"]) == {"Arabidopsis thaliana"}
     assert set(t.loc[va, "organism"]) == {"Oryza sativa"}
+
+
+def test_select_class_alignment_ignores_fold_without_rules_value(tmp_path):
+    rows = []
+    for i, u in enumerate(UNITS):
+        m = _m(0.5, amb=0.4, gap=None, ctl=None)
+        if i == 0:
+            m["per_class"]["siRNA"]["precision"] = None      # rules undefined on this fold
+        rows.append(_line("rules", u, 0, m))
+        a = _m(0.9 + 0.001 * i, prec=0.9)
+        if i == 0:
+            a["per_class"]["siRNA"]["precision"] = 0.0       # extreme, must be ignored
+        rows.append(_line("rf", u, 0, a))
+    path = tmp_path / "folds.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert "**Winner: rf**" in select(path, tmp_path / "s.md")
+
+
+def test_select_xspecies_excluded_from_eligibility(tmp_path):
+    path = _write(tmp_path, {"rf": ([0.9 + 0.001 * i for i in range(10)], {})})
+    with open(path, "a") as fh:
+        fh.write(json.dumps(_line("rules", "xspecies:Oryza sativa", 0, _m(0.5, amb=0.4))) + "\n")
+        fh.write(json.dumps(_line("rf", "xspecies:Oryza sativa", 0,
+                                  _m(0.0, prec=0.0, rec=0.0, amb=0.99, gap=-1))) + "\n")
+    text = select(path, tmp_path / "s.md")
+    assert "**Winner: rf**" in text and "Cross-species folds" in text
+
+
+def test_select_refuses_incomplete_seeds_or_units(tmp_path):
+    path = _write(tmp_path, {"rf": ([0.8] * 10, {})})
+    with pytest.raises(SelectionError, match="seed 1"):
+        select(path, tmp_path / "s.md", seeds=2)
+    lines = path.read_text().splitlines()
+    path.write_text("\n".join(l for l in lines if '"u3"' not in l or "rf" not in l) + "\n")
+    with pytest.raises(SelectionError, match="rf: seed 0 unit u3"):
+        select(path, tmp_path / "s.md")
+
+
+def test_read_lines_skips_truncated_final_line(tmp_path, caplog):
+    p = tmp_path / "folds.jsonl"
+    p.write_text(json.dumps({"a": 1}) + "\n" + '{"profile": "arth')
+    assert cv.read_lines(p) == [{"a": 1}]
+    p.write_text('{"bad\n' + json.dumps({"a": 1}) + "\n")
+    with pytest.raises(json.JSONDecodeError):
+        cv.read_lines(p)

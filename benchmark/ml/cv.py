@@ -7,6 +7,7 @@ Real models take fit(X, y) while evaluate.choose_threshold calls fit(table); `_T
 adapts (y = table["label"]).
 """
 import functools
+import logging
 import json
 import shutil
 import tempfile
@@ -22,6 +23,7 @@ from benchmark.ml.folds import split
 from benchmark.ml.models import REGISTRY
 from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS
 
+log = logging.getLogger(__name__)
 VARIANTS = {"main": list(FEATURES), "stack": list(FEATURES) + list(RULE_COLS),
             "repro": list(FEATURES) + list(REPRO_COLS)}
 XSPECIES = ("Arabidopsis thaliana", "Oryza sativa")
@@ -59,9 +61,9 @@ def _load(path: str) -> pd.DataFrame:
     return joblib.load(path)
 
 
-def _run_fold(table_path, profile, variant, algorithm, seed, unit, tr, va):
+def _run_fold(table_path, profile, variant, algorithm, seed, unit, tr, va, nseeds=1):
     key = {"profile": profile, "variant": variant, "algorithm": algorithm, "seed": seed,
-           "unit": unit}
+           "unit": unit, "seeds": nseeds}
     try:
         table = _load(table_path)
         train, val = table.loc[tr], table.loc[va]
@@ -92,7 +94,16 @@ def read_lines(path: Path) -> list[dict]:
     path = Path(path)
     if not path.exists():
         return []
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    out = []
+    rows = [l for l in path.read_text().splitlines() if l.strip()]
+    for i, l in enumerate(rows):
+        try:
+            out.append(json.loads(l))
+        except json.JSONDecodeError:
+            if i != len(rows) - 1:
+                raise
+            log.warning("%s: skipping truncated final line", path)
+    return out
 
 
 def _key(r):
@@ -121,9 +132,11 @@ def run_cv(table: pd.DataFrame, profile: str, algorithms: list[str], variants: l
         tpath = str(tmp / "table.joblib")
         joblib.dump(table, tpath)
         gen = joblib.Parallel(n_jobs=n_jobs, return_as="generator_unordered")(
-            joblib.delayed(_run_fold)(tpath, profile, v, a, s, u, tr, va)
+            joblib.delayed(_run_fold)(tpath, profile, v, a, s, u, tr, va, seeds)
             for v, a, s, u, tr, va in todo)
         with open(path, "a") as fh:
+            if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+                fh.write("\n")   # a killed run left a partial line: do not glue onto it
             for rec in gen:
                 fh.write(json.dumps(rec) + "\n")
                 fh.flush()
