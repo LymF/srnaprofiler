@@ -178,41 +178,42 @@ def failed_combos(lines, algorithms=None):
     return bad
 
 
-def missing_combos(lines, algorithms=None, seeds=None):
-    """Lines (strings) for every ranked (profile, variant, algorithm) lacking a success line
-    for some (seed, unit): seeds must be exactly {0..max} with max+1 >= the seeds of the run,
-    units those of the profile's rules baseline."""
+def missing_combos(lines, algorithms=None, seeds=None, variants=None):
+    """Messages for every requested (profile, variant, algorithm) lacking a success line for
+    some (seed, unit): seeds must be {0..max} with max+1 >= the run's seeds; units are all
+    units seen in the profile (so rules lacking a unit any algorithm has is flagged too).
+    Requested algorithms default to every non-rules entry of REGISTRY, variants to
+    main,stack,repro (rules only exist as main, seed 0)."""
+    from benchmark.ml.cv import REGISTRY, VARIANTS
     ok = [r for r in lines if "error" not in r]
     need = int(seeds) if seeds else max([int(r.get("seeds", 1)) for r in ok] or [1])
+    algs = [a for a in (algorithms or sorted(REGISTRY)) if a != "rules"]
+    variants = list(variants or VARIANTS)
     out = []
     for prof in sorted({r["profile"] for r in ok}):
         pr = [r for r in ok if r["profile"] == prof]
-        units = sorted({r["unit"] for r in pr if r["algorithm"] == "rules"})
-        for v, a in sorted({(r["variant"], r["algorithm"]) for r in pr
-                            if a_ranked(r["algorithm"], algorithms)}):
+        units = sorted({r["unit"] for r in pr})
+        combos = [("main", "rules")] + [(v, a) for v in variants for a in algs]
+        for v, a in combos:
             have = {(int(r["seed"]), r["unit"]) for r in pr
                     if r["variant"] == v and r["algorithm"] == a}
-            seeds_present = {s for s, _ in have}
-            want = range(1 if a == "rules" else max(need, max(seeds_present) + 1))
-            for sd in want:
-                for u in units:
-                    if (sd, u) not in have:
-                        out.append(f"{prof}/{v}/{a}: seed {sd} unit {u}")
+            if not have:
+                out.append(f"{prof}/{v}/{a}: no results")
+                continue
+            top = 1 if a == "rules" else max(need, max(s for s, _ in have) + 1)
+            out += [f"{prof}/{v}/{a}: seed {sd} unit {u}"
+                    for sd in range(top) for u in units if (sd, u) not in have]
     return out
 
 
-def a_ranked(alg, algorithms):
-    return alg == "rules" or algorithms is None or alg in algorithms
-
-
 def select(folds: Path, out: Path, algorithms: list[str] | None = None,
-           seeds: int | None = None) -> str:
+           seeds: int | None = None, variants: list[str] | None = None) -> str:
     lines = read_lines(folds)
     bad = failed_combos(lines, algorithms)
     if bad:
         msg = "\n".join(f"  {k}: {e}" for k, e in sorted(bad.items()))
         raise SelectionError(f"{len(bad)} failed fold(s); rerun ml-cv to retry:\n{msg}")
-    miss = missing_combos(lines, algorithms, seeds)
+    miss = missing_combos(lines, algorithms, seeds, variants)
     if miss:
         raise SelectionError(f"{len(miss)} missing fold result(s); rerun ml-cv:\n  "
                              + "\n  ".join(miss[:50]))

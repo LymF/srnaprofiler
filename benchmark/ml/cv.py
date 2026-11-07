@@ -90,6 +90,16 @@ def _run_fold(table_path, profile, variant, algorithm, seed, unit, tr, va, nseed
         return {**key, "error": repr(exc)}
 
 
+def _drop_partial_tail(path: Path) -> None:
+    """Truncate to the end of the last complete line (a killed run may leave a partial one)."""
+    if not path.exists():
+        return
+    data = path.read_bytes()
+    if data and not data.endswith(b"\n"):
+        with open(path, "r+b") as fh:
+            fh.truncate(data.rfind(b"\n") + 1)
+
+
 def read_lines(path: Path) -> list[dict]:
     path = Path(path)
     if not path.exists():
@@ -135,8 +145,7 @@ def run_cv(table: pd.DataFrame, profile: str, algorithms: list[str], variants: l
             joblib.delayed(_run_fold)(tpath, profile, v, a, s, u, tr, va, seeds)
             for v, a, s, u, tr, va in todo)
         with open(path, "a") as fh:
-            if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
-                fh.write("\n")   # a killed run left a partial line: do not glue onto it
+            _drop_partial_tail(path)
             for rec in gen:
                 fh.write(json.dumps(rec) + "\n")
                 fh.flush()

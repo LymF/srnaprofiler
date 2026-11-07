@@ -76,7 +76,8 @@ def ml_select(args: argparse.Namespace) -> int:
     from benchmark.ml.select import SelectionError, select
     algs = [a for a in args.algorithms.split(",") if a] if args.algorithms else None
     try:
-        select(args.folds, args.output, algs, args.seeds)
+        select(args.folds, args.output, algs, args.seeds,
+               [v for v in args.variants.split(",") if v])
     except SelectionError as exc:
         print(exc, file=sys.stderr)
         return 1
@@ -122,6 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", type=Path, required=True)
     p.add_argument("--seeds", type=int, default=None,
                    help="seeds the run must contain (default: the largest recorded in folds.jsonl)")
+    p.add_argument("--variants", default="main,stack,repro")
     p.add_argument("--algorithms", default=None, help="comma list to rank (default: all in file)")
     p.set_defaults(func=ml_select)
     return parser

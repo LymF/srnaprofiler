@@ -10,9 +10,20 @@ pytest.importorskip("sklearn")
 
 from benchmark import __main__ as cli
 from benchmark.ml import cv
-from benchmark.ml.select import select, SelectionError
+from benchmark.ml.select import select as _select, SelectionError
 from benchmark.ml.stats import corrected_resampled_ttest
 from mlfeatures import FEATURES
+
+
+def select(path, out, algorithms=None, seeds=None, variants=None):
+    """Test helper: request exactly what the file holds unless told otherwise."""
+    rows = cv.read_lines(path)
+    if algorithms is None:
+        algorithms = sorted({r["algorithm"] for r in rows} - {"rules"}) or ["rf"]
+    if variants is None:
+        variants = sorted({r["variant"] for r in rows})
+    return _select(path, out, algorithms, seeds, variants)
+
 
 UNITS = [f"u{i}" for i in range(10)]
 
@@ -87,8 +98,12 @@ def test_select_refuses_on_error_lines(tmp_path, capsys):
     assert cli.main(["ml-select", "--folds", str(path), "-o", str(out)]) == 1
     assert "boom" in capsys.readouterr().err and not out.exists()
     # an error for an algorithm not being ranked does not block
-    assert cli.main(["ml-select", "--folds", str(path), "-o", str(out),
-                     "--algorithms", "xgb"]) == 0
+    path2 = _write(tmp_path, {"rf": ([0.8] * 10, {}), "logreg": ([0.7] * 10, {})})
+    with open(path2, "a") as fh:
+        fh.write(json.dumps({"profile": "arthropod", "variant": "main", "algorithm": "rf",
+                             "seed": 1, "unit": "u3", "error": "x"}) + "\n")
+    assert cli.main(["ml-select", "--folds", str(path2), "-o", str(out), "--variants", "main",
+                     "--algorithms", "logreg"]) == 0
 
 
 def _tiny_table(n=120, seed=0):
@@ -201,3 +216,24 @@ def test_read_lines_skips_truncated_final_line(tmp_path, caplog):
     p.write_text('{"bad\n' + json.dumps({"a": 1}) + "\n")
     with pytest.raises(json.JSONDecodeError):
         cv.read_lines(p)
+
+
+def test_run_cv_drops_partial_tail_before_appending(tmp_path):
+    t = _tiny_table()
+    cv.run_cv(t, "arthropod", ["logreg"], ["main"], 1, tmp_path, n_jobs=1)
+    good = (tmp_path / "folds.jsonl").read_text().splitlines()[:2]
+    (tmp_path / "folds.jsonl").write_text("\n".join(good) + '\n{"profile": "arth')
+    assert cv.run_cv(t, "arthropod", ["logreg"], ["main"], 1, tmp_path, n_jobs=1) >= 1
+    assert len(cv.read_lines(tmp_path / "folds.jsonl")) == 4     # 2 kept + 2 re-run, no error
+
+
+def test_select_refuses_requested_but_absent_algorithm_variant_or_rules_unit(tmp_path):
+    path = _write(tmp_path, {"rf": ([0.8] * 10, {})})
+    for kw, msg in [({"algorithms": ["rf", "xgb"]}, "main/xgb: no results"),
+                    ({"algorithms": ["rf"], "variants": ["main", "stack"]}, "stack/rf: no results")]:
+        with pytest.raises(SelectionError, match=msg):
+            _select(path, tmp_path / "s.md", seeds=None, **{"variants": ["main"], **kw})
+    with open(path, "a") as fh:
+        fh.write(json.dumps(_line("rf", "u99", 0, _m(0.8))) + "\n")
+    with pytest.raises(SelectionError, match="rules: seed 0 unit u99"):
+        _select(path, tmp_path / "s.md", ["rf"], None, ["main"])
