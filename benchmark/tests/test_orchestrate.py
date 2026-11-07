@@ -54,7 +54,7 @@ def setup(tmp_path, monkeypatch, *, truth_chrom="chr1", index_rows=None, role="t
         seen["order"] = seen.get("order", []) + ["reads"]
         return tmp_path / "r.fq.gz"
 
-    def fake_run(l, reads, genome, workdir, rules, threads=8, index_prefix=None):
+    def fake_run(l, reads, genome, workdir, rules, threads=8, index_prefix=None, classifier="rules", ml_model=None):
         seen["index_prefix"] = index_prefix
         seen["order"] = seen.get("order", []) + ["run"]
         seen["rules"] = Path(rules)

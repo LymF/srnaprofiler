@@ -97,7 +97,8 @@ def _write_metrics(lib: Library, regions: list[Region], cfg: Config, workdir: Pa
 
 
 def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir: Path,
-                          threads: int) -> Path:
+                          threads: int, classifier: str = "rules",
+                          ml_model: Path | None = None) -> Path:
     """Run one library and return the path of its metrics.json."""
     lib = _library(acc, manifest)
     data_dir, results_dir = Path(data_dir), Path(results_dir)
@@ -112,7 +113,8 @@ def run_benchmark_library(acc: str, manifest: Path, data_dir: Path, results_dir:
     rules = REPO / RULES[lib.taxon_group]
     workdir = results_dir / acc / "work"
     run_library(lib, reads, genome, workdir, rules, threads=threads,
-                index_prefix=results_dir / "_index" / species / species)
+                index_prefix=results_dir / "_index" / species / species,
+                classifier=classifier, ml_model=ml_model)
     return _write_metrics(lib, regions, cfg, workdir, results_dir)
 
 

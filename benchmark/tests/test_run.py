@@ -337,3 +337,47 @@ def test_index_ready_needs_the_six_exact_nonempty_files(tmp_path):
     assert not run_mod._index_ready(prefix)  # empty file does not count
     (tmp_path / "idx.rev.2.ebwt").write_text("x")
     assert run_mod._index_ready(prefix)
+
+
+def _classify(calls):
+    return next(c for c in calls if c[2] == "classify")
+
+
+def test_default_classify_argv_has_no_classifier(fake, tmp_path):
+    go(tmp_path)
+    argv = _classify(fake[0])
+    assert "--classifier" not in argv and "--ml-model" not in argv
+
+
+def test_ml_classify_argv_has_classifier_and_model(fake, tmp_path):
+    model = tmp_path / "m.joblib"
+    model.write_bytes(b"model")
+    go(tmp_path, classifier="ml", ml_model=model)
+    argv = _classify(fake[0])
+    assert argv[argv.index("--classifier") + 1] == "ml"
+    assert argv[argv.index("--ml-model") + 1] == str(model)
+    meta = json.loads((tmp_path / "w" / "benchmark_run.json").read_text())
+    assert meta["classifier"] == "ml"
+    assert meta["ml_model_sha256"] == hashlib.sha256(b"model").hexdigest()
+
+
+def test_ml_model_is_a_classify_freshness_input(fake, tmp_path, monkeypatch):
+    model = tmp_path / "m.joblib"
+    model.write_bytes(b"model")
+    seen = []
+    orig = run_mod._fresh
+    monkeypatch.setattr(run_mod, "_fresh", lambda o, i: seen.append(list(i)) or orig(o, i))
+    go(tmp_path, classifier="ml", ml_model=model)
+    go(tmp_path, classifier="ml", ml_model=model)
+    assert any(model in inputs for inputs in seen)
+
+
+def test_ml_model_defaults_to_rules_yaml_path(fake, tmp_path, monkeypatch):
+    monkeypatch.setattr(run_mod, "REPO", tmp_path)
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "x.joblib").write_bytes(b"m")
+    (tmp_path / "rules.yaml").write_text("ml:\n  model: models/x.joblib\n")
+    go(tmp_path, classifier="ml")
+    assert "--ml-model" not in _classify(fake[0])
+    meta = json.loads((tmp_path / "w" / "benchmark_run.json").read_text())
+    assert meta["ml_model_path"] == str(tmp_path / "models" / "x.joblib")

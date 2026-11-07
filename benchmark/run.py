@@ -98,9 +98,28 @@ def _share_index(built: Path, shared: Path) -> None:
         os.replace(tmp, dest)
 
 
+def _resolve_ml_model(rules: Path, ml_model: Path | None) -> Path:
+    """The model file classify will load: --ml-model, else rules `ml.model` against the repo."""
+    if ml_model is not None:
+        model = Path(ml_model)
+    else:
+        import yaml
+        cfg = yaml.safe_load(Path(rules).read_text()) or {}
+        rel = (cfg.get("ml") or {}).get("model")
+        if not rel:
+            raise ValueError(f"{rules} has no ml.model; pass --ml-model")
+        model = Path(rel)
+        if not model.is_absolute():
+            model = REPO / model
+    if not model.is_file():
+        raise FileNotFoundError(f"ML model not found: {model}")
+    return model
+
+
 def run_library(
     lib: Library, reads: Path, genome: Path, workdir: Path, rules: Path,
     threads: int = 8, index_prefix: Path | None = None,
+    classifier: str = "rules", ml_model: Path | None = None,
 ) -> RunResult:
     """Run qc, mapping, mirna and classify; skip a step whose outputs are up to date.
 
@@ -109,8 +128,11 @@ def run_library(
     workdir and it is copied there for the next library of the species. mirna uses the same
     prefix; without index_prefix the per-library index is used.
     """
+    if classifier not in ("rules", "ml"):
+        raise ValueError(f"classifier must be 'rules' or 'ml', got {classifier!r}")
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+    model = _resolve_ml_model(Path(rules), ml_model) if classifier == "ml" else None
     reads, genome, rules = Path(reads), Path(genome), Path(rules)
     acc = lib.accession
     py = os.environ.get("SRNAPROFILER_PYTHON", sys.executable)
@@ -181,7 +203,12 @@ def run_library(
                        "-g", str(std_genome), "--config", str(rules)] + t
     if use_bed:
         classify += ["--mirna-loci", str(bed)]
-    step("classify", [clusters], [bam, rules] + ([bed] if use_bed else []), classify)
+    if model is not None:
+        classify += ["--classifier", "ml"]
+        if ml_model is not None:
+            classify += ["--ml-model", str(ml_model)]
+    step("classify", [clusters],
+         [bam, rules] + ([bed] if use_bed else []) + ([model] if model else []), classify)
 
     if not clusters.exists():
         raise FileNotFoundError(f"classify did not produce {clusters}")
@@ -195,6 +222,9 @@ def run_library(
         "genome_md5": file_md5(genome),
         "rules_sha256": hashlib.sha256(rules.read_bytes()).hexdigest(),
         "rules_path": str(rules),
+        "classifier": classifier,
+        "ml_model_path": str(model) if model else None,
+        "ml_model_sha256": hashlib.sha256(model.read_bytes()).hexdigest() if model else None,
         "accession": acc,
         "organism": lib.organism,
         "role": lib.role,

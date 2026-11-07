@@ -30,7 +30,8 @@ def run(args: argparse.Namespace) -> int:
     from benchmark.orchestrate import run_benchmark_library
     try:
         path = run_benchmark_library(args.library, args.manifest, args.data_dir,
-                                     args.results_dir, args.threads)
+                                     args.results_dir, args.threads,
+                                     classifier=args.classifier, ml_model=args.ml_model)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 1
@@ -109,6 +110,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--data-dir", type=Path, default=default_data_dir())
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--threads", type=int, default=8)
+    p.add_argument("--classifier", choices=["rules", "ml"], default="rules")
+    p.add_argument("--ml-model", type=Path, default=None,
+                   help="model file for --classifier ml (default: ml.model of the rules YAML)")
     p.set_defaults(func=run)
     p = sub.add_parser("metrics", help="rebuild metrics.json from an existing results/<ACC>/work")
     p.add_argument("--library", required=True)
