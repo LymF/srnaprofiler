@@ -183,7 +183,7 @@ Future work: an ML layer around miRDeep2 (the v1 numbers show room: recall 0.446
 
 ## 8. Known metric artefact: hcsiRNA precision
 
-hcsiRNA precision in the plant table is about 0.29 ± 0.46 for every algorithm and for the rules (0.293 ± 0.468). That is not a measure of hcsiRNA quality. Folds without hcsiRNA truth (the rice folds, since the rice hc-siRNA file was excluded) score precision 0 for any hcsiRNA call, so the mean is a mixture of folds near 1 and folds at 0, hence the large standard deviation. The mean is roughly the share of folds that have Arabidopsis truth; it was not decomposed per fold here. Recall (0.975 for the rules, 0.988 to 1.000 for the ML) is the informative hcsiRNA number, and it hardly differs between algorithms.
+hcsiRNA precision in the plant table is about 0.29 ± 0.46 for every algorithm and for the rules (0.293 ± 0.468). That is not a measure of hcsiRNA quality. Folds without hcsiRNA truth (the rice folds, since the rice hc-siRNA file was excluded) score precision 0 for any hcsiRNA call, so the mean is a mixture of folds near 1 and folds at 0, hence the large standard deviation. Checked per fold for the rules: in the five Arabidopsis chromosome folds hcsiRNA precision is 0.995–0.998 (e.g. chromosome 1: 12423 TP, 20 FP); in all twelve rice folds n_truth is 0, so every hcsiRNA call is a false positive against another annotated class (43–138 per fold) and precision is 0; the pooled Arabidopsis "other" fold has no hcsiRNA calls (undefined, excluded from the mean). Recall (0.975 for the rules, 0.988 to 1.000 for the ML) is the informative hcsiRNA number, and it hardly differs between algorithms.
 
 ## 9. Limitations and next step
 
