@@ -40,11 +40,12 @@ def test_corrected_ttest_known_value():
     assert p == pytest.approx(2 * stats.t.sf(expected_t, 9))
 
 
-def _m(f1, prec=0.9, rec=0.9, amb=0.1, gap=0.2, ctl=0.1, rctl=0.5):
+def _m(f1, prec=0.9, rec=0.9, amb=0.1, gap=0.2, ctl=0.1, rctl=0.5, usr=0.8, rusr=0.5):
     return {"per_class": {"siRNA": {"precision": prec, "recall": rec},
                           "piRNA": {"precision": 0.8, "recall": 0.8}},
             "macro_f1": f1, "ambiguous_share": amb, "real_repro_gap": gap,
-            "control_real_rate": ctl, "rules_control_rate": rctl, "ece": 0.05}
+            "control_real_rate": ctl, "rules_control_rate": rctl, "ece": 0.05,
+            "unann_supported_rate": usr, "rules_unann_supported_rate": rusr}
 
 
 def _line(alg, unit, seed, m, variant="main", **kw):
@@ -66,7 +67,7 @@ def _write(tmp_path, specs):
 
 def test_select_rejects_class_loss(tmp_path):
     f1 = [0.9 + 0.001 * i for i in range(10)]
-    path = _write(tmp_path, {"xgb": (f1, {"prec": 0.88}),     # 0.02 below rules (0.9) on siRNA
+    path = _write(tmp_path, {"xgb": (f1, {"prec": 0.87}),     # 0.03 below rules (0.9) on siRNA
                              "logreg": ([0.6 + 0.001 * i for i in range(10)], {})})
     text = select(path, tmp_path / "sel.md")
     assert "not eligible: siRNA precision" in text.split("xgb:")[1].split("\n")[0]
@@ -239,3 +240,46 @@ def test_select_refuses_requested_but_absent_algorithm_variant_or_rules_unit(tmp
         fh.write(json.dumps(_line("rf", "u99", 0, _m(0.8))) + "\n")
     with pytest.raises(SelectionError, match="rules: seed 0 unit u99"):
         _select(path, tmp_path / "s.md", ["rf"], None, ["main"])
+
+
+def _elig(**kw):
+    """eligibility of an algorithm with metric kwargs `kw` against the default rules lines."""
+    from benchmark.ml.select import eligibility
+    f1 = kw.pop("f1", [0.9 + 0.002 * i for i in range(10)])
+    rules = [_line("rules", u, 0, _m(0.5, amb=0.4, gap=None, ctl=None)) for u in UNITS]
+    recs = [_line("rf", u, 0, _m(f, **kw)) for u, f in zip(UNITS, f1)]
+    return eligibility(recs, rules)
+
+
+def test_eligibility_v2_passes_and_fails_each_condition():
+    assert _elig() == (True, [])
+    ok, why = _elig(f1=[0.4 + 0.002 * i for i in range(10)])           # 1: not above rules
+    assert not ok and any(w.startswith("macro_f1") for w in why)
+    ok, why = _elig(f1=[0.5 + 0.2 * (i % 2) for i in range(10)])       # 1: higher but noisy, p >= alpha
+    assert not ok and any(w.startswith("macro_f1") for w in why)
+    ok, why = _elig(prec=0.85)                                         # 2: class floor (0.02)
+    assert not ok and any("precision" in w for w in why)
+    assert _elig(prec=0.89)[0]                                         # within the floor
+    ok, why = _elig(usr=0.4)                                           # 3: supported below rules'
+    assert not ok and any(w.startswith("unann_supported_rate") for w in why)
+    assert _elig(usr=0.5)[0]                                           # equal is enough
+    ok, why = _elig(ctl=0.6)                                           # 4
+    assert not ok and any(w.startswith("control_real_rate") for w in why)
+    ok, why = _elig(amb=0.5)                                           # 5
+    assert not ok and any(w.startswith("ambiguous_share") for w in why)
+    assert _elig(gap=-1.0)[0]                                          # gap no longer gates
+    ok, why = _elig(usr=None)                                          # no unannotated calls at all
+    assert not ok
+
+
+def test_select_states_criterion_v2_and_config(tmp_path):
+    path = _write(tmp_path, {"rf": ([0.9 + 0.001 * i for i in range(10)], {})})
+    text = select(path, tmp_path / "s.md")
+    assert "Selection criterion v2" in text and "class_floor = 0.02" in text \
+        and "alpha = 0.05" in text
+
+
+def test_run_cv_requires_repro_frac(tmp_path):
+    t = _tiny_table().drop(columns="repro_frac")
+    with pytest.raises(ValueError, match="repro_frac"):
+        cv.run_cv(t, "arthropod", ["logreg"], ["main"], 1, tmp_path)

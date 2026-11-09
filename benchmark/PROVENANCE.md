@@ -419,6 +419,18 @@ Notes:
 - Plant annotations come from Ensembl Plants release 63, the same tree as the manifest genomes; contig names match (Arabidopsis 7/7, rice 63/63, maize 685/685). The maize annotation has no rRNA features, so maize controls are exons only.
 - B. mori: the RefSeq annotation GCF_030269925.1 is on GCA_030269925.2, while the benchmark genome is GCA_030269925.1 (BSVE01* contigs). Contigs were paired in assembly-report order and kept only where the lengths are identical: 18 of 30 (`bmor_refseq_to_genome.tsv`, sha256 f811c372a5b66fce58e7667e7ccf6ca41f72f6fd8121846d8c345ff52687d555). Controls on the other 12 chromosomes are dropped, so the Bombyx control set is partial.
 
+## Transposon intervals for the ML biology metric (2026-11-09)
+
+Independent evidence for unannotated piRNA calls in selection criterion v2 (`docs/superpowers/specs/2026-11-09-ml-v2-biology-gated-design.md` §2.4, §3): a call of class piRNA counts as *supported* only if it also overlaps a RepeatMasker transposon by >= 1 bp (and `repro_frac >= 0.5`). Built by `benchmark/scripts/build_te.py` from the UCSC dm6 RepeatMasker table, keeping repClass in {LTR, LINE, DNA, RC, Other, Unknown} (exact match; "LTR?"-style uncertain classes, Simple_repeat, Low_complexity, Satellite, rRNA and tRNA are dropped) with the `chr` prefix stripped. Output `benchmark/truth/dmel/rmsk_te.bed` is gitignored (generated on the server), configured under `te:` in `benchmark/ml/config.yaml`.
+
+| species | source | download date | sha256 (rmsk.txt.gz) | TE intervals | sha256 (rmsk_te.bed) |
+|---|---|---|---|---|---|
+| D. melanogaster | https://hgdownload.soe.ucsc.edu/goldenPath/dm6/database/rmsk.txt.gz | TO FILL | TO FILL | TO FILL | TO FILL |
+
+Command: `python benchmark/scripts/build_te.py rmsk.txt.gz -o benchmark/truth/dmel/rmsk_te.bed`.
+
+Organisms without a `te:` entry (Bombyx mori, Arabidopsis, rice, maize) have no TE file yet: for them *supported* is the reproducibility condition only. If the file is missing for a configured organism, the run logs a warning and falls back the same way.
+
 ## Referências
 
 Azlan, A., Zhu, L., & Fukunaga, R. (2025). Female-germline specific protein Sakura interacts with Otu and is crucial for germline stem cell renewal and differentiation and oogenesis. *eLife*, 13, RP103828. https://doi.org/10.7554/elife.103828

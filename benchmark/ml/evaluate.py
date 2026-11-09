@@ -178,10 +178,13 @@ def _per_class(pred, label):
     return out
 
 
-def fold_metrics(table_val: pd.DataFrame, pred_cls, p_real, rule_cls, confidence=None) -> dict:
+def fold_metrics(table_val: pd.DataFrame, pred_cls, p_real, rule_cls, confidence=None,
+                 te_index=None) -> dict:
     """Metrics of one validation fold. `confidence` (max class probability per row) feeds the
     ECE over annotated, non-abstained rows; ece is None without it. See module docstring for
-    the locus-level recall caveat."""
+    the locus-level recall caveat. `te_index` (see bioaudit.supported) feeds the supported rate
+    of unannotated calls, computed for the ML and for the rules on the same rows."""
+    from benchmark.ml.bioaudit import supported_rate
     pred = np.asarray(pred_cls, dtype=object)
     label = np.array([None if (l is None or pd.isna(l)) else l for l in table_val["label"]],
                      dtype=object)
@@ -208,8 +211,12 @@ def fold_metrics(table_val: pd.DataFrame, pred_cls, p_real, rule_cls, confidence
         ok = np.array([l is not None and p != AMBIGUOUS for p, l in zip(pred, label)], bool)
         ece = float(_ece([(float(c), bool(p == l)) for c, p, l
                           in zip(conf[ok], pred[ok], label[ok])]))
+    usr, n_unann = supported_rate(table_val, pred, te_index)
+    rusr, rn_unann = supported_rate(table_val, rule, te_index)
     return {
         "per_class": per_class,
+        "unann_supported_rate": usr, "n_unann_calls": n_unann,
+        "rules_unann_supported_rate": rusr, "rules_n_unann_calls": rn_unann,
         "macro_f1": float(np.mean(f1s)) if f1s else None,
         "ambiguous_share": float(np.mean(pred == AMBIGUOUS)) if len(pred) else None,
         "real_repro_gap": gap,

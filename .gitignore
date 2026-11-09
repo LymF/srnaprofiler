@@ -41,3 +41,6 @@ benchmark/results/
 
 # ML negative controls: generated on the server (benchmark/PROVENANCE.md), not committed
 benchmark/truth/*/controls.bed
+
+# ML transposon intervals: built from UCSC rmsk (benchmark/PROVENANCE.md), not committed
+benchmark/truth/*/rmsk_te.bed
