@@ -13,7 +13,13 @@ the ML never outputs. Loci labelled with one of them stay PU positives (they are
 the class target "other", as do non-carved control loci (`is_control`): `classes_` may contain
 "other", and a decision with "other" on top is an abstention (decider.RuleScorer.choose).
 
-p_real: PU classifier (positive = any label) with Elkan & Noto correction, c = mean score of a
+p_real: supervised when the training slice has control rows (`is_control`, not carved, not
+annotated): a binary model, annotated loci (any label) vs controls, fitted inside the fold with
+the same family as the PU base below; `real_mode_` is "supervised". hdbscan uses the share of
+annotated loci among the k nearest annotated/control training loci. Without controls the PU
+score below is used (`real_mode_` = "pu"); p_real_pu always gives the PU score, for reporting.
+
+PU score: PU classifier (positive = any label) with Elkan & Noto correction, c = mean score of a
 seeded 10% held-out share of the positives, p = clip(g(x)/c, 0, 1). The PU base is logistic
 regression for kmeans/gmm/hier (clustering has no supervised estimator); every supervised and
 semi-supervised model uses its own estimator family as the base (logreg, rf, xgb, lgbm,
@@ -152,8 +158,53 @@ class _PU:
         return np.clip(_col1(self.model, Z) / self.c, 0.0, 1.0)
 
 
+class _SupReal:
+    """Supervised real score: annotated loci (1) vs negative-control loci (0).
+
+    `build(y) -> unfitted binary estimator` is the algorithm's own family (ruling R20), the same
+    builder the PU base uses; `cap` limits the fit to MAX_FIT_ROWS rows (stratified)."""
+
+    def __init__(self, seed, build, cap=False):
+        self.seed, self.build, self.cap = seed, build, cap
+
+    def fit(self, Z, pos, neg):
+        idx = np.flatnonzero(pos | neg)
+        y = pos.astype(int)
+        if self.cap and len(idx) > MAX_FIT_ROWS:
+            idx = np.sort(_stratified(idx, y[idx], MAX_FIT_ROWS,
+                                      np.random.default_rng(self.seed)))
+        self.est = self.build(y[idx]).fit(Z[idx], y[idx])
+        return self
+
+    def score(self, Z):
+        return _col1(self.est, Z)
+
+
+class _KnnReal:
+    """hdbscan's supervised real score: share of annotated loci among the K nearest
+    annotated-or-control training loci (density clusterers have no estimator to supervise;
+    the PU version used the noise share, which says nothing about controls)."""
+
+    def __init__(self, seed, cap=True):
+        self.seed, self.cap = seed, cap
+
+    def fit(self, Z, pos, neg):
+        idx = np.flatnonzero(pos | neg)
+        if len(idx) > MAX_FIT_ROWS:
+            idx = np.sort(_stratified(idx, pos[idx].astype(int), MAX_FIT_ROWS,
+                                      np.random.default_rng(self.seed)))
+        self.y = pos[idx].astype(float)
+        self.nn = NearestNeighbors(n_neighbors=min(K_NEIGHBOURS, len(idx))).fit(Z[idx])
+        return self
+
+    def score(self, Z):
+        _, ind = self.nn.kneighbors(Z)
+        return self.y[ind].mean(axis=1)
+
+
 class _Model:
     kind = "sup"
+    real_mode_ = "pu"
 
     def __init__(self, name, seed, features, make):
         self.name, self.seed, self.features, self.make = name, seed, list(features), make
@@ -185,6 +236,12 @@ class _Model:
         lab = y.notna().to_numpy()
         self.classes_ = sorted(y.dropna().unique())
         self.pu_ = self._pu().fit(Z, real)
+        neg = ctrl & ~real                               # negative controls (non-carved)
+        self.real_mode_ = "pu"
+        self.sup_ = None
+        if neg.any() and real.any():                     # supervised real needs both sides
+            self.sup_ = self._real_sup().fit(Z, real, neg)
+            self.real_mode_ = "supervised"
         if self.classes_:
             self._fit_model(Z, y, lab)
         return self
@@ -193,6 +250,11 @@ class _Model:
         """PU real-score base; clustering models have no supervised estimator, so logistic."""
         return _PU(self.seed)
 
+    def _real_sup(self):
+        """Supervised real-score base: the family's own estimator (logistic for clustering)."""
+        return _SupReal(self.seed, lambda y: LogisticRegression(
+            max_iter=1000, random_state=self.seed))
+
     def predict_proba(self, X):
         Z = self.prep_.transform(X[self.features].to_numpy(float))
         if not self.classes_:
@@ -200,6 +262,14 @@ class _Model:
         return pd.DataFrame(self._proba(Z), index=X.index, columns=self.classes_)
 
     def p_real(self, X):
+        """Supervised score (annotated vs control) when the training slice had controls,
+        else the PU score (`real_mode_` says which)."""
+        if self.sup_ is not None:
+            return self.sup_.score(self.prep_.transform(X[self.features].to_numpy(float)))
+        return self.p_real_pu(X)
+
+    def p_real_pu(self, X):
+        """Elkan & Noto PU score, kept for reporting."""
         return self.pu_.score(self.prep_.transform(X[self.features].to_numpy(float)))
 
     def _enc(self, y):
@@ -228,6 +298,9 @@ class _Supervised(_Model):
 
     def _pu(self):
         return _PU(self.seed, self._build, "std", self.cap)
+
+    def _real_sup(self):
+        return _SupReal(self.seed, self._build, self.cap)
 
     def _proba(self, Z):
         if self.const_ is not None:
@@ -272,6 +345,11 @@ class _SemiSup(_Model):
         if self.name in ("labelprop", "labelspread"):
             return _PU(self.seed, lambda s: self.make(self.seed), "prop", True)
         return _PU(self.seed, lambda s: _hgb(self.seed), "std", False)   # selftrain base
+
+    def _real_sup(self):
+        if self.name in ("labelprop", "labelspread"):
+            return _SupReal(self.seed, lambda y: self.make(self.seed), True)
+        return _SupReal(self.seed, lambda y: _hgb(self.seed), True)
 
     def _fit_model(self, Z, y, lab):
         idx = _subsample(len(Z), lab, self.seed, y.to_numpy())
@@ -360,7 +438,10 @@ class _HDBSCAN(_Unsup):
         return HDBSCAN(min_cluster_size=max(5, min(15, len(Z) // 10)),
                        copy=True).fit_predict(Z)
 
-    def p_real(self, X):
+    def _real_sup(self):
+        return _KnnReal(self.seed)
+
+    def p_real_pu(self, X):
         Z = self.prep_.transform(X[self.features].to_numpy(float))
         if not self.classes_:
             return np.zeros(len(Z))

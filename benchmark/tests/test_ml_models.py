@@ -232,3 +232,66 @@ def test_carved_rows_are_not_other():
     df["carved"] = df["is_control"]          # carved wins: they are never fitted
     m = _skip_missing("logreg").fit(df, df["label"])
     assert "other" not in m.classes_
+
+
+def _with_controls(n=300, seed=0):
+    """Controls are unlabelled rows drawn far from the annotated clusters."""
+    df = make_table(n, seed)
+    rng = np.random.default_rng(seed + 1)
+    ctrl = (df["label"].isna() & (rng.random(n) < 0.4)).to_numpy()
+    df["is_control"] = ctrl
+    df.loc[ctrl, FEATS[:6]] = rng.normal(-8.0, 0.5, (ctrl.sum(), 6))
+    return df
+
+
+REAL_NAMES = sorted(set(REGISTRY) - {"rules"})
+
+
+@pytest.mark.parametrize("name", REAL_NAMES)
+def test_supervised_real_scores_controls_lower(name):
+    df = _with_controls()
+    m = _skip_missing(name).fit(df, df["label"])
+    assert m.real_mode_ == "supervised"
+    p = m.p_real(df)
+    assert p.shape == (len(df),) and ((p >= 0) & (p <= 1)).all()
+    ctrl = df["is_control"].to_numpy()
+    lab = df["label"].notna().to_numpy()
+    assert p[ctrl].mean() < p[lab].mean()
+    assert m.p_real_pu(df).shape == (len(df),)
+
+
+def test_real_falls_back_to_pu_without_controls():
+    df = make_table(300)
+    for d in (df, df.assign(is_control=False)):
+        m = _skip_missing("rf").fit(d, d["label"])
+        assert m.real_mode_ == "pu"
+        assert np.allclose(m.p_real(d), m.p_real_pu(d))
+
+
+def test_controls_labelled_are_positives_not_negatives():
+    df = _with_controls()
+    lab_ctrl = df["is_control"].to_numpy() & False
+    df2 = df.copy()
+    df2.loc[df2.index[:5], "is_control"] = True       # annotated rows flagged control
+    m = _skip_missing("logreg").fit(df2, df2["label"])
+    assert m.real_mode_ == "supervised"
+
+
+def test_carved_rows_never_enter_real_fit():
+    df = _with_controls()
+    df["carved"] = df["is_control"]                   # every control carved -> no negatives
+    m = _skip_missing("logreg").fit(df, df["label"])
+    assert m.real_mode_ == "pu"
+    # carved annotated rows are not positives either
+    df = _with_controls()
+    df["carved"] = df["label"].notna()
+    m = _skip_missing("logreg").fit(df, df["label"])
+    assert m.real_mode_ == "pu"
+
+
+def test_supervised_real_differs_between_algorithms():
+    df = _with_controls()
+    out = {n: _skip_missing(n).fit(df, df["label"]).p_real(df)
+           for n in ("logreg", "rf", "hdbscan", "svm")}
+    assert not np.allclose(out["logreg"], out["rf"])
+    assert not np.allclose(out["logreg"], out["hdbscan"])
