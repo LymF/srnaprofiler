@@ -20,7 +20,7 @@ The ML may only give a locus a class whose **defining biology the locus shows**.
 - the dominant size is inside the class `size` window (`_outside_window`);
 - `cluster_min_length` / `cluster_max_density_pvalue` when the class has them (`_cluster_failures`);
 - `phase_max_pvalue` when the class has it (`_phase_supported`);
-- the class's `defining_evidence` holds: min over the defining evidence strengths (the rules' `score`) ≥ **0.5**. **[Claude's call: 0.5 is the midpoint of the evidence sigmoids, i.e. "the evidence is more present than absent"; fixed now, not tuned.]**
+- the class's `defining_evidence` holds: every non-size defining evidence (an OR slot: its best member) is significant at **p ≤ 0.01** (`s_<name>` ≥ 2), the level the YAML already uses for `phase_max_pvalue` and the proTRAC density test; size is covered by the size window. **[Ruling R27, 2026-11-09: replaces a first version that required the `e_*` strengths ≥ 0.5. That floor was a defect, found on the first v2 tuning run: `e_fractop_bid` cannot exceed 0.44, so no siRNA passed (arthropod siRNA recall 0 for every algorithm), and only 51% of annotated fly piRNA, 18% of rice phasiRNA and 7% of Arabidopsis hcsiRNA loci passed their own class. With significance: 97%, 88% and 74%; 85% for fly siRNA. Changed on tuning data; the selection criterion of §3 is unchanged.]**
 
 A locus that fails the gate for the predicted class gets the **next class by probability that passes**; if none passes, it is **ambiguous**. **[Claude's call: fall through rather than straight to ambiguous, so a 24-nt unphased locus predicted phasiRNA24 can still become hcsiRNA.]**
 

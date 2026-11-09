@@ -318,7 +318,7 @@ class RuleScorer:
 
         The checks the rules apply to their own winner, from the same config:
         size window, cluster length/density, phasing p-value, and the class's
-        defining evidence at or above `decision.ml_gate_min_score`. No size call
+        non-size defining evidence significant at `decision.ml_gate_max_pvalue`. No size call
         ("N") passes nothing. Pure: the record is not touched.
         """
         spec = self.enabled_classes(self.cfg).get(name)
@@ -331,11 +331,28 @@ class RuleScorer:
         if not self._phase_supported(spec, record):
             return False
         if spec.get("defining_evidence"):
-            floor = (self.cfg.get("decision", {}) or {}).get("ml_gate_min_score", 0.5)
-            # `not (s >= floor)`, not `s < floor`: a NaN score must fail the gate.
-            if not all(s >= floor for s in self.defining_scores(spec, record)):
+            p = (self.cfg.get("decision", {}) or {}).get("ml_gate_max_pvalue", 0.01)
+            floor = -math.log10(p)
+            # `not (s >= floor)`, not `s < floor`: a NaN significance must fail the gate.
+            if not all(s >= floor for s in self.defining_significance(spec, record)):
                 return False
         return True
+
+    @staticmethod
+    def defining_significance(spec, record):
+        """-log10 p of each non-size defining evidence slot (`s_<name>` on the record;
+        an OR slot takes its best member). `size` is left out: the size window already
+        gates it, and it has no p-value."""
+        out = []
+        for slot in spec.get("defining_evidence", []):
+            names = slot if isinstance(slot, list) else [slot]
+            names = [n for n in names if n != "size"]
+            if not names:
+                continue
+            vals = [float(getattr(record, f"s_{n}", float("nan"))) for n in names]
+            vals = [v for v in vals if v == v]   # drop NaN members of an OR slot
+            out.append(max(vals) if vals else float("nan"))
+        return out
 
     def gate_flags(self, record):
         """{class: passes_gate} for every enabled class (written as gate_<class> columns)."""

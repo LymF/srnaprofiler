@@ -31,7 +31,8 @@ def _rec(call, **kw):
                 dicer_call=call, distinct_seqs=200, size_counts=counts,
                 read_span=5000, density_pvalue=0.001, phase_pvalue=0.0001,
                 phase_number=10, e_1u=0.9, e_5a=0.9, e_fractop_bid=0.9,
-                e_pingpong=0.9, e_phase=0.9, frac_top=0.5)
+                e_pingpong=0.9, e_phase=0.9, frac_top=0.5,
+                s_1u=5.0, s_5a=5.0, s_fractop_bid=5.0, s_pingpong=5.0, s_phase=5.0)
     base.update(kw)
     return ClusterRecord(**base)
 
@@ -49,9 +50,9 @@ def test_clean_records_pass(plant, arth):
     ("arth", "piRNA", _rec("27", read_span=500)),        # short span
     ("arth", "piRNA", _rec("27", density_pvalue=0.5)),   # density p
     ("plant", "phasiRNA24", _rec("24", phase_pvalue=0.2)),  # phase p
-    ("arth", "piRNA", _rec("27", e_1u=0.2, e_pingpong=0.3)),  # low defining
-    ("arth", "siRNA", _rec("21", e_fractop_bid=0.4)),
-    ("arth", "siRNA", _rec("21", size_counts={21: 10, 27: 990})),  # size strength low
+    ("arth", "piRNA", _rec("27", s_1u=1.0, s_pingpong=1.9)),  # neither OR member p <= 0.01
+    ("arth", "siRNA", _rec("21", s_fractop_bid=1.5)),
+    ("plant", "hcsiRNA", _rec("24", phase_pvalue=1.0, s_5a=1.0)),
 ])
 def test_gate_rejects(request, scorer, cls, rec):
     assert not request.getfixturevalue(scorer).passes_gate(cls, rec)
@@ -90,7 +91,7 @@ def test_gated_choice_skips_mirna_and_ambiguous_when_none_pass(arth):
 
 def test_gate_threshold_in_both_yaml():
     for f in ("rules.yaml", "rules.plant.yaml"):
-        assert load_config(f"{ROOT}/{f}")["decision"]["ml_gate_min_score"] == 0.5
+        assert load_config(f"{ROOT}/{f}")["decision"]["ml_gate_max_pvalue"] == 0.01
 
 
 def test_rules_decide_unchanged(arth):
@@ -112,9 +113,17 @@ def test_reporter_writes_evidence_columns(tmp_path):
 
 
 def test_nan_defining_evidence_fails_the_gate(arth, plant):
-    assert not arth.passes_gate("piRNA", _rec("27", e_1u=float("nan"), e_pingpong=0.9))
-    assert not arth.passes_gate("siRNA", _rec("21", e_fractop_bid=float("nan")))
-    assert not plant.passes_gate("phasiRNA", _rec("21", e_phase=float("nan")))
+    nan = float("nan")
+    assert not arth.passes_gate("piRNA", _rec("27", s_1u=nan, s_pingpong=nan))
+    assert not arth.passes_gate("siRNA", _rec("21", s_fractop_bid=nan))
+    assert not plant.passes_gate("phasiRNA", _rec("21", s_phase=nan))
+    # one significant member of an OR slot is enough, even if the other is NaN
+    assert arth.passes_gate("piRNA", _rec("27", s_1u=nan, s_pingpong=3.0))
+
+
+def test_siRNA_passes_with_perfect_duplex_strength(arth):
+    # R27: e_fractop_bid cannot exceed 0.44, so a strength floor of 0.5 blocked every siRNA
+    assert arth.passes_gate("siRNA", _rec("21", e_fractop_bid=0.44, s_fractop_bid=10.0))
 
 
 def test_gate_flags_cover_enabled_classes(arth, plant):
@@ -157,8 +166,9 @@ def _real_records(n=60, seed=3):
         r = features.build_record(("c", 10000 * i, 10000 * i + 3500), alns, 1e6, cfg)
         # size_counts and dicer_call are the real ones; the evidence that would need
         # real ping-pong/phasing reads is drawn, so the gate passes and fails by class
-        for e in ("e_1u", "e_5a", "e_fractop_bid", "e_pingpong", "e_phase"):
-            setattr(r, e, rnd.choice([0.2, 0.7, 0.9]))
+        for e in ("1u", "5a", "fractop_bid", "pingpong", "phase"):
+            setattr(r, f"e_{e}", rnd.choice([0.2, 0.7, 0.9]))
+            setattr(r, f"s_{e}", rnd.choice([0.5, 1.9, 2.0, 6.0]))
         r.density_pvalue = rnd.choice([0.001, 0.5])
         r.phase_pvalue = rnd.choice([0.001, 0.4])
         r.phase_number = rnd.randint(0, 10)
