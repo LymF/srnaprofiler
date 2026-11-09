@@ -306,3 +306,12 @@ def test_run_cv_raises_when_configured_te_file_missing(tmp_path):
         pytest.skip("real TE file present")
     with pytest.raises(FileNotFoundError, match="Drosophila melanogaster"):
         cv.run_cv(t, "arthropod", ["logreg"], ["main"], 1, tmp_path, n_jobs=1)
+
+
+def test_pick_winner_tie_reports_the_other_as_runner_up():
+    from benchmark.ml.select import pick_winner
+    rules = [_line("rules", x, 0, _m(0.5)) for x in UNITS]
+    pool = {"svm": [_line("svm", x, 0, _m(0.805 + 0.01 * (i % 3))) for i, x in enumerate(UNITS)],
+            "logreg": [_line("logreg", x, 0, _m(0.80 + 0.01 * ((i + 1) % 3))) for i, x in enumerate(UNITS)]}
+    win, run, p = pick_winner(pool, rules)
+    assert (win, run) == ("logreg", "svm") and p >= 0.05

@@ -160,7 +160,7 @@ def pick_winner(eligible: dict, rules):
     run = ranked[1]
     p = pvalue(eligible[win], eligible[run])
     if (np.isnan(p) or p >= selection_config()["alpha"]) and SIMPLICITY.index(run) < SIMPLICITY.index(win):
-        win = run
+        win, run = run, win          # tie within noise: the simpler one wins, the other is runner-up
     return win, run, p
 
 
