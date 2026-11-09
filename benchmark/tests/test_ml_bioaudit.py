@@ -73,9 +73,13 @@ def test_te_build_and_load(tmp_path):
     assert out.read_text().splitlines() == ["2L\t100\t200", "3R\t30\t90", "X\t5\t50"]
     te = ba.load_te(out)
     assert te.overlaps("2L", 199, 300) and not te.overlaps("2L", 200, 300)
-    idx = ba.load_te_indexes({"te": {"Drosophila melanogaster": "d/rmsk_te.bed", "X y": "no.bed"}},
-                             tmp_path)
-    assert idx == {}
+    import pytest
+    with pytest.raises(FileNotFoundError, match="Drosophila melanogaster.*d/rmsk_te.bed"):
+        ba.load_te_indexes({"te": {"Drosophila melanogaster": "d/rmsk_te.bed"}}, tmp_path)
+    # no entry, or entry for an organism not in the table: no error, repro only
+    assert ba.load_te_indexes({"te": {}}, tmp_path) == {}
+    assert ba.load_te_indexes({"te": {"Drosophila melanogaster": "d/x.bed"}}, tmp_path,
+                              organisms={"Bombyx mori"}) == {}
     (tmp_path / "d").mkdir()
     out.rename(tmp_path / "d" / "rmsk_te.bed")
     assert set(ba.load_te_indexes({"te": {"Drosophila melanogaster": "d/rmsk_te.bed"}},

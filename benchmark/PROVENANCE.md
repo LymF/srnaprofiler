@@ -429,7 +429,7 @@ Independent evidence for unannotated piRNA calls in selection criterion v2 (`doc
 
 Command: `python benchmark/scripts/build_te.py rmsk.txt.gz -o benchmark/truth/dmel/rmsk_te.bed`.
 
-Organisms without a `te:` entry (Bombyx mori, Arabidopsis, rice, maize) have no TE file yet: for them *supported* is the reproducibility condition only. If the file is missing for a configured organism, the run logs a warning and falls back the same way.
+Organisms without a `te:` entry (Bombyx mori, Arabidopsis, rice, maize) have no TE file yet: for them *supported* is the reproducibility condition only. If the file is missing for a configured organism, the run raises an error (no silent fallback).
 
 ## Referências
 

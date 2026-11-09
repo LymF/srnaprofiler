@@ -1,4 +1,5 @@
 """Model selection (spec 7.3) from folds.jsonl; writes a markdown comparison table."""
+import functools
 from collections import defaultdict
 from pathlib import Path
 
@@ -14,11 +15,17 @@ SCALARS = ["macro_f1", "ambiguous_share", "real_repro_gap", "control_real_rate",
            "rules_control_rate", "unann_supported_rate", "rules_unann_supported_rate", "ece"]
 
 
-def selection_config() -> dict:
-    """{class_floor, alpha} of criterion v2 from ml/config.yaml."""
+@functools.lru_cache(maxsize=1)
+def _cfg() -> tuple:
     from benchmark.ml.dataset import load_ml_config
-    sel = load_ml_config()["selection"]
-    return {"class_floor": float(sel["class_floor"]), "alpha": float(sel["alpha"])}
+    c = load_ml_config()
+    sel = c["selection"]
+    return float(sel["class_floor"]), float(sel["alpha"]), tuple(sorted(c.get("te") or {}))
+
+
+def selection_config() -> dict:
+    """{class_floor, alpha} of criterion v2 from ml/config.yaml (read once per process)."""
+    return {"class_floor": _cfg()[0], "alpha": _cfg()[1]}
 
 
 class SelectionError(Exception):
@@ -244,7 +251,12 @@ def select(folds: Path, out: Path, algorithms: list[str] | None = None,
               "loses more than class_floor precision or recall; supported share of unannotated "
               "calls (repro_frac >= 0.5, plus TE overlap for piRNA where a TE file is "
               "configured) >= rules'; control rate below rules'; ambiguous share below rules'. "
-              "real_repro_gap is reported, not gated.", ""]
+              "real_repro_gap is reported, not gated.",
+              "The t-test p is two-sided; with the mean-above-rules condition it is one-sided "
+              "at alpha/2 (conservative, same as v1).",
+              "piRNA supported also requires TE overlap for: "
+              + (", ".join(_cfg()[2]) or "no organism")
+              + "; all other organisms use reproducibility only.", ""]
     for profile in sorted({r["profile"] for r in lines}):
         pl = [r for r in lines if r["profile"] == profile]
         groups = defaultdict(list)

@@ -17,7 +17,7 @@ import joblib
 import pandas as pd
 
 from benchmark.manifest import load_manifest
-from benchmark.ml.bioaudit import load_te_indexes
+from benchmark.ml.bioaudit import TRUTH_DIR, load_te_indexes
 from benchmark.ml.dataset import build_table, load_ml_config
 from benchmark.ml.evaluate import (TableFit, choose_threshold, complete_rules, decide,
                                    fold_metrics)
@@ -43,9 +43,9 @@ def folds_for(table: pd.DataFrame, profile: str):
     return out
 
 
-@functools.lru_cache(maxsize=1)
-def _te_indexes() -> dict:
-    return load_te_indexes(load_ml_config())
+@functools.lru_cache(maxsize=4)
+def _te_indexes(organisms: tuple) -> dict:
+    return load_te_indexes(load_ml_config(), organisms=set(organisms))
 
 
 @functools.lru_cache(maxsize=2)
@@ -73,7 +73,7 @@ def _run_fold(table_path, profile, variant, algorithm, seed, unit, tr, va, nseed
             proba = model.predict_proba(val)
             conf = proba.to_numpy().max(axis=1) if proba.shape[1] else None
         p_real = model.p_real(val)
-        te = _te_indexes()
+        te = _te_indexes(tuple(sorted(set(table['organism']))))
         metrics = fold_metrics(val, pred, p_real, rule, conf, te)
         comp = complete_rules(rule, pred).to_numpy(dtype=object)
         cmetrics = fold_metrics(val, comp, p_real, rule, None, te)
@@ -119,6 +119,7 @@ def run_cv(table: pd.DataFrame, profile: str, algorithms: list[str], variants: l
     if "repro_frac" not in table:
         raise ValueError("table lacks repro_frac (needed by the biology metric; build_table "
                          "computes it with repro_features)")
+    _te_indexes(tuple(sorted(set(table["organism"]))))   # fail early on a missing TE file
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     path = out / "folds.jsonl"

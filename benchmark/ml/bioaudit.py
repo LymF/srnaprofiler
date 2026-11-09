@@ -41,15 +41,21 @@ def load_te(path: Path) -> TEIndex:
     return TEIndex(read_bed(Path(path)))
 
 
-def load_te_indexes(cfg: dict, truth_dir: Path = TRUTH_DIR) -> dict[str, TEIndex]:
-    """organism -> TEIndex for the organisms whose configured TE bed exists."""
+def load_te_indexes(cfg: dict, truth_dir: Path = TRUTH_DIR, organisms=None) -> dict[str, TEIndex]:
+    """organism -> TEIndex for the organisms with a `te:` entry (restricted to `organisms` when
+    given). A configured file that is missing raises FileNotFoundError: silently dropping the
+    TE condition would change the selection criterion. Organisms without an entry are simply
+    absent (reproducibility only)."""
     out = {}
     for org, rel in (cfg.get("te") or {}).items():
+        if organisms is not None and org not in organisms:
+            continue
         path = Path(truth_dir) / rel
-        if path.exists():
-            out[org] = load_te(path)
-        else:
-            log.warning("no TE file for %s (%s); piRNA support uses reproducibility only", org, path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"TE file for {org} is configured in ml/config.yaml (te: {rel}) but missing: "
+                f"{path}; build it with benchmark/scripts/build_te.py")
+        out[org] = load_te(path)
     return out
 
 

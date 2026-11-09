@@ -275,6 +275,8 @@ def test_eligibility_v2_passes_and_fails_each_condition():
 def test_select_states_criterion_v2_and_config(tmp_path):
     path = _write(tmp_path, {"rf": ([0.9 + 0.001 * i for i in range(10)], {})})
     text = select(path, tmp_path / "s.md")
+    assert "one-sided at alpha/2" in text and "Drosophila melanogaster" in text \
+        and "reproducibility only" in text
     assert "Selection criterion v2" in text and "class_floor = 0.02" in text \
         and "alpha = 0.05" in text
 
@@ -283,3 +285,12 @@ def test_run_cv_requires_repro_frac(tmp_path):
     t = _tiny_table().drop(columns="repro_frac")
     with pytest.raises(ValueError, match="repro_frac"):
         cv.run_cv(t, "arthropod", ["logreg"], ["main"], 1, tmp_path)
+
+
+def test_run_cv_raises_when_configured_te_file_missing(tmp_path):
+    t = _tiny_table()
+    t["organism"] = "Drosophila melanogaster"
+    if (cv.TRUTH_DIR / "dmel" / "rmsk_te.bed").exists():
+        pytest.skip("real TE file present")
+    with pytest.raises(FileNotFoundError, match="Drosophila melanogaster"):
+        cv.run_cv(t, "arthropod", ["logreg"], ["main"], 1, tmp_path, n_jobs=1)

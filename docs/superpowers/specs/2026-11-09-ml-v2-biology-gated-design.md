@@ -55,7 +55,7 @@ Signature summaries (size, 1U/5'A, ping-pong, phasing, strand) are reported too,
 
 User decision 2026-11-09 ("Anotação + biologia"). On tuning data, under the v1 CV, an algorithm is eligible when all hold:
 
-1. **Annotation, overall:** mean macro-F1 is higher than the rules', corrected resampled t-test p < 0.05 (Nadeau & Bengio, 2003).
+1. **Annotation, overall:** mean macro-F1 is higher than the rules', corrected resampled t-test p < 0.05 (Nadeau & Bengio, 2003). The p is two-sided; combined with the mean-above-rules condition the test is one-sided at alpha/2 (conservative, same as v1).
 2. **Annotation, per class:** no class loses more than **0.02** precision or recall versus the rules (v1 used 0.01; the change is declared in the paper as a v2 decision taken after the v1 audit showed the annotation is incomplete).
 3. **Independent biology of unannotated calls:** the share of the model's unannotated non-ambiguous calls that are *supported* is at least the rules' share, computed the same way on the rules' unannotated calls. *Supported* is fixed now: the locus recurs in at least half of the other replicates of its group (`repro_frac` ≥ 0.5), and, for arthropod piRNA, it also overlaps a RepeatMasker transposon by ≥ 1 bp. **[Claude's call: the exact definition of "supported".]**
 4. **Controls:** the model calls fewer held-out control loci real than the rules do (unchanged).
