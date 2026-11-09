@@ -1,5 +1,6 @@
 """Pluggable decider. v1: RuleScorer (transparent scoring model)."""
 import math
+from collections.abc import Mapping
 
 import yaml
 
@@ -311,3 +312,41 @@ class RuleScorer:
             return False
         size = self._size(record)
         return size is None or not (window["lo"] <= size <= window["hi"])
+
+    def passes_gate(self, name, record):
+        """Whether a locus shows the defining biology of class `name` (spec v2 s2.1).
+
+        The checks the rules apply to their own winner, from the same config:
+        size window, cluster length/density, phasing p-value, and the class's
+        defining evidence at or above `decision.ml_gate_min_score`. No size call
+        ("N") passes nothing. Pure: the record is not touched.
+        """
+        spec = self.enabled_classes(self.cfg).get(name)
+        if spec is None or record.dicer_call == "N":
+            return False
+        if self._outside_window(spec, record):
+            return False
+        if self._cluster_failures(spec, record):
+            return False
+        if not self._phase_supported(spec, record):
+            return False
+        if spec.get("defining_evidence"):
+            floor = (self.cfg.get("decision", {}) or {}).get("ml_gate_min_score", 0.5)
+            if min(self.defining_scores(spec, record)) < floor:
+                return False
+        return True
+
+    def gated_choice(self, proba: Mapping, record):
+        """Highest-probability class the locus is allowed to have, else AMBIGUOUS.
+
+        `other` on top is the model abstaining; miRNA comes only from miRDeep2,
+        so it is skipped; a class failing the gate yields to the next one.
+        """
+        for name, _ in sorted(proba.items(), key=lambda kv: kv[1], reverse=True):
+            if name == "other":
+                return self.AMBIGUOUS
+            if name == "miRNA":
+                continue
+            if self.passes_gate(name, record):
+                return name
+        return self.AMBIGUOUS

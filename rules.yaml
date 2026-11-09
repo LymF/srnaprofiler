@@ -33,6 +33,10 @@ decision:
   # min_margin below that never fires on its own. Kept because it becomes
   # meaningful again as soon as a third class is added.
   min_margin: 0.15
+  # Spec v2 s2.1: minimum defining-evidence strength for the ML to be allowed to
+  # give a locus a class (midpoint of the evidence sigmoids: more present than
+  # absent). Fixed, not tuned. Read by RuleScorer.passes_gate only; rules mode ignores it.
+  ml_gate_min_score: 0.5
   # Weighted (1/NH) read count below which a locus is flagged for review.
   # Raising it does not help: it only relabels loci without retaining more
   # signal (see the calibration table in the README) — filter noise with

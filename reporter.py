@@ -11,6 +11,7 @@ _COLS = [
     "start_entropy", "top_start_frac", "starts_per_kb",
     "cls", "confidence", "score", "p_real",
     "s_1u", "s_5a", "s_fractop", "s_fractop_bal", "s_fractop_bid", "s_pingpong", "s_phase",
+    "e_1u", "e_5a", "e_fractop_bid", "e_pingpong", "e_phase",
     "review", "evidence",
 ]
 

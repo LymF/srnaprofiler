@@ -38,7 +38,7 @@ class ClusterRecord:
     s_fractop_bid: float = 0.0
     s_pingpong: float = 0.0
     s_phase: float = 0.0
-    # Effect strengths, in [0,1] -- what `score` is built from. Not TSV columns.
+    # Effect strengths, in [0,1] -- what `score` is built from. TSV columns too (the ML gate reads them).
     e_1u: float = 0.0
     e_5a: float = 0.0
     e_fractop_bid: float = 0.0

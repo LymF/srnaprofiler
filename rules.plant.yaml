@@ -54,6 +54,10 @@ decision:
   # 0.41 margin. Keeping 0.6 sent 39.6% of loci to review on confidence alone.
   review_confidence: 0.43
   min_margin: 0.15
+  # Spec v2 s2.1: minimum defining-evidence strength for the ML to be allowed to
+  # give a locus a class (midpoint of the evidence sigmoids: more present than
+  # absent). Fixed, not tuned. Read by RuleScorer.passes_gate only; rules mode ignores it.
+  ml_gate_min_score: 0.5
   # Review flag for loci with a weighted (1/NH) read count below this. Inert with
   # the shipped locus floor: every non-miRNA locus already has
   # >= clustering.locus_min_reads (20) and carved miRNA loci are not decided,
