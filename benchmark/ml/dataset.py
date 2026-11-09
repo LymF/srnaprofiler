@@ -11,8 +11,9 @@ from benchmark.orchestrate import load_truth
 from benchmark.ml.controls import is_control
 from benchmark.ml.replicates import repro_features
 from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS, derive
+from mlgate import GATE_PREFIX
 
-__all__ = ["FEATURES", "RULE_COLS", "REPRO_COLS", "build_table"]
+__all__ = ["FEATURES", "GATE_PREFIX", "RULE_COLS", "REPRO_COLS", "build_table"]
 
 CONFIG = Path(__file__).with_name("config.yaml")
 TRUTH_DIR = Path(__file__).resolve().parents[1] / "truth"
@@ -45,7 +46,7 @@ def build_table(accessions: list[str], results_dir: Path, manifest: Path,
         if libs[acc].role == "test" and not final_test:
             raise ValueError(f"{acc} is a test library; pass final_test=True to use it")
         chosen.append(libs[acc])
-    rows = []
+    rows, gate_cols = [], set()
     for lib in chosen:
         path = Path(results_dir) / lib.accession / "work" / f"{lib.accession}.clusters.tsv"
         loci = read_loci(path)
@@ -62,8 +63,13 @@ def build_table(accessions: list[str], results_dir: Path, manifest: Path,
                 row[c] = _opt(loc.get(c))
             for c in REPRO_COLS:
                 row[c] = float("nan")
+            for c in loc:
+                if c.startswith(GATE_PREFIX):
+                    row[c] = _opt(loc[c])
+                    gate_cols.add(c)
             rows.append(row)
-    df = pd.DataFrame(rows, columns=[*META, *FEATURES, *RULE_COLS, *REPRO_COLS])
+    gate_cols = sorted(gate_cols)
+    df = pd.DataFrame(rows, columns=[*META, *FEATURES, *RULE_COLS, *REPRO_COLS, *gate_cols])
     df = df.reset_index(drop=True)   # folds.split yields index labels: keep them unique
     df["is_control"] = False
     for org in df["organism"].unique():

@@ -120,6 +120,8 @@ def _tiny_table(n=120, seed=0):
     df["profile"] = "arthropod"
     df["chrom"] = np.where(np.arange(n) % 2, "c1", "c2")
     df["repro_frac"] = rng.random(n)
+    df["gate_siRNA"] = 1.0
+    df["gate_piRNA"] = 1.0
     return df
 
 

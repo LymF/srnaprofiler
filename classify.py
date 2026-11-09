@@ -8,8 +8,11 @@ from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
                    reference_alignment_counts)
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
+
 from reporter import write_tsv, write_gff3, write_run_json, write_fragments_tsv
 from utils import log
+
+_enabled_classes = RuleScorer.enabled_classes   # stays real when tests stub RuleScorer
 
 
 # Resident bytes per alignment, measured: 339 B (Drosophila), 192 B (Arabidopsis).
@@ -223,14 +226,19 @@ def run_classify(args):
         import mlclassify   # lazy: rules mode must not need scikit-learn
         model_path = resolve_ml_model(getattr(args, "ml_model", None), config)
         log(f"--classifier ml: {model_path}", "INFO")
-        mlclassify.load(model_path).decide_all(records)
+        scorer = RuleScorer(config)
+        mlclassify.load(model_path).decide_all(records, scorer)
     else:
         scorer = RuleScorer(config)
         for r in records:
             if r.cls != "miRNA":
                 scorer.decide(r)
+    # The biology gate per enabled class, in both modes: the benchmark reads these
+    # columns because the size evidence needs size_counts, which the TSV cannot carry.
+    for r in records:
+        r.gates = scorer.gate_flags(r)
 
-    write_tsv(records, base + ".clusters.tsv")
+    write_tsv(records, base + ".clusters.tsv", list(_enabled_classes(config)))
     write_fragments_tsv(fragments, base + ".fragments.tsv")
     frag_mass = sum(f["reads"] for f in fragments)
     total_mass = frag_mass + sum(r.reads for r in records)

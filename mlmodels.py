@@ -9,8 +9,9 @@ always kept) and predict for all rows (1-nearest-neighbour cluster lookup for hi
 the estimator's own prediction otherwise). Carved miRNA rows (carved == True) are never fitted.
 
 miRNA comes only from miRDeep2 (user decision 2026-11-07): ML_EXCLUDED_CLASSES lists the classes
-the ML never outputs. Loci labelled with one of them stay PU positives (they are real) but are
-unlabelled for the class model, so `classes_` and `predict_proba` never contain them.
+the ML never outputs. Loci labelled with one of them stay PU positives (they are real) but take
+the class target "other", as do non-carved control loci (`is_control`): `classes_` may contain
+"other", and a decision with "other" on top is an abstention (decider.RuleScorer.choose).
 
 p_real: PU classifier (positive = any label) with Elkan & Noto correction, c = mean score of a
 seeded 10% held-out share of the positives, p = clip(g(x)/c, 0, 1). The PU base is logistic
@@ -38,6 +39,7 @@ MAX_FIT_ROWS = 20000
 K_NEIGHBOURS = 15
 PU_HOLDOUT = 0.1
 ML_EXCLUDED_CLASSES = ("miRNA",)
+OTHER = "other"   # target for excluded-class and control loci; never an output class
 
 
 def _prep(features):
@@ -174,7 +176,12 @@ class _Model:
         Z = self.prep_.fit_transform(X[self.features].to_numpy(float)[keep])
         y = y[keep].reset_index(drop=True)
         real = y.notna().to_numpy()                      # PU positives: any label
-        y = y.where(~y.isin(ML_EXCLUDED_CLASSES), None)  # class targets: excluded -> unlabelled
+        # class targets: excluded classes (miRNA) and non-carved control loci become the
+        # explicit "other" target, so the model can abstain instead of forcing a class
+        ctrl = (X["is_control"].to_numpy(dtype=bool)[keep] if "is_control" in X
+                else np.zeros(len(y), bool))
+        other = y.isin(ML_EXCLUDED_CLASSES).to_numpy() | (ctrl & ~real)
+        y = y.where(~other, OTHER)
         lab = y.notna().to_numpy()
         self.classes_ = sorted(y.dropna().unique())
         self.pu_ = self._pu().fit(Z, real)

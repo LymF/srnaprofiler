@@ -29,8 +29,17 @@ def _records(n=24):
     return out
 
 
+def _scorer():
+    from pathlib import Path
+    from decider import RuleScorer, load_config
+    return RuleScorer(load_config(Path(classify.__file__).resolve().parent / "rules.yaml"))
+
+
 def _patch_pipeline(monkeypatch, records):
-    monkeypatch.setattr(classify, "load_config", lambda p: {})
+    from pathlib import Path
+    from decider import load_config
+    cfg = load_config(Path(classify.__file__).resolve().parent / "rules.yaml")
+    monkeypatch.setattr(classify, "load_config", lambda p: cfg)
     monkeypatch.setattr(classify, "class_size_windows", lambda cfg: [])
     monkeypatch.setattr(classify, "ensure_sorted_indexed_bam", lambda *a: "x.bam")
     monkeypatch.setattr(classify, "prefers_xm_as_nh", lambda b: False)
@@ -75,8 +84,19 @@ def test_rules_mode_without_sklearn(monkeypatch, tmp_path):
     monkeypatch.delitem(sys.modules, "mlclassify", raising=False)
     recs = _records(6)
     _patch_pipeline(monkeypatch, recs)
-    monkeypatch.setattr(classify, "RuleScorer",
-                        lambda cfg: SimpleNamespace(decide=lambda r: setattr(r, "cls", "siRNA")))
+    real = classify.RuleScorer
+
+    class Stub(real):
+        def __init__(self, cfg):
+            pass
+
+        def decide(self, r):
+            r.cls = "siRNA"
+
+        def gate_flags(self, r):
+            return {}
+
+    monkeypatch.setattr(classify, "RuleScorer", Stub)
     classify.run_classify(_args(tmp_path))
     lines = (tmp_path / "t.clusters.tsv").read_text().splitlines()
     header = lines[0].split("\t")
@@ -93,14 +113,14 @@ def test_ml_mode_schema_mismatch(tmp_path):
     (tmp_path / "tiny.schema.json").write_text(json.dumps(schema))
     dec = mlclassify.load(path)
     with pytest.raises(ValueError, match="bogus_feature"):
-        dec.decide_all(recs)
+        dec.decide_all(recs, _scorer())
 
 
 def test_ml_mode_sets_fields(tmp_path):
     import mlclassify
     recs = _records()
     path, schema = _tiny_model(tmp_path, recs)
-    mlclassify.load(path).decide_all(recs)
+    mlclassify.load(path).decide_all(recs, _scorer())
     assert recs[0].cls == "miRNA" and recs[0].p_real is None
     for r in recs[1:]:
         assert r.cls in [*schema["classes"], "ambiguous"]
@@ -149,6 +169,7 @@ def test_train_final_writes_model_and_schema(tmp_path):
     table["organism"] = "Bombyx mori"
     table["chrom"] = ["c%d" % (i % 6) for i in range(len(table))]
     table["label"] = [("siRNA", "piRNA", None)[i % 3] for i in range(len(table))]
+    table["gate_siRNA"] = table["gate_piRNA"] = 1.0
     out = tmp_path / "m.joblib"
     sch = train_final.train_and_save(table, "arthropod", "logreg", "main", 0, out)
     saved = json.loads((tmp_path / "m.schema.json").read_text())
@@ -173,7 +194,8 @@ def test_loaded_model_needs_no_benchmark_module(tmp_path):
         "names = [n for n in mlfeatures.FEATURES if n != 'dicer_len'] + ['dicer_call']\n"
         "r = N(cls='', confidence=0, review=False, p_real=None, evidence='', score=0, class_scores={},\n"
         "      **{n: 1.0 for n in names if n != 'dicer_call'}, dicer_call='21')\n"
-        "d.decide_all([r])\n"
+        "sc = N(gated_choice=lambda p, rec: max(p, key=p.get))\n"
+        "d.decide_all([r], sc)\n"
         "bad = [m for m in sys.modules if m.split('.')[0] == 'benchmark']\n"
         "assert not bad, bad\n"
         "assert r.p_real is not None\n")
@@ -210,7 +232,7 @@ def test_records_missing_attribute_named(tmp_path):
     path, _ = _tiny_model(tmp_path, recs)
     bare = [SimpleNamespace(cls="", reads=1.0)]
     with pytest.raises(ValueError, match="pingpong_z"):
-        mlclassify.load(path).decide_all(bare)
+        mlclassify.load(path).decide_all(bare, _scorer())
 
 
 @pytest.mark.parametrize("cfg", ["rules.yaml", "rules.plant.yaml"])
@@ -222,3 +244,27 @@ def test_shipped_configs_with_ml_key_still_score(cfg):
     r = _records(3)[1]
     RuleScorer(config).decide(r)
     assert r.cls
+
+
+def test_production_decide_all_matches_benchmark_decide(tmp_path):
+    """Same trained model, same rows: MLDecider on records == evaluate.decide on gate columns."""
+    import mlclassify
+    import pandas as pd
+    from benchmark.ml import evaluate
+    recs = _records()
+    path, schema = _tiny_model(tmp_path, recs, classes=("siRNA", "piRNA", "other"))
+    scorer = _scorer()
+    for r in recs[1:]:
+        scorer.decide(r)               # sets the evidence the gate reads
+    flags = [scorer.gate_flags(r) for r in recs]
+    dec = mlclassify.load(path)
+    rows = [mlfeatures.derive({n: getattr(r, n, None) for n in
+                               [*mlfeatures.FEATURES, "dicer_call"]}) for r in recs[1:]]
+    table = pd.DataFrame(rows)
+    table["carved"] = False
+    for c in scorer.enabled_classes(scorer.cfg):
+        table[f"gate_{c}"] = [float(f[c]) for f in flags[1:]]
+    want = evaluate.decide(dec.model, table, [], dec.threshold).tolist()
+    dec.decide_all(recs, scorer)
+    assert [r.cls for r in recs[1:]] == want
+    assert not {"other", "miRNA"} & set(want)

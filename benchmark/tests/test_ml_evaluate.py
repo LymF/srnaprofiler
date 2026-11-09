@@ -25,13 +25,13 @@ def test_macro_f1_skips_classes_without_truth():
 
 
 def test_decide_abstains_below_threshold():
-    t = pd.DataFrame({"carved": [False, False]})
+    t = pd.DataFrame({"carved": [False, False], "gate_a": [1, 1], "gate_b": [1, 1]})
     m = Fixed([[0.5, 0.5], [0.9, 0.1]], ["a", "b"])
     assert list(ev.decide(m, t, [], 0.6)) == ["ambiguous", "a"]
 
 
 def test_carved_stays_mirna():
-    t = pd.DataFrame({"carved": [True]})
+    t = pd.DataFrame({"carved": [True], "gate_a": [1], "gate_b": [1]})
     assert list(ev.decide(Fixed([[0.1, 0.9]], ["a", "b"]), t, [], 0.0)) == ["miRNA"]
 
 
@@ -53,7 +53,8 @@ def _table(n=90):
     rng = np.random.default_rng(0)
     y = np.array(["siRNA", "piRNA"])[rng.integers(0, 2, n)]
     return pd.DataFrame({"label": y, "chrom": np.repeat(["c1", "c2", "c3"], n // 3),
-                         "organism": "sp", "carved": False, "rule_cls": "ambiguous"}), y
+                         "organism": "sp", "carved": False, "rule_cls": "ambiguous",
+                         "gate_piRNA": 1.0, "gate_siRNA": 1.0}), y
 
 
 class Oracle:
@@ -90,6 +91,7 @@ def test_decide_never_mirna_on_noncarved():
     from benchmark.tests.test_ml_models import FEATS, make_table, with_mirna
     df = with_mirna(make_table())
     df.loc[:9, "carved"] = True
+    df["gate_piRNA"] = df["gate_siRNA"] = 1.0
     m = REGISTRY["logreg"](0, FEATS)
     m.fit(df, df["label"])
     out = ev.decide(m, df, FEATS, 0.0)
@@ -108,3 +110,34 @@ def test_choose_threshold_ignores_mirna_labelled_rows():
     both = pd.concat([t, extra], ignore_index=True)
     # miRNA rows get zero probability everywhere; counting them as errors would raise t
     assert ev.choose_threshold(lambda: Oracle(True), both, [], 0) == 0.0
+
+
+def test_decide_follows_the_gate_and_never_outputs_other_or_mirna():
+    t = pd.DataFrame({"carved": [False] * 4, "gate_a": [1, 0, 1, 0], "gate_b": [1, 1, 0, 0]})
+    m = Fixed([[0.6, 0.3, 0.1]] * 3 + [[0.3, 0.3, 0.4]], ["a", "b", "other"])
+    # row 0 passes a; row 1 a fails the gate -> b; row 2 a passes; row 3 other on top
+    assert list(ev.decide(m, t, [], 0.0)) == ["a", "b", "a", "ambiguous"]
+    m2 = Fixed([[0.5, 0.5]] * 4, ["miRNA", "a"])
+    out = list(ev.decide(m2, t, [], 0.0))
+    assert out == ["a", "ambiguous", "a", "ambiguous"]
+
+
+def test_decide_without_gate_columns_is_an_error():
+    t = pd.DataFrame({"carved": [False]})
+    with pytest.raises(ValueError, match="gate_"):
+        ev.decide(Fixed([[1.0]], ["a"]), t, [], 0.0)
+
+
+def test_decide_unenabled_or_nan_gate_fails():
+    t = pd.DataFrame({"carved": [False, False], "gate_a": [np.nan, 1]})
+    m = Fixed([[0.7, 0.3]] * 2, ["a", "b"])   # b has no column (class not enabled)
+    assert list(ev.decide(m, t, [], 0.0)) == ["ambiguous", "a"]
+
+
+def test_choose_threshold_goes_through_the_gate():
+    t, y = _table()
+    t["rule_cls"] = y
+    t["gate_piRNA"] = 0.0          # nothing may be called piRNA: precision from siRNA only
+    t["gate_siRNA"] = 0.0
+    # every decision is ambiguous, so no t reaches the rules' precision
+    assert ev.choose_threshold(lambda: Oracle(True), t, [], 0) == 0.95

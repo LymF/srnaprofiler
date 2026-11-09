@@ -12,6 +12,8 @@ import pandas as pd
 
 from benchmark.metrics_class import _ece
 from benchmark.ml.folds import chromosome_units
+from decider import RuleScorer
+from mlgate import allowed_matrix
 from mlmodels import ML_EXCLUDED_CLASSES
 
 AMBIGUOUS = "ambiguous"
@@ -76,7 +78,7 @@ def choose_threshold(factory, table_train: pd.DataFrame, features: list[str], se
     """
     table_train = table_train.reset_index(drop=True)
     groups = _inner_groups(table_train, seed)
-    conf, pred, idx = [], [], []
+    probas, idx = [], []
     for g in groups:
         val_mask = np.zeros(len(table_train), bool)
         val_mask[g] = True
@@ -84,40 +86,53 @@ def choose_threshold(factory, table_train: pd.DataFrame, features: list[str], se
             continue
         model = factory().fit(table_train[~val_mask])
         val = table_train[val_mask]
-        proba = model.predict_proba(val)
-        arr = proba.to_numpy()
-        conf.append(arr.max(axis=1))
-        pred.append(np.asarray(proba.columns, dtype=object)[arr.argmax(axis=1)])
+        probas.append(model.predict_proba(val).set_axis(np.flatnonzero(val_mask)))
         idx.append(np.flatnonzero(val_mask))
-    if not conf:
+    if not probas:
         return FALLBACK_T
-    conf, pred, idx = np.concatenate(conf), np.concatenate(pred), np.concatenate(idx)
+    proba = pd.concat(probas).fillna(0.0)
+    idx = np.concatenate(idx)
+    pool = table_train.iloc[idx]
     label = table_train["label"].to_numpy(dtype=object)[idx]
     rule = table_train["rule_cls"].to_numpy(dtype=object)[idx]
     carved = table_train["carved"].to_numpy(dtype=bool)[idx] if "carved" in table_train \
         else np.zeros(len(idx), bool)
     ann = np.array([l is not None and not pd.isna(l) for l in label]) & ~carved
     ann &= ~np.isin(label, ML_EXCLUDED_CLASSES)   # cannot be predicted by the ML
-    conf, pred, label, rule = conf[ann], pred[ann], label[ann], rule[ann]
+    proba, pool, label, rule = proba[ann], pool[ann], label[ann], rule[ann]
     target = _macro_precision(rule, label)
     target = 0.0 if target is None else target
     for t in THRESHOLDS:
-        shown = np.where(conf >= t, pred, AMBIGUOUS)
+        shown = _decide_proba(proba, pool, t).to_numpy(dtype=object)
         mp = _macro_precision(shown, label)
         if mp is not None and mp >= target:
             return t
     return FALLBACK_T
 
 
-def decide(model, table: pd.DataFrame, features: list[str], t: float) -> pd.Series:
-    """Argmax class, or "ambiguous" when the max probability is < t; carved rows keep miRNA."""
-    proba = model.predict_proba(table)
+def _decide_proba(proba: pd.DataFrame, table: pd.DataFrame, t: float) -> pd.Series:
+    """Gated decision from a probability frame: carved -> miRNA; max prob < t -> ambiguous;
+    else RuleScorer.choose over the class probabilities with the row's gate columns."""
     arr = proba.to_numpy()
-    cls = np.asarray(proba.columns, dtype=object)[arr.argmax(axis=1)]
-    out = np.where(arr.max(axis=1) < t, AMBIGUOUS, cls).astype(object)
+    classes = [str(c) for c in proba.columns]
+    allowed = allowed_matrix(table, classes) if len(classes) else None
+    out = np.full(len(table), AMBIGUOUS, dtype=object)
+    sure = arr.max(axis=1) >= t if arr.shape[1] else np.zeros(len(table), bool)
+    for i in np.flatnonzero(sure):
+        ok = allowed[i]
+        out[i] = RuleScorer.choose(dict(zip(classes, arr[i])),
+                                   lambda n, ok=ok: ok[classes.index(n)])
     if "carved" in table:
         out[table["carved"].to_numpy(dtype=bool)] = "miRNA"
     return pd.Series(out, index=table.index, dtype=object)
+
+
+def decide(model, table: pd.DataFrame, features: list[str], t: float) -> pd.Series:
+    """What production decides on the same rows: carved rows keep miRNA; max probability < t
+    is ambiguous; otherwise the best class whose biology gate (the gate_<class> columns,
+    written by classify from passes_gate) the locus passes. `other` on top abstains, so
+    neither "other" nor "miRNA" comes out for a non-carved row."""
+    return _decide_proba(model.predict_proba(table), table, t)
 
 
 def complete_rules(rule_cls, pred_cls) -> pd.Series:

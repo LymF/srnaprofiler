@@ -38,7 +38,7 @@ class MLDecider:
         self.threshold = float(schema["threshold"])
         self.tag = f"ml:{schema['algorithm']}"
 
-    def decide_all(self, records) -> None:
+    def decide_all(self, records, scorer) -> None:
         check_schema(self.schema["features"])
         todo = [r for r in records if r.cls != "miRNA"]
         if not todo:
@@ -59,7 +59,8 @@ class MLDecider:
         for i, r in enumerate(todo):
             if arr.shape[1]:
                 conf = float(arr[i].max())
-                cls = str(proba.columns[int(arr[i].argmax())])
+                # gated: the class must show its biology; `other` or none passing = abstain
+                cls = scorer.gated_choice(dict(zip(map(str, proba.columns), arr[i])), r)
             else:
                 conf, cls = 0.0, AMBIGUOUS
             if conf < self.threshold:

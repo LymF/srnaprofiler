@@ -332,21 +332,32 @@ class RuleScorer:
             return False
         if spec.get("defining_evidence"):
             floor = (self.cfg.get("decision", {}) or {}).get("ml_gate_min_score", 0.5)
-            if min(self.defining_scores(spec, record)) < floor:
+            # `not (s >= floor)`, not `s < floor`: a NaN score must fail the gate.
+            if not all(s >= floor for s in self.defining_scores(spec, record)):
                 return False
         return True
 
-    def gated_choice(self, proba: Mapping, record):
-        """Highest-probability class the locus is allowed to have, else AMBIGUOUS.
+    def gate_flags(self, record):
+        """{class: passes_gate} for every enabled class (written as gate_<class> columns)."""
+        return {name: self.passes_gate(name, record)
+                for name in self.enabled_classes(self.cfg)}
+
+    @classmethod
+    def choose(cls, proba: Mapping, allowed):
+        """Highest-probability class `allowed(name)` accepts, else AMBIGUOUS.
 
         `other` on top is the model abstaining; miRNA comes only from miRDeep2,
         so it is skipped; a class failing the gate yields to the next one.
         """
         for name, _ in sorted(proba.items(), key=lambda kv: kv[1], reverse=True):
             if name == "other":
-                return self.AMBIGUOUS
+                return cls.AMBIGUOUS
             if name == "miRNA":
                 continue
-            if self.passes_gate(name, record):
+            if allowed(name):
                 return name
-        return self.AMBIGUOUS
+        return cls.AMBIGUOUS
+
+    def gated_choice(self, proba: Mapping, record):
+        """`choose` with the gate read off the record itself (production path)."""
+        return self.choose(proba, lambda name: self.passes_gate(name, record))

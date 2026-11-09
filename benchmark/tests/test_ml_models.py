@@ -192,9 +192,9 @@ def test_ml_never_has_mirna_class(name):
     assert (df["label"] == "miRNA").any()          # non-carved miRNA-labelled rows present
     m = _skip_missing(name)
     m.fit(df, df["label"])
-    assert "miRNA" not in m.classes_
+    assert "miRNA" not in m.classes_ and "other" in m.classes_   # miRNA rows -> "other"
     P = m.predict_proba(df)
-    assert "miRNA" not in P.columns and list(P.columns) == ["piRNA", "siRNA"]
+    assert "miRNA" not in P.columns and list(P.columns) == ["other", "piRNA", "siRNA"]
     p = m.p_real(df)
     assert p.shape == (len(df),) and ((p >= 0) & (p <= 1)).all()
 
@@ -208,6 +208,27 @@ def test_mirna_labels_still_pu_positives():
     lab = pd.Series(np.where(df["true"] == "miRNA", "miRNA", None), dtype=object)
     m = _skip_missing("logreg")
     m.fit(df, lab)
-    assert m.classes_ == [] and m.predict_proba(df).shape == (len(df), 0)
+    assert m.classes_ == ["other"]       # only the excluded-class target is left
+    assert m.predict_proba(df).shape == (len(df), 1)
     p = m.p_real(df)
     assert p[(df["true"] == "miRNA").to_numpy()].mean() > p[(df["true"] != "miRNA").to_numpy()].mean()
+
+
+def test_controls_get_other_target():
+    df = make_table(n=200)
+    df["is_control"] = False
+    ctrl = (df["label"].isna() & (np.arange(len(df)) % 3 == 0)).to_numpy()
+    df["is_control"] = ctrl
+    m = _skip_missing("logreg").fit(df, df["label"])
+    assert "other" in m.classes_ and "miRNA" not in m.classes_
+    # without controls or miRNA labels there is no "other"
+    plain = _skip_missing("logreg").fit(make_table(n=200), make_table(n=200)["label"])
+    assert "other" not in plain.classes_
+
+
+def test_carved_rows_are_not_other():
+    df = make_table(n=200)
+    df["is_control"] = df["label"].isna()
+    df["carved"] = df["is_control"]          # carved wins: they are never fitted
+    m = _skip_missing("logreg").fit(df, df["label"])
+    assert "other" not in m.classes_

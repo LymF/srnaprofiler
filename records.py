@@ -110,6 +110,7 @@ class ClusterRecord:
     review: bool = False
     class_scores: dict = field(default_factory=dict)
     evidence: str = ""
+    gates: dict = field(default_factory=dict)   # class -> passes_gate; gate_<class> TSV columns
     p_real: Optional[float] = None   # ML mode only: probability the locus is a real small-RNA locus
 
     @property

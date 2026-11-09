@@ -23,11 +23,16 @@ def _cell(value):
     return str(value).replace("\t", " ").replace("\n", " ")
 
 
-def write_tsv(records, path):
+def write_tsv(records, path, gate_classes=()):
+    """`gate_classes` appends one gate_<class> column (0/1) per class, read off r.gates."""
+    gate_classes = list(gate_classes)
+    head = _COLS + [f"gate_{c}" for c in gate_classes]
     with open(path, "w") as fh:
-        fh.write("\t".join(_COLS) + "\n")
+        fh.write("\t".join(head) + "\n")
         for r in records:
-            fh.write("\t".join(_cell(getattr(r, c)) for c in _COLS) + "\n")
+            cells = [_cell(getattr(r, c)) for c in _COLS]
+            cells += [str(int(bool(r.gates.get(c)))) for c in gate_classes]
+            fh.write("\t".join(cells) + "\n")
 
 
 def write_fragments_tsv(fragments, path):
