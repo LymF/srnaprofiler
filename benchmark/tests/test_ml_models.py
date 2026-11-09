@@ -270,11 +270,14 @@ def test_real_falls_back_to_pu_without_controls():
 
 def test_controls_labelled_are_positives_not_negatives():
     df = _with_controls()
-    lab_ctrl = df["is_control"].to_numpy() & False
     df2 = df.copy()
-    df2.loc[df2.index[:5], "is_control"] = True       # annotated rows flagged control
+    flagged = df2["label"].notna().to_numpy() & (np.arange(len(df2)) < 100)
+    df2.loc[flagged, "is_control"] = True             # annotated rows flagged control
+    assert flagged.sum() > 0
     m = _skip_missing("logreg").fit(df2, df2["label"])
     assert m.real_mode_ == "supervised"
+    assert m.sup_.n_pos_ == int(df2["label"].notna().sum())      # flagged rows are positives
+    assert m.sup_.n_neg_ == int((df2["is_control"] & df2["label"].isna()).sum())
 
 
 def test_carved_rows_never_enter_real_fit():
@@ -295,3 +298,29 @@ def test_supervised_real_differs_between_algorithms():
            for n in ("logreg", "rf", "hdbscan", "svm")}
     assert not np.allclose(out["logreg"], out["rf"])
     assert not np.allclose(out["logreg"], out["hdbscan"])
+
+
+@pytest.mark.parametrize("name", REAL_NAMES)
+def test_models_survive_joblib_roundtrip(name, tmp_path):
+    import joblib
+    df = _with_controls(200)
+    m = _skip_missing(name).fit(df, df["label"])
+    path = tmp_path / "m.joblib"
+    joblib.dump(m, path)
+    m2 = joblib.load(path)
+    pd.testing.assert_frame_equal(m.predict_proba(df), m2.predict_proba(df))
+    assert np.array_equal(m.p_real(df), m2.p_real(df))
+    assert np.array_equal(m.p_real_pu(df), m2.p_real_pu(df))
+    assert m2.real_mode_ == m.real_mode_
+
+
+def test_real_fit_cap_applies_to_sup_and_knn(monkeypatch):
+    monkeypatch.setattr(models, "MAX_FIT_ROWS", 60)
+    df = _with_controls(300)
+    svm = _skip_missing("svm").fit(df, df["label"])           # _SupReal with cap
+    n = svm.sup_.n_pos_ + svm.sup_.n_neg_
+    assert n <= 70 and svm.real_mode_ == "supervised"
+    hd = _skip_missing("hdbscan").fit(df, df["label"])        # _KnnReal with cap
+    assert len(hd.sup_.y) <= 70 and len(hd.sup_.y) < (df["label"].notna() | df["is_control"]).sum()
+    p = hd.p_real(df)
+    assert ((p >= 0) & (p <= 1)).all()

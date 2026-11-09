@@ -147,6 +147,7 @@ class _PU:
             y[p_i], y[neg] = 1, 0
             sf = y
         self.model = self.build(sf).fit(Z[fit_idx], sf)
+        self.build = None            # fit-time only (may be a lambda); keeps the model picklable
         if len(held):
             c = float(_col1(self.model, Z[held]).mean())
             self.c = c if c > 0 else 1.0
@@ -174,6 +175,8 @@ class _SupReal:
             idx = np.sort(_stratified(idx, y[idx], MAX_FIT_ROWS,
                                       np.random.default_rng(self.seed)))
         self.est = self.build(y[idx]).fit(Z[idx], y[idx])
+        self.n_pos_, self.n_neg_ = int(y[idx].sum()), int((1 - y[idx]).sum())
+        self.build = None            # closures/lambdas are fit-time only; keeps the model picklable
         return self
 
     def score(self, Z):
