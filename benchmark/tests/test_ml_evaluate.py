@@ -141,3 +141,30 @@ def test_choose_threshold_goes_through_the_gate():
     t["gate_siRNA"] = 0.0
     # every decision is ambiguous, so no t reaches the rules' precision
     assert ev.choose_threshold(lambda: Oracle(True), t, [], 0) == 0.95
+
+
+def test_vectorised_decision_equals_per_row_path():
+    from benchmark.ml.evaluate import AMBIGUOUS, _decide_proba
+    from decider import RuleScorer
+    from mlgate import allowed_matrix
+    rng = np.random.default_rng(3)
+    n = 500
+    classes = ["miRNA", "other", "piRNA", "rasiRNA", "siRNA"]
+    P = rng.random((n, len(classes)))
+    P[rng.random((n, len(classes))) < 0.2] = 0.0      # ties and zeros
+    P[::7, 2] = P[::7, 3]                             # exact ties
+    proba = pd.DataFrame(P / P.sum(axis=1, keepdims=True), columns=classes)
+    table = pd.DataFrame({f"gate_{c}": rng.integers(0, 2, n).astype(float)
+                          for c in classes if c not in ("other",)})
+    table.loc[rng.random(n) < 0.05, "gate_piRNA"] = np.nan
+    table["carved"] = rng.random(n) < 0.1
+    allowed = allowed_matrix(table, classes)
+    arr = proba.to_numpy()
+    for t in (0.0, 0.3, 0.5, 0.9):
+        old = np.full(n, AMBIGUOUS, dtype=object)
+        for i in np.flatnonzero(arr.max(axis=1) >= t):
+            ok = allowed[i]
+            old[i] = RuleScorer.choose(dict(zip(classes, arr[i])),
+                                       lambda c, ok=ok: ok[classes.index(c)])
+        old[table["carved"].to_numpy()] = "miRNA"
+        assert list(_decide_proba(proba, table, t)) == list(old)

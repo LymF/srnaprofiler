@@ -102,29 +102,51 @@ def choose_threshold(factory, table_train: pd.DataFrame, features: list[str], se
     proba, pool, label, rule = proba[ann], pool[ann], label[ann], rule[ann]
     target = _macro_precision(rule, label)
     target = 0.0 if target is None else target
+    choice, top = _gated_choice(proba, pool)      # gate and ranking do not depend on t
     for t in THRESHOLDS:
-        shown = _decide_proba(proba, pool, t).to_numpy(dtype=object)
+        shown = _apply_threshold(choice, top, pool, t).to_numpy(dtype=object)
         mp = _macro_precision(shown, label)
         if mp is not None and mp >= target:
             return t
     return FALLBACK_T
 
 
-def _decide_proba(proba: pd.DataFrame, table: pd.DataFrame, t: float) -> pd.Series:
-    """Gated decision from a probability frame: carved -> miRNA; max prob < t -> ambiguous;
-    else RuleScorer.choose over the class probabilities with the row's gate columns."""
-    arr = proba.to_numpy()
-    classes = [str(c) for c in proba.columns]
-    allowed = allowed_matrix(table, classes) if len(classes) else None
-    out = np.full(len(table), AMBIGUOUS, dtype=object)
-    sure = arr.max(axis=1) >= t if arr.shape[1] else np.zeros(len(table), bool)
-    for i in np.flatnonzero(sure):
-        ok = allowed[i]
-        out[i] = RuleScorer.choose(dict(zip(classes, arr[i])),
-                                   lambda n, ok=ok: ok[classes.index(n)])
+def _gated_choice(proba: pd.DataFrame, table: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Vectorised RuleScorer.choose for every row, independent of the threshold: returns
+    (choice, top) where choice is the gated class (AMBIGUOUS when `other` is on top or
+    nothing passes) and top the max probability. Same walk as choose: classes by descending
+    probability (ties keep column order), `other` stops with abstention, miRNA is skipped,
+    the first class passing its gate wins."""
+    n = len(table)
+    arr = proba.to_numpy(float)
+    classes = np.array([str(c) for c in proba.columns], dtype=object)
+    if arr.shape[1] == 0:
+        return np.full(n, AMBIGUOUS, dtype=object), np.zeros(n)
+    allowed = allowed_matrix(table, list(classes))
+    is_other = classes == "other"
+    usable = allowed & (classes != "miRNA")[None, :]
+    order = np.argsort(-arr, axis=1, kind="stable")
+    rows = np.arange(n)[:, None]
+    stop = usable[rows, order] | is_other[order]
+    first = stop.argmax(axis=1)
+    picked = order[np.arange(n), first]
+    ok = stop.any(axis=1) & ~is_other[picked]
+    choice = np.where(ok, classes[picked], AMBIGUOUS).astype(object)
+    return choice, arr.max(axis=1)
+
+
+def _apply_threshold(choice, top, table: pd.DataFrame, t: float) -> pd.Series:
+    out = np.where(top >= t, choice, AMBIGUOUS).astype(object)
     if "carved" in table:
         out[table["carved"].to_numpy(dtype=bool)] = "miRNA"
     return pd.Series(out, index=table.index, dtype=object)
+
+
+def _decide_proba(proba: pd.DataFrame, table: pd.DataFrame, t: float) -> pd.Series:
+    """Gated decision from a probability frame: carved -> miRNA; max prob < t -> ambiguous;
+    else the gated choice (see _gated_choice)."""
+    choice, top = _gated_choice(proba, table)
+    return _apply_threshold(choice, top, table, t)
 
 
 def decide(model, table: pd.DataFrame, features: list[str], t: float) -> pd.Series:
