@@ -316,6 +316,7 @@ def test_models_survive_joblib_roundtrip(name, tmp_path):
 
 def test_real_fit_cap_applies_to_sup_and_knn(monkeypatch):
     monkeypatch.setattr(models, "MAX_FIT_ROWS", 60)
+    monkeypatch.setattr(models, "STRATA_FLOOR", 10)
     df = _with_controls(300)
     svm = _skip_missing("svm").fit(df, df["label"])           # _SupReal with cap
     n = svm.sup_.n_pos_ + svm.sup_.n_neg_
