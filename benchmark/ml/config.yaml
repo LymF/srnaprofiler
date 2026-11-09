@@ -13,6 +13,7 @@ te:                     # organism -> transposon BED relative to benchmark/truth
                         # rmsk by benchmark/scripts/build_te.py, not committed). Organisms without an
                         # entry: piRNA "supported" = reproducibility only.
   Drosophila melanogaster: dmel/rmsk_te.bed
-selection:              # criterion v2 (spec section 3)
-  class_floor: 0.02     # no class may lose more than this precision or recall vs the rules
-  alpha: 0.05           # corrected resampled t-test on macro-F1 vs the rules
+selection:              # criterion v3 (spec v2 section 3.1; user decision 2026-11-09)
+  class_floor: 0.02     # no class may lose more than this precision vs the rules
+  f1_floor: 0.05        # no class may lose more than this F1 vs the rules
+  alpha: 0.05           # winner tie-break; the t-test vs rules is reported, not gated

@@ -251,34 +251,46 @@ def _elig(**kw):
     return eligibility(recs, rules)
 
 
-def test_eligibility_v2_passes_and_fails_each_condition():
+def test_eligibility_v3_passes_and_fails_each_condition():
     assert _elig() == (True, [])
     ok, why = _elig(f1=[0.4 + 0.002 * i for i in range(10)])           # 1: not above rules
     assert not ok and any(w.startswith("macro_f1") for w in why)
-    ok, why = _elig(f1=[0.5 + 0.2 * (i % 2) for i in range(10)])       # 1: higher but noisy, p >= alpha
-    assert not ok and any(w.startswith("macro_f1") for w in why)
-    ok, why = _elig(prec=0.85)                                         # 2: class floor (0.02)
-    assert not ok and any("precision" in w for w in why)
+    assert _elig(f1=[0.5 + 0.2 * (i % 2) for i in range(10)])[0]       # 1: noisy p no longer gates
+    ok, why = _elig(prec=0.85)                                         # 2: precision floor (0.02)
+    assert not ok and any("siRNA precision" in w for w in why)
     assert _elig(prec=0.89)[0]                                         # within the floor
-    ok, why = _elig(usr=0.4)                                           # 3: supported below rules'
+    # 3: recall may drop while F1 holds; rules siRNA F1 = 0.9
+    assert _elig(rec=0.83)[0]                                          # F1 0.864, loss 0.036
+    ok, why = _elig(rec=0.75)                                          # F1 0.818, loss 0.082
+    assert not ok and any("siRNA F1" in w for w in why) and not any("recall" in w for w in why)
+    ok, why = _elig(prec=None, rec=0.0)                                # truth but no calls: F1 0
+    assert not ok and any("siRNA F1 0.000" in w for w in why)
+    ok, why = _elig(usr=0.4)                                           # 4: supported below rules'
     assert not ok and any(w.startswith("unann_supported_rate") for w in why)
     assert _elig(usr=0.5)[0]                                           # equal is enough
-    ok, why = _elig(ctl=0.6)                                           # 4
+    ok, why = _elig(ctl=0.6)                                           # 5
     assert not ok and any(w.startswith("control_real_rate") for w in why)
-    ok, why = _elig(amb=0.5)                                           # 5
-    assert not ok and any(w.startswith("ambiguous_share") for w in why)
-    assert _elig(gap=-1.0)[0]                                          # gap no longer gates
+    assert _elig(amb=0.9)[0]                                           # ambiguous no longer gates
+    assert _elig(gap=-1.0)[0]                                          # gap does not gate
     ok, why = _elig(usr=None)                                          # no unannotated calls at all
     assert not ok
 
 
-def test_select_states_criterion_v2_and_config(tmp_path):
+def test_class_f1_from_precision_recall():
+    from benchmark.ml.select import _class_f1
+    r = _line("rf", "u0", 0, _m(0.5, prec=0.13, rec=0.81))
+    assert abs(_class_f1(r, "siRNA") - 2 * 0.13 * 0.81 / 0.94) < 1e-12
+    assert _class_f1(_line("rf", "u0", 0, _m(0.5, prec=None, rec=0.0)), "siRNA") == 0.0
+    assert _class_f1(_line("rf", "u0", 0, _m(0.5, prec=None, rec=None)), "siRNA") is None
+
+
+def test_select_states_criterion_v3_and_config(tmp_path):
     path = _write(tmp_path, {"rf": ([0.9 + 0.001 * i for i in range(10)], {})})
     text = select(path, tmp_path / "s.md")
-    assert "one-sided at alpha/2" in text and "Drosophila melanogaster" in text \
-        and "reproducibility only" in text
-    assert "Selection criterion v2" in text and "class_floor = 0.02" in text \
-        and "alpha = 0.05" in text
+    assert "Drosophila melanogaster" in text and "reproducibility only" in text
+    assert "Selection criterion v3" in text and "class_floor = 0.02" in text \
+        and "f1_floor = 0.05" in text and "alpha = 0.05" in text \
+        and "before the plant v2 results were read" in text
 
 
 def test_run_cv_requires_repro_frac(tmp_path):

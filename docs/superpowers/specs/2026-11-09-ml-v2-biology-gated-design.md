@@ -63,6 +63,20 @@ User decision 2026-11-09 ("Anotação + biologia"). On tuning data, under the v1
 
 Among eligible algorithms the winner has the best mean macro-F1; ties within the fold-to-fold variation go to the simpler one (unchanged). No relaxing after the run: if none is eligible, that is the result.
 
+### 3.1 Criterion v3 (replaces §3 for the reported selection)
+
+User decision 2026-11-09 ("estamos sendo estritos demais. Se ele classificar bem, não tem por que punir um pouco de queda e crescimento de ambíguo"), taken **after** the arthropod v2 run (none eligible under §3) and **before** the plant v2 results were read. The paper declares the order. The §3 result for arthropods is reported too.
+
+An algorithm is eligible when all hold:
+
+1. mean macro-F1 above the rules' (the corrected resampled t-test is reported, not gated: with 7 fly units it cannot reach p < 0.05 for the effect sizes seen);
+2. no class loses more than **0.02 precision** (the false-positive guard, the aim of the tool);
+3. no class loses more than **0.05 F1** (recall may fall while the precision/recall balance holds);
+4. supported share of unannotated calls ≥ the rules' (as §3.3);
+5. control rate below the rules' (as §3.4).
+
+Ambiguous share is reported only: the biology gate makes the model abstain on loci without their class's biology, which is the intended behaviour. Winner rule unchanged. Bombyx (never seen) is the confirmatory arthropod test.
+
 ## 4. Data
 
 - Tuning: unchanged (fly, Arabidopsis, rice). CV, folds, seeds, algorithms: unchanged.

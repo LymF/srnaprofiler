@@ -10,7 +10,7 @@ from benchmark.ml.stats import corrected_resampled_ttest
 
 SIMPLICITY = ["logreg", "kmeans", "gmm", "hier", "hdbscan", "labelprop", "labelspread",
               "svm", "rf", "selftrain", "lgbm", "xgb"]
-CRITERION = "v2"
+CRITERION = "v3"
 SCALARS = ["macro_f1", "ambiguous_share", "real_repro_gap", "control_real_rate",
            "rules_control_rate", "unann_supported_rate", "rules_unann_supported_rate", "ece"]
 
@@ -20,12 +20,13 @@ def _cfg() -> tuple:
     from benchmark.ml.dataset import load_ml_config
     c = load_ml_config()
     sel = c["selection"]
-    return float(sel["class_floor"]), float(sel["alpha"]), tuple(sorted(c.get("te") or {}))
+    return (float(sel["class_floor"]), float(sel["alpha"]), tuple(sorted(c.get("te") or {})),
+            float(sel["f1_floor"]))
 
 
 def selection_config() -> dict:
-    """{class_floor, alpha} of criterion v2 from ml/config.yaml (read once per process)."""
-    return {"class_floor": _cfg()[0], "alpha": _cfg()[1]}
+    """{class_floor, f1_floor, alpha} of criterion v3 from ml/config.yaml (read once per process)."""
+    return {"class_floor": _cfg()[0], "alpha": _cfg()[1], "f1_floor": _cfg()[3]}
 
 
 class SelectionError(Exception):
@@ -89,47 +90,55 @@ def _aligned(recs, rules, fn, fn_rules=None):
     return [sa[u] for u in keep], [sb[u] for u in keep]
 
 
-def eligibility(recs, rules, class_floor=None, alpha=None):
+def _class_f1(r, c):
+    """Per-class F1 of one fold line from its precision/recall; a class with truth but no calls
+    (precision None) scores 0; no truth (recall None) -> None."""
+    rec = _get(r, "metrics", "recall", c)
+    if rec is None:
+        return None
+    prec = _get(r, "metrics", "precision", c) or 0.0
+    return 0.0 if prec + rec == 0 else 2 * prec * rec / (prec + rec)
+
+
+def eligibility(recs, rules, class_floor=None, alpha=None, f1_floor=None):
     """(eligible, [failed criteria]) of one algorithm's main-variant records vs the rules'
-    (criterion v2, spec section 3):
-      1. macro_f1 mean > rules' and corrected resampled t-test p < alpha;
-      2. no class loses more than class_floor precision or recall;
-      3. unann_supported_rate mean >= the rules' (independent biology of unannotated calls);
-      4. control_real_rate mean < rules_control_rate mean;
-      5. ambiguous_share mean < rules'.
-    real_repro_gap is reported only. Cross-species units are ignored. Every comparison uses
-    exactly the folds where both sides have a value (seed-averaged per fold)."""
+    (criterion v3, user decision 2026-11-09, fixed after the arthropod v2 run and before the
+    plant v2 results were read):
+      1. macro_f1 mean > rules' (the corrected resampled t-test p is reported, not gated);
+      2. no class loses more than class_floor precision;
+      3. no class loses more than f1_floor F1 (recall may fall while F1 holds);
+      4. unann_supported_rate mean >= the rules' (independent biology of unannotated calls);
+      5. control_real_rate mean < rules_control_rate mean.
+    ambiguous_share and real_repro_gap are reported only. Cross-species units are ignored.
+    Every comparison uses exactly the folds where both sides have a value (seed-averaged)."""
     cfg = selection_config()
     class_floor = cfg["class_floor"] if class_floor is None else class_floor
-    alpha = cfg["alpha"] if alpha is None else alpha
+    f1_floor = cfg["f1_floor"] if f1_floor is None else f1_floor
     recs = [r for r in recs if not is_xspecies(r["unit"])]
     rules = [r for r in rules if not is_xspecies(r["unit"])]
     why = []
     g = lambda n: (lambda r: _get(r, "metrics", n))
     f1, rf1 = _aligned(recs, rules, g("macro_f1"))
-    p = pvalue(recs, rules)
-    if not f1 or not np.mean(f1) > np.mean(rf1) or np.isnan(p) or not p < alpha:
-        why.append(f"macro_f1 {_mean(f1)} vs rules {_mean(rf1)}, p {p:.3g} (need higher and p < {alpha})")
+    if not f1 or not np.mean(f1) > np.mean(rf1):
+        why.append(f"macro_f1 {_mean(f1)} not > rules {_mean(rf1)}")
     classes = sorted({c for r in rules for c in (r["metrics"].get("per_class") or {})})
     for c in classes:
-        for name in ("precision", "recall"):
-            fn = lambda r, c=c, name=name: _get(r, "metrics", name, c)
+        checks = [("precision", lambda r, c=c: _get(r, "metrics", "precision", c), class_floor),
+                  ("F1", lambda r, c=c: _class_f1(r, c), f1_floor)]
+        for name, fn, floor in checks:
             mine, ref = _aligned(recs, rules, fn)
             if not ref:
-                if name == "recall" and any(fn(r) is not None for r in rules):
+                if name == "F1" and any(fn(r) is not None for r in rules):
                     why.append(f"{c} {name} missing")
                 continue          # class counts only where rules' value exists
-            if np.mean(mine) < np.mean(ref) - class_floor:
-                why.append(f"{c} {name} {np.mean(mine):.3f} < rules {np.mean(ref):.3f} - {class_floor}")
+            if np.mean(mine) < np.mean(ref) - floor:
+                why.append(f"{c} {name} {np.mean(mine):.3f} < rules {np.mean(ref):.3f} - {floor}")
     sup, rsup = _aligned(recs, recs, g("unann_supported_rate"), g("rules_unann_supported_rate"))
     if not sup or not np.mean(sup) >= np.mean(rsup):
         why.append(f"unann_supported_rate {_mean(sup)} not >= rules {_mean(rsup)}")
     ctl, rctl = _aligned(recs, recs, g("control_real_rate"), g("rules_control_rate"))
     if not ctl or not np.mean(ctl) < np.mean(rctl):
         why.append(f"control_real_rate {_mean(ctl)} not < rules_control_rate {_mean(rctl)}")
-    amb, ramb = _aligned(recs, rules, g("ambiguous_share"))
-    if not amb or not np.mean(amb) < np.mean(ramb):
-        why.append(f"ambiguous_share {_mean(amb)} not < rules {_mean(ramb)}")
     return not why, why
 
 
@@ -247,13 +256,14 @@ def select(folds: Path, out: Path, algorithms: list[str] | None = None,
     cfg = selection_config()
     out_md = ["# ML classifier selection", "",
               f"Selection criterion {CRITERION}: class_floor = {cfg['class_floor']}, "
-              f"alpha = {cfg['alpha']}. Eligible = macro-F1 above rules with p < alpha; no class "
-              "loses more than class_floor precision or recall; supported share of unannotated "
-              "calls (repro_frac >= 0.5, plus TE overlap for piRNA where a TE file is "
-              "configured) >= rules'; control rate below rules'; ambiguous share below rules'. "
-              "real_repro_gap is reported, not gated.",
-              "The t-test p is two-sided; with the mean-above-rules condition it is one-sided "
-              "at alpha/2 (conservative, same as v1).",
+              f"f1_floor = {cfg['f1_floor']}, alpha = {cfg['alpha']}. Eligible = mean macro-F1 "
+              "above rules; no class loses more than class_floor precision or more than "
+              "f1_floor F1; supported share of unannotated calls (repro_frac >= 0.5, plus TE "
+              "overlap for piRNA where a TE file is configured) >= rules'; control rate below "
+              "rules'. Ambiguous share, real_repro_gap and the t-test p are reported, not gated.",
+              "v3 was fixed after the arthropod v2 run (user decision 2026-11-09) and before "
+              "the plant v2 results were read. The t-test p is two-sided; alpha is also used "
+              "for the winner tie-break.",
               "piRNA supported also requires TE overlap for: "
               + (", ".join(_cfg()[2]) or "no organism")
               + "; all other organisms use reproducibility only.", ""]
