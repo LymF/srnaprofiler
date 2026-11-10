@@ -316,10 +316,12 @@ class RuleScorer:
     def passes_gate(self, name, record):
         """Whether a locus shows the defining biology of class `name` (spec v2 s2.1).
 
-        The checks the rules apply to their own winner, from the same config:
-        size window, cluster length/density, phasing p-value, and the class's
-        non-size defining evidence significant at `decision.ml_gate_max_pvalue`. No size call
-        ("N") passes nothing. Pure: the record is not touched.
+        Exactly the checks the rules apply to their own winner, from the same config:
+        size window, cluster length/density, phasing p-value; a class defined by phasing
+        must also show it (`_phase_evidence`). No size call ("N") passes nothing.
+        Ruling R28: R27 required every defining evidence at p <= 0.01, stricter than the
+        rules, which capped ML recall at the gate's pass rate (0.73 for annotated
+        Arabidopsis hcsiRNA vs rules 0.98). Pure: the record is not touched.
         """
         spec = self.enabled_classes(self.cfg).get(name)
         if spec is None or record.dicer_call == "N":
@@ -330,29 +332,36 @@ class RuleScorer:
             return False
         if not self._phase_supported(spec, record):
             return False
-        if spec.get("defining_evidence"):
-            p = (self.cfg.get("decision", {}) or {}).get("ml_gate_max_pvalue", 0.01)
-            floor = -math.log10(p)
-            # `not (s >= floor)`, not `s < floor`: a NaN significance must fail the gate.
-            if not all(s >= floor for s in self.defining_significance(spec, record)):
-                return False
+        if self._defined_by_phase(spec) and not self._phase_evidence(spec, record):
+            return False
         return True
 
     @staticmethod
-    def defining_significance(spec, record):
-        """-log10 p of each non-size defining evidence slot (`s_<name>` on the record;
-        an OR slot takes its best member). `size` is left out: the size window already
-        gates it, and it has no p-value."""
-        out = []
-        for slot in spec.get("defining_evidence", []):
-            names = slot if isinstance(slot, list) else [slot]
-            names = [n for n in names if n != "size"]
-            if not names:
-                continue
-            vals = [float(getattr(record, f"s_{n}", float("nan"))) for n in names]
-            vals = [v for v in vals if v == v]   # drop NaN members of an OR slot
-            out.append(max(vals) if vals else float("nan"))
-        return out
+    def _defined_by_phase(spec):
+        return any("phase" in (slot if isinstance(slot, list) else [slot])
+                   for slot in spec.get("defining_evidence", []))
+
+    def _phase_evidence(self, spec, record):
+        """Phasing shown, for a class defined by it (ruling R28): the phasing test at
+        `decision.ml_gate_max_pvalue` (s_phase >= -log10 p) or a run of at least the
+        class's `phase_x0` cycles in register, the midpoint of the rules' own phase term.
+        Without phasing a 21-22 nt locus is siRNA, so this evidence is the class itself;
+        the other defining evidence (5'A, 1U, ping-pong, duplex) are biases the rules do
+        not require, and gating them capped ML recall below the rules' (R27)."""
+        p = (self.cfg.get("decision", {}) or {}).get("ml_gate_max_pvalue", 0.01)
+        s = getattr(record, "s_phase", float("nan"))
+        try:
+            s = float(s)
+        except (TypeError, ValueError):
+            s = float("nan")
+        if s >= -math.log10(p):              # NaN compares False
+            return True
+        x0 = spec.get("phase_x0")
+        n = getattr(record, "phase_number", None)
+        try:
+            return x0 is not None and float(n) >= float(x0)
+        except (TypeError, ValueError):
+            return False
 
     def gate_flags(self, record):
         """{class: passes_gate} for every enabled class (written as gate_<class> columns)."""

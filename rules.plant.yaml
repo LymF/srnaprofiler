@@ -54,11 +54,10 @@ decision:
   # 0.41 margin. Keeping 0.6 sent 39.6% of loci to review on confidence alone.
   review_confidence: 0.43
   min_margin: 0.15
-  # Spec v2 s2.1 (ruling R27): for the ML to give a locus a class, every non-size
-  # defining evidence of that class must be significant at this p-value (s_<name>
-  # >= -log10 p; an OR slot takes its best member). Same level as phase_max_pvalue
-  # and the proTRAC density test. Replaces a 0.5 floor on the e_* strengths, which
-  # no siRNA could reach (e_fractop_bid tops out at 0.44). Fixed, not tuned.
+  # Spec v2 s2.1 (ruling R28): a class defined by phasing gets an ML call only
+  # with phasing shown: phasing test p <= this value, or >= phase_x0 cycles in
+  # register. Same level as phase_max_pvalue and the proTRAC density test. Other
+  # defining evidence is not gated (R27 gated all of it and capped ML recall).
   # Read by RuleScorer.passes_gate only; rules mode ignores it.
   ml_gate_max_pvalue: 0.01
   # Review flag for loci with a weighted (1/NH) read count below this. Inert with
