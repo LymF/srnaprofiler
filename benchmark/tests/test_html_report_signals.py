@@ -89,3 +89,28 @@ def test_coverage_binning_partial_last_bin():
     assert cov["bin"] == 11 and len(cov["plus"]) == 92
     assert sum(cov["plus"]) == 23
     assert cov["plus"][-1] == 2  # last bin spans only 2 bases (1001-1002)
+
+
+def test_none_coordinate_is_zero_filled_and_warned(tmp_path, capsys):
+    bam = tmp_path / "t.bam"
+    bamutil.make_bam(bam, [("c1", 100, False)])
+    out = rs.signals_for(str(bam), [Cluster("a", "c1", None, 500),
+                                    Cluster("b", "c1", 0, 500)], xm_as_nh=False)
+    assert out["a"]["n_alns"] == 0 and out["a"].get("failed")
+    assert out["b"]["n_alns"] == 1 and not out["b"].get("failed")
+    assert "1 cluster(s)" in capsys.readouterr().err
+
+
+def test_nt_dominant_size_inside_window():
+    # many 15-nt fragments must not decide the dominant size
+    alns = [Aln("c1", 0, "G" * 15, 1, "+") for _ in range(10)]
+    alns += [Aln("c1", 0, "T" + "A" * 20, 1, "+") for _ in range(2)]
+    d = rs.cluster_signals(alns, 0, 100)
+    assert d["nt"][0]["U"] == 1.0
+
+
+def test_nt_uses_given_dominant_size():
+    alns = [Aln("c1", 0, "T" + "A" * 20, 1, "+") for _ in range(5)]
+    alns += [Aln("c1", 0, "C" + "A" * 25, 1, "+") for _ in range(2)]
+    d = rs.cluster_signals(alns, 0, 100, dominant=26)
+    assert d["nt"][0]["C"] == 1.0

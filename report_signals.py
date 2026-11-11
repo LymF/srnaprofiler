@@ -19,8 +19,12 @@ def _bin_lane(lane, bin_size):
     return [float(sum(lane[i:i + bin_size])) for i in range(0, len(lane), bin_size)]
 
 
-def cluster_signals(alns, start, end, size_lo=18, size_hi=35, max_bins=120):
-    """Figure data for one cluster window [start, end); see the module docstring."""
+def cluster_signals(alns, start, end, size_lo=18, size_hi=35, max_bins=120, dominant=None):
+    """Figure data for one cluster window [start, end); see the module docstring.
+
+    `dominant` is the cluster's size call (dicer_call); without it the dominant
+    size is the most abundant length inside [size_lo, size_hi].
+    """
     alns = list(alns)
     n = size_hi - size_lo + 1
     plus, minus = [0.0] * n, [0.0] * n
@@ -34,8 +38,10 @@ def cluster_signals(alns, start, end, size_lo=18, size_hi=35, max_bins=120):
 
     # nucleotide composition of the dominant-size reads
     nt = [{"A": 0, "C": 0, "G": 0, "U": 0} for _ in range(_NT_POS)]
-    if by_size:
-        dom = max(by_size, key=lambda s: (by_size[s], -s))
+    in_win = {L: v for L, v in by_size.items() if size_lo <= L <= size_hi}
+    dom = dominant if dominant is not None and size_lo <= dominant <= size_hi else (
+        max(in_win, key=lambda s: (in_win[s], -s)) if in_win else None)
+    if dom is not None:
         tot = [0.0] * _NT_POS
         cnt = [{"A": 0.0, "C": 0.0, "G": 0.0, "U": 0.0} for _ in range(_NT_POS)]
         for a in alns:
@@ -75,17 +81,24 @@ def signals_for(bam_path, clusters, xm_as_nh=None):
     with pysam.AlignmentFile(bam_path, "rb") as fh:
         refs = set(fh.references)
         for c in clusters:
-            alns = []
-            # the TSV parser yields floats; coordinates must be ints here
-            c_start, c_end = int(c.start), int(c.end)
+            if c.start is None or c.end is None:
+                failed += 1
+                first = first or f"{c.name}: no coordinates"
+                out[c.name] = dict(cluster_signals([], 0, 0), failed=True)
+                continue
+            alns, bad = [], False
             if c.chrom in refs:
                 try:
                     alns = list(samio.read_region_handle(
-                        fh, c.chrom, c_start, c_end, xm_as_nh=xm_as_nh))
+                        fh, c.chrom, c.start, c.end, xm_as_nh=xm_as_nh))
                 except Exception as e:
                     failed += 1
+                    bad = True
                     first = first or f"{type(e).__name__}: {e}"
-            out[c.name] = cluster_signals(alns, c_start, c_end)
+            out[c.name] = cluster_signals(alns, c.start, c.end,
+                                          dominant=getattr(c, "dicer_call", None))
+            if bad:
+                out[c.name]["failed"] = True
     if failed:
         utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
                   f"(zero-filled); first error: {first}", "WARN")
