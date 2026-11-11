@@ -6,6 +6,9 @@ thresholds.
 """
 DISPLAY_PRESENT = 0.5
 DISPLAY_WEAK = 0.25
+# Display-only cutoffs for pct_10a (raw fraction of reads with A at position 10).
+DISPLAY_10A_PRESENT = 0.5
+DISPLAY_10A_WEAK = 0.25
 _SIZE_PRESENT = 0.5
 _SIZE_WEAK = 0.3
 _MIN_CLUSTERS = 20
@@ -30,7 +33,7 @@ STRINGS = {
     "check.1u.title": "Starts with U",
     "check.1u.detail": "Evidence score {v}. Many piRNAs and miRNAs start with the base U.",
     "check.10a.title": "A at position 10",
-    "check.10a.detail": "Evidence score {v}. Partner piRNAs in ping-pong amplification often carry an A at position 10.",
+    "check.10a.detail": "Share of reads with A at position 10: {v}. Partner piRNAs in ping-pong amplification often carry an A at position 10.",
     "check.strand.title": "Strand balance",
     "check.strand.detail": "Evidence score {v}. Hairpin and piRNA loci are often one-sided; Dicer products of long duplexes use both strands.",
     "check.pingpong.title": "Ping-pong pairing",
@@ -52,7 +55,7 @@ STRINGS = {
     "missing.phasing": "no regular phasing",
     "summary.empty": "No clusters passed the depth filter (at least {floor} reads).",
     "summary.main": "{n} clusters passed the depth filter (at least {floor} reads); the most common class is {top} ({k}).",
-    "warn.few": "Fewer than 20 clusters passed the depth filter: only {n} (at least {floor} reads); {hidden} were hidden. Lower the minimum depth to see more.",
+    "warn.few": "Fewer than {min} clusters passed the depth filter: only {n} (at least {floor} reads); {hidden} were hidden. Lower the minimum depth to see more.",
     "warn.cap": "Only the top {n} clusters are shown in detail; the rest appear in the table only.",
     "warn.unique": "Only {pct}% of reads map to a single place; many small RNAs here may come from repeats, so classes are less certain.",
 }
@@ -70,7 +73,7 @@ REFERENCES = {
 GLOSSARY = [
     {"term": "small RNA", "text": "A short RNA molecule, roughly 20 to 30 bases long, that helps switch genes or mobile DNA on or off.", "cite": ["axtell2013"]},
     {"term": "cluster", "text": "A stretch of the genome where many small RNA reads pile up. Each cluster is classified as a unit.", "cite": []},
-    {"term": "piRNA", "text": "A small RNA of about 24 to 31 bases, found mostly in animal germlines, that silences mobile DNA.", "cite": ["brennecke2007"]},
+    {"term": "piRNA", "text": "A small RNA, found mostly in animal germlines, that silences mobile DNA and is produced from discrete genomic loci.", "cite": ["brennecke2007"]},
     {"term": "siRNA", "text": "A small RNA of one tight size cut by the Dicer enzyme from double-stranded RNA.", "cite": ["bernstein2001", "hamilton1999"]},
     {"term": "miRNA", "text": "A small RNA of about 21 to 22 bases cut from a hairpin-shaped precursor, which tunes gene activity.", "cite": ["bartel2004"]},
     {"term": "phasiRNA", "text": "Plant small RNAs released in regular steps from one transcript, usually after a microRNA cuts it.", "cite": ["allen2005", "axtell2013"]},
@@ -97,7 +100,7 @@ def evidence_status(c):
     return {
         "size": _level(c.size_purity, _SIZE_PRESENT, _SIZE_WEAK),
         "1u": _level(e.get("1u")),
-        "10a": _level(e.get("5a")),
+        "10a": _level(c.pct_10a, DISPLAY_10A_PRESENT, DISPLAY_10A_WEAK),
         "pingpong": _level(e.get("pingpong")),
         "phasing": _level(e.get("phase")),
     }
@@ -116,7 +119,7 @@ def explain(c):
     rows = [
         ("size", st["size"], c.size_purity),
         ("1u", st["1u"], e.get("1u")),
-        ("10a", st["10a"], e.get("5a")),
+        ("10a", st["10a"], c.pct_10a),
         ("strand", _level(strand_v), strand_v),
         ("pingpong", st["pingpong"], e.get("pingpong")),
         ("phasing", st["phasing"], e.get("phase")),
@@ -164,7 +167,7 @@ def warnings(sel, summary):
     S = STRINGS
     out = []
     if len(sel.shown) < _MIN_CLUSTERS:
-        out.append(S["warn.few"].format(n=len(sel.shown), floor=f"{sel.floor:g}", hidden=sel.n_hidden))
+        out.append(S["warn.few"].format(min=_MIN_CLUSTERS, n=len(sel.shown), floor=f"{sel.floor:g}", hidden=sel.n_hidden))
     if sel.capped:
         out.append(S["warn.cap"].format(n=len(sel.detail)))
     u = (summary or {}).get("unique_share")

@@ -33,7 +33,7 @@ def test_status_thresholds():
 
 
 def test_status_unavailable_on_old_tsv():
-    st = rt.evidence_status(mk())
+    st = rt.evidence_status(mk(pct_10a=None))
     assert st["1u"] == st["10a"] == st["pingpong"] == st["phasing"] == "unavailable"
 
 
@@ -45,7 +45,7 @@ def test_explain_piRNA_names_pingpong():
 
 
 def test_explain_ambiguous_lists_missing():
-    x = rt.explain(mk(cls="ambiguous", e={"1u": 0.0, "pingpong": 0.0, "phase": 0.0, "5a": 0.0}))
+    x = rt.explain(mk(cls="ambiguous", e={"1u": 0.0, "pingpong": 0.0, "phase": 0.0}, pct_10a=0.0))
     assert x["missing"]
 
 
@@ -68,7 +68,7 @@ def test_summary_sentence_names_top_class():
 
 def test_warning_few_clusters():
     w = rt.warnings(mksel(5), {"unique_share": 0.9})
-    assert any("20" in x for x in w)
+    assert any(str(rt._MIN_CLUSTERS) in x for x in w)
 
 
 def test_warning_cap():
@@ -89,3 +89,23 @@ def test_every_cited_key_has_reference():
 def test_strings_have_no_markup():
     assert all("<" not in v for v in rt.STRINGS.values())
     assert all("<" not in g["text"] for g in rt.GLOSSARY)
+
+
+def test_10a_status_from_pct_10a():
+    f = lambda v, **k: rt.evidence_status(mk(pct_10a=v, **k))["10a"]
+    assert f(0.5) == "present"
+    assert f(0.25) == "weak"
+    assert f(0.1) == "absent"
+    assert f(None) == "unavailable"
+    assert f(0.1, e={"5a": 0.9}) == "absent"
+
+
+def test_summary_sentence_empty_and_zero():
+    assert rt.summary_sentence({}, 5.0)
+    assert rt.summary_sentence({"piRNA": 0}, 5.0) == rt.summary_sentence({}, 5.0)
+
+
+def test_warnings_empty_selection():
+    sel = Selection(shown=[], detail=[], n_total=3, n_hidden=3, floor=1000.0, capped=False)
+    w = rt.warnings(sel, None)
+    assert len(w) == 1 and "0" in w[0]
