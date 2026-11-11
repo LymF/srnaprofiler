@@ -92,3 +92,19 @@ def test_missing_inputs_clear_error(tmp_path, capsys):
     a = args_for(tmp_path, clusters=str(tmp_path / "nope.clusters.tsv"))
     with pytest.raises(SystemExit):
         report_cli.run_report(a)
+
+
+def test_missing_bam_index_is_a_clear_error(tmp_path):
+    a = args_for(tmp_path)
+    os.remove(a.bam + ".bai")
+    with pytest.raises(SystemExit) as e:
+        report_cli.run_report(a)
+    assert "index" in str(e.value)
+
+
+@pytest.mark.parametrize("kw", [{"max_detail": -1}, {"min_reads": float("nan")},
+                                {"min_reads": float("inf")}, {"min_reads": -1.0}])
+def test_bad_numbers_are_clear_errors(tmp_path, kw):
+    with pytest.raises(SystemExit) as e:
+        report_cli.run_report(args_for(tmp_path, **kw))
+    assert "report:" in str(e.value)

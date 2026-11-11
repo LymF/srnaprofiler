@@ -1,6 +1,9 @@
 """`report` subcommand: build the self-contained HTML report from classify output."""
+import math
 import os
 import sys
+
+import pysam
 
 import report_data
 import report_html
@@ -26,9 +29,30 @@ def _need(path, what):
         sys.exit(f"report: {what} not found: {path}")
 
 
+def _fail(msg):
+    log(msg, "ERROR")
+    sys.exit(f"report: {msg}")
+
+
+def _need_index(bam):
+    """Every figure fetches a region: without an index each fetch would fail."""
+    try:
+        with pysam.AlignmentFile(bam, "rb") as fh:
+            ok = fh.check_index()
+    except (ValueError, OSError) as e:
+        _fail(f"BAM index not usable for {bam} ({e}); create it with `samtools index`")
+    if not ok:
+        _fail(f"BAM index not found for {bam}; create it with `samtools index`")
+
+
 def run_report(args):
+    if args.max_detail < 0:
+        _fail(f"--max-detail must be 0 or more (got {args.max_detail})")
+    if not math.isfinite(args.min_reads) or args.min_reads < 0:
+        _fail(f"--min-reads must be a finite number, 0 or more (got {args.min_reads})")
     _need(args.clusters, "clusters TSV")
     _need(args.bam, "BAM")
+    _need_index(args.bam)
     frags = _fragments_path(args)
     if frags:
         _need(frags, "fragments TSV")
