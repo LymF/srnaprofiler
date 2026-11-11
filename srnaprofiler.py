@@ -469,6 +469,24 @@ themselves are defined there. Every module takes --help.
                          "<model>.schema.json must sit beside it")
     cl.set_defaults(func=run_classify)
 
+    from report_cli import run_report
+    rp = subparsers.add_parser("report",
+        help="Self-contained HTML report from a classify .clusters.tsv + BAM")
+    rp.add_argument("--clusters", required=True,
+                    help="classify .clusters.tsv (e.g. run.clusters.tsv)")
+    rp.add_argument("--bam", required=True,
+                    help="Sorted+indexed BAM used by classify")
+    rp.add_argument("-o", "--outdir", required=True)
+    rp.add_argument("-p", "--prefix", default="report")
+    rp.add_argument("--min-reads", dest="min_reads", type=float, default=300,
+                    help="Hide clusters below this read count (default: %(default)s)")
+    rp.add_argument("--max-detail", dest="max_detail", type=int, default=3000,
+                    help="Clusters that get figures and detail (default: %(default)s)")
+    rp.add_argument("--fragments", default=None,
+                    help="classify .fragments.tsv (default: the one beside --clusters)")
+    rp.add_argument("--title", default=None, help="Report title")
+    rp.set_defaults(func=run_report)
+
     from classplots import run_classplots
     cp = subparsers.add_parser("classplots",
         help="Per-class plots from a classify .clusters.tsv + BAM",

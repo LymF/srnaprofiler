@@ -76,14 +76,16 @@ def signals_for(bam_path, clusters, xm_as_nh=None):
         refs = set(fh.references)
         for c in clusters:
             alns = []
+            # the TSV parser yields floats; coordinates must be ints here
+            c_start, c_end = int(c.start), int(c.end)
             if c.chrom in refs:
                 try:
                     alns = list(samio.read_region_handle(
-                        fh, c.chrom, c.start, c.end, xm_as_nh=xm_as_nh))
+                        fh, c.chrom, c_start, c_end, xm_as_nh=xm_as_nh))
                 except Exception as e:
                     failed += 1
                     first = first or f"{type(e).__name__}: {e}"
-            out[c.name] = cluster_signals(alns, c.start, c.end)
+            out[c.name] = cluster_signals(alns, c_start, c_end)
     if failed:
         utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
                   f"(zero-filled); first error: {first}", "WARN")
