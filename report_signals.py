@@ -5,6 +5,7 @@ import pysam
 
 import class_signals
 import samio
+import utils
 
 _NT_POS = 26
 _PP_HI = 30
@@ -70,12 +71,20 @@ def signals_for(bam_path, clusters, xm_as_nh=None):
     if xm_as_nh is None:
         xm_as_nh = samio.prefers_xm_as_nh(bam_path)
     out = {}
+    failed, first = 0, None
     with pysam.AlignmentFile(bam_path, "rb") as fh:
+        refs = set(fh.references)
         for c in clusters:
-            try:
-                alns = list(samio.read_region_handle(fh, c.chrom, c.start, c.end,
-                                                     xm_as_nh=xm_as_nh))
-            except Exception:
-                alns = []
+            alns = []
+            if c.chrom in refs:
+                try:
+                    alns = list(samio.read_region_handle(
+                        fh, c.chrom, c.start, c.end, xm_as_nh=xm_as_nh))
+                except Exception as e:
+                    failed += 1
+                    first = first or f"{type(e).__name__}: {e}"
             out[c.name] = cluster_signals(alns, c.start, c.end)
+    if failed:
+        utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
+                  f"(zero-filled); first error: {first}", "WARN")
     return out
