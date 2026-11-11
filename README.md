@@ -158,14 +158,19 @@ It writes `out/run.report.html`. It only reads the `classify` outputs and the BA
 | flag | default | meaning |
 |---|---|---|
 | `--min-reads` | 300 | depth floor in raw reads (the `reads` column, 1/NH-weighted): clusters below it are left out of the report and counted as hidden |
-| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (highest confidence first); the rest stay in the table |
+| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (resolved clusters by confidence first, ambiguous ones after them); the rest stay in the table |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
 | `--title` | built-in | page title |
 
+The BAM must be indexed (`samtools index`); without the index `report` stops with an error.
 The floor only filters the view. It does not change how loci are called or classified. The evidence
-dots (size, 1U, 10A, ping-pong, phasing) use display-only cutoffs, stated in the page footer; they
-are not the classifier's thresholds. Run `classify` with a version that writes the `e_*` columns,
-or the dots show "not available".
+dots use display-only cutoffs, stated in the page footer; they are not the classifier's thresholds.
+They are size, 1U, 10A, ping-pong and phasing for an animal run, and size, 1U, 5'A, strand balance
+and phasing for a plant run. A run counts as plant when the table has a plant-only class
+(`phasiRNA`, `phasiRNA24`, `hcsiRNA`) as a `gate_*` column or a call; which checks define each
+class is read from the shipped `rules.yaml` / `rules.plant.yaml`, so a custom `--config` may
+differ. Run `classify` with a version that writes the `e_*` columns, or the dots show "not
+available".
 
 ---
 
