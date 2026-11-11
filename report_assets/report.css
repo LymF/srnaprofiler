@@ -2218,6 +2218,8 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-ev .ico.present { background: var(--rpt-success); }
 .rpt-srna-ev .ico.weak { background: var(--rpt-warning); }
 .rpt-srna-ev .ico.absent { background: var(--rpt-danger); }
+.rpt-srna-ev .ico.context { background: transparent; color: var(--rpt-text-3);
+  border: 1px solid var(--rpt-border-dark); }
 .rpt-srna-list { padding-left: 1.2rem; }
 .rpt-srna-list li { margin-bottom: var(--rpt-space-2); }
 .rpt-srna-term { color: var(--rpt-accent-dark); font-size: var(--rpt-text-base); margin-bottom: var(--rpt-space-1); }

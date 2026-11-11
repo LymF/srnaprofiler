@@ -120,9 +120,10 @@ def test_app_text_keys_exist_in_strings():
     missing = [k for k in keys if not k.endswith(".") and k not in rt.STRINGS]
     assert not missing
     # dynamic keys: check.<key>.title and status.<level>
-    for k in ("size", "1u", "10a", "strand", "pingpong", "phasing", "multimap"):
+    for k in ("size", "1u", "5a", "10a", "strand", "pingpong", "phasing", "multimap"):
         assert f"check.{k}.title" in rt.STRINGS
-    for lv in ("present", "weak", "absent", "unavailable"):
+    assert "check.context" in rt.STRINGS
+    for lv in ("present", "weak", "absent", "unavailable", "low", "moderate", "high"):
         assert f"status.{lv}" in rt.STRINGS
     for k in re.findall(r'"(ui\.[\w.]+)"', _CODE):
         assert k in rt.STRINGS
@@ -146,3 +147,62 @@ def test_footer_and_title_come_from_strings(tmp_path):
     _, html, _ = build(tmp_path, [mk()], title="")
     assert "display-only" in rt.STRINGS["ui.footer"]
     assert rt.STRINGS["ui.title.default"] in html
+
+
+# ---- final review fixes ----
+
+def test_ambiguous_row_has_no_confidence_and_comes_last(tmp_path):
+    amb = mk("amb", reads=900, cls="ambiguous", confidence=0.99,
+             evidence="nearest=piRNA; size=0.6", dicer_call=23)
+    _, html, _ = build(tmp_path, [amb, mk("ok", confidence=0.6)])
+    d = data_of(html)
+    assert [r["n"] for r in d["rows"]] == ["ok", "amb"]
+    r = d["rows"][1]
+    assert r["f"] is None and r["nc"] == "piRNA" and "23" in r["u"]
+    assert "nc" not in d["rows"][0] and "u" not in d["rows"][0]
+
+
+def test_checks_carry_coloured_flag_and_levels(tmp_path):
+    _, html, _ = build(tmp_path, [mk(multimap_frac=0.8)])
+    ch = {c[0]: c for c in data_of(html)["details"]["0"]["checks"]}
+    assert ch["pingpong"][3] == 1 and ch["phasing"][3] == 0
+    assert ch["multimap"][1] == report_html._LEVEL["high"] and ch["multimap"][3] == 1
+
+
+def test_meta_is_kingdom_aware(tmp_path):
+    _, html, _ = build(tmp_path, [mk()])
+    m = data_of(html)["meta"]
+    assert m["kingdom"] == "animal" and m["conf_min"] == 0.5 and m["conf_k"] == 2
+    assert "piRNA" in m["kt"]["sizes"] and m["dot_names"][2] == rt.STRINGS["ui.dot.10a"]
+    p = mk(cls="hcsiRNA", gates={"hcsiRNA": True, "siRNA": False})
+    _, html, _ = build(tmp_path, [p])
+    d = data_of(html)
+    assert d["meta"]["kingdom"] == "plant" and d["meta"]["conf_min"] == 0.25
+    assert "piRNA" not in d["meta"]["kt"]["sizes"].replace("phasiRNA", "")
+    assert [c[0] for c in d["details"]["0"]["checks"]][2] == "5a"
+
+
+def test_no_reads_and_failed_markers(tmp_path):
+    sel = select([mk("a"), mk("b"), mk("c")], 0)
+    full = zero_sig()
+    full["n_alns"] = 3
+    sig = {"a": zero_sig(), "b": dict(zero_sig(), failed=True), "c": full}
+    out = tmp_path / "r.html"
+    report_html.build_report(sel, SUMMARY, sig, "t", str(out))
+    det = data_of(out.read_text())["details"]
+    by = {sel.shown[int(i)].name: v["sig"] for i, v in det.items()}
+    assert by["a"] == {"none": 1} and by["b"] == {"err": 1}
+    assert "cv" in by["c"]
+
+
+def test_footer_lists_multimap_cutoffs(tmp_path):
+    _, html, _ = build(tmp_path, [mk()])
+    assert "Multimapping: moderate at 0.3" in html and "high at 0.6" in html
+
+
+def test_meta_floor_is_json_safe(tmp_path):
+    sel = select([mk()], 0)
+    sel.floor = float("nan")
+    out = tmp_path / "r.html"
+    report_html.build_report(sel, SUMMARY, {}, "t", str(out))
+    assert data_of(out.read_text())["meta"]["floor"] is None

@@ -9,9 +9,13 @@
   var PAGE = 50;
   var CLASS_KEY = {piRNA: "pi", siRNA: "si", miRNA: "mi", phasiRNA: "ph", phasiRNA24: "ph",
     hcsiRNA: "hc", ambiguous: "am", other: "ot"};
-  var LEVEL = ["absent", "weak", "present", "unavailable"];
-  var STATUS_ICON = {absent: "-", weak: "!", present: "+", unavailable: "?"};
-  var DOT_KEYS = ["ui.dot.size", "ui.dot.1u", "ui.dot.10a", "ui.dot.pingpong", "ui.dot.phasing"];
+  var LEVEL = ["absent", "weak", "present", "unavailable", "low", "moderate", "high"];
+  var STATUS_ICON = {absent: "-", weak: "!", present: "+", unavailable: "?",
+    low: "+", moderate: "!", high: "-"};
+  // colour of a level: multimapping reads low as good, high as bad
+  var LEVEL_CSS = {absent: "absent", weak: "weak", present: "present", unavailable: "unavailable",
+    low: "present", moderate: "weak", high: "absent"};
+  var KT = META.kt || {};
 
   // ---- DOM helpers: every string goes in through text nodes or setAttribute ----
   function h(tag, cls, kids) {
@@ -57,7 +61,17 @@
   function pct(x) { return x === null || x === undefined ? T("ui.na") : Math.round(x * 100) + "%"; }
   function ckey(c) { return CLASS_KEY[c] || "ot"; }
   function tag(c) { return h("span", "rpt-srna-tag k-" + ckey(c), c || T("ui.unclassified")); }
-  function where(r) { return r.h + ":" + num(r.s) + "-" + num(r.e); }
+  // 1-based coordinates (the TSV start is 0-based)
+  function where(r) {
+    return T("ui.where", {chrom: r.h, start: r.s === null ? T("ui.na") : num(r.s + 1),
+      end: num(r.e)});
+  }
+  // default names are "chrom:start-end" (0-based): do not repeat them
+  function autoName(r) { return r.n === r.h + ":" + r.s + "-" + r.e; }
+  function confText(r) {
+    if (r.c === "ambiguous") { return r.nc ? T("ui.conf.amb", {cls: r.nc}) : T("ui.conf.amb.none"); }
+    return r.f === null ? T("ui.na") : r.f.toFixed(2);
+  }
   function help(text) { return h("p", "rpt-srna-help", [h("b", "", T("ui.howto")), text]); }
   function card(title, body) {
     return h("div", "rpt-card", [
@@ -229,7 +243,7 @@
       h("h3", "rpt-srna-h", T("ui.ov.kinds")),
       h("div", "rpt-srna-grid", [
         card(T("ui.card.classes"), [donut(D.counts), help(T("ui.help.classes"))]),
-        card(T("ui.card.sizes"), [sizeHistogram(), help(T("ui.help.sizes"))])]),
+        card(T("ui.card.sizes"), [sizeHistogram(), help(KT.sizes)])]),
       h("h3", "rpt-srna-h", T("ui.ov.library")),
       h("div", "rpt-stats-grid", [
         stat(T("ui.lib.size"), num(lib.library_reads), T("ui.lib.size.sub")),
@@ -247,7 +261,7 @@
     for (var i = 0; i < 5; i++) {
       var lv = LEVEL[parseInt(v.charAt(i), 10)] || "unavailable";
       var d = h("span", "dot " + lv);
-      d.setAttribute("title", T(DOT_KEYS[i]) + ": " + T("status." + lv));
+      d.setAttribute("title", (META.dot_names || [])[i] + ": " + T("status." + lv));
       box.appendChild(d);
     }
     return box;
@@ -261,7 +275,12 @@
       out.push(i);
     });
     var cmp = {
-      conf: function (a, b) { return (rows[b].f === null ? -1 : rows[b].f) - (rows[a].f === null ? -1 : rows[a].f) || (rows[b].r || 0) - (rows[a].r || 0); },
+      // ambiguous rows after resolved ones, then confidence, then reads
+      conf: function (a, b) {
+        return (rows[a].c === "ambiguous") - (rows[b].c === "ambiguous") ||
+          (rows[b].f === null ? -1 : rows[b].f) - (rows[a].f === null ? -1 : rows[a].f) ||
+          (rows[b].r || 0) - (rows[a].r || 0);
+      },
       reads: function (a, b) { return (rows[b].r || 0) - (rows[a].r || 0); },
       name: function (a, b) { return rows[a].n < rows[b].n ? -1 : rows[a].n > rows[b].n ? 1 : 0; }
     }[view.sort];
@@ -328,8 +347,8 @@
         tr.addEventListener("click", function () { openCluster(i); });
         tr.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { openCluster(i); } });
       }
-      if (r.m && r.m.length) {
-        last = T(r.d ? "ui.row.missing" : "ui.row.missing.nodetail", {list: r.m.join("; ")});
+      if (r.u) {
+        last = T(r.d ? "ui.row.unresolved" : "ui.row.unresolved.nodetail", {reason: r.u});
       } else {
         last = r.d ? "" : T("ui.row.nodetail");
       }
@@ -337,9 +356,9 @@
       var fill = h("i");
       fill.setAttribute("style", "width:" + Math.round(conf * 100) + "%");
       add(tr, [
-        h("td", "", [h("b", "", r.n), h("div", "rpt-srna-sub", where(r))]),
+        h("td", "", [h("b", "", r.n), autoName(r) ? null : h("div", "rpt-srna-sub", where(r))]),
         h("td", "", tag(r.c)),
-        h("td", "", [h("span", "rpt-srna-bar", fill), " " + (r.f === null ? T("ui.na") : r.f.toFixed(2))]),
+        h("td", "", [h("span", "rpt-srna-bar", fill), " " + confText(r)]),
         h("td", "", dots(r.v)),
         h("td", "num", num(r.r)),
         h("td", "rpt-srna-sub", last)]);
@@ -364,7 +383,7 @@
     box.appendChild(pg);
 
     box.appendChild(h("p", "rpt-srna-note", [
-      T("ui.dots.legend") + " ",
+      META.dot_legend + " ",
       h("span", "rpt-srna-dots", h("span", "dot present")), " " + T("status.present") + " ",
       h("span", "rpt-srna-dots", h("span", "dot weak")), " " + T("status.weak") + " ",
       h("span", "rpt-srna-dots", h("span", "dot absent")), " " + T("status.absent") + " ",
@@ -372,13 +391,15 @@
   }
 
   // ---- cluster page ----
-  function lineChart(sig) {
+  // bars are summed per-base depth per bin: divide by the bin for mean depth per base
+  function lineChart(sig, end) {
     var W = 330, H = 170, L = 30, mid = 85, i;
     var svg = sv("svg", {viewBox: "0 0 " + W + " " + H, width: "100%", role: "img"});
     var plus = sig.cv[2], minus = sig.cv[3], n = Math.max(plus.length, minus.length);
     var mx = 0;
     for (i = 0; i < n; i++) { mx = Math.max(mx, plus[i] || 0, minus[i] || 0); }
     if (!(mx > 0)) { mx = 1; }
+    var perBase = mx / (sig.cv[1] || 1);
     var bw = n ? (W - L - 4) / n : 1;
     svg.appendChild(sv("line", {x1: L, x2: W - 4, y1: mid, y2: mid, "class": "ax"}));
     for (i = 0; i < n; i++) {
@@ -386,15 +407,18 @@
       if (p > 0) { svg.appendChild(sv("rect", {x: L + i * bw, y: mid - p, width: Math.max(1, bw), height: p, "class": "f-plus"})); }
       if (m > 0) { svg.appendChild(sv("rect", {x: L + i * bw, y: mid, width: Math.max(1, bw), height: m, "class": "f-minus"})); }
     }
-    svg.appendChild(sv("text", {x: L - 3, y: 18, "text-anchor": "end"}, fmtShort(mx)));
-    svg.appendChild(sv("text", {x: L - 3, y: H - 40, "text-anchor": "end"}, fmtShort(mx)));
-    svg.appendChild(sv("text", {x: L, y: H - 8}, num(sig.cv[0])));
-    svg.appendChild(sv("text", {x: W - 4, y: H - 8, "text-anchor": "end"}, num(sig.cv[0] + n * sig.cv[1])));
+    svg.appendChild(sv("text", {x: L - 3, y: 18, "text-anchor": "end"}, fmtShort(perBase)));
+    svg.appendChild(sv("text", {x: L - 3, y: H - 40, "text-anchor": "end"}, fmtShort(perBase)));
+    svg.appendChild(sv("text", {x: L, y: H - 8}, num(sig.cv[0] + 1)));
+    svg.appendChild(sv("text", {x: W - 4, y: H - 8, "text-anchor": "end"},
+      num(typeof end === "number" ? end : sig.cv[0] + n * sig.cv[1])));
     legend(svg, [{name: T("ui.strand.plus"), cls: "plus"}, {name: T("ui.strand.minus"), cls: "minus"}]);
     return svg;
   }
-  function figures(sig) {
+  function figures(sig, r) {
     if (!sig) { return emptyMsg(T("ui.fig.na")); }
+    if (sig.err) { return emptyMsg(T("ui.fig.err")); }
+    if (sig.none) { return emptyMsg(T("ui.fig.noreads")); }
     var lo = sig.sz[0], cats = [], i;
     for (i = 0; i < sig.sz[1].length; i++) { cats.push(String(lo + i)); }
     var ntCats = [], A = [], C = [], G = [], U = [];
@@ -411,10 +435,11 @@
       card(T("ui.fig.sizes"), [bars(cats, [{name: T("ui.strand.plus"), cls: "plus", vals: sig.sz[1]},
         {name: T("ui.strand.minus"), cls: "minus", vals: sig.sz[2]}], {legend: true}),
         help(T("ui.fig.sizes.help"))]),
-      card(T("ui.fig.nt"), [ntSvg, help(T("ui.fig.nt.help"))]),
-      card(T("ui.fig.cov"), [lineChart(sig), help(T("ui.fig.cov.help"))]),
-      card(T("ui.fig.pp"), [bars(ppCats, [{name: T("ui.pairs"), cls: "plus", vals: sig.pp}], {hi: 9}),
-        help(T("ui.fig.pp.help", {n: sig.pp.length}))])]);
+      card(T("ui.fig.nt"), [ntSvg, help(KT.nt)]),
+      card(T("ui.fig.cov"), [lineChart(sig, r.e), help(T("ui.fig.cov.help"))]),
+      card(KT.pp_title, [bars(ppCats, [{name: T("ui.pairs"), cls: "plus", vals: sig.pp}],
+        META.kingdom === "plant" ? {} : {hi: 9}),
+        help(fmt(KT.pp_help, {n: sig.pp.length}))])]);
   }
   function openCluster(i) {
     var r = rows[i], d = D.details[String(i)];
@@ -431,26 +456,32 @@
     var conf = r.f === null ? 0 : Math.max(0, Math.min(1, r.f));
     var fill = h("i");
     fill.setAttribute("style", "width:" + Math.round(conf * 100) + "%");
+    var confNote = r.c === "ambiguous" ? T("ui.detail.conf.amb") : META.mode === "ml" ?
+      T("ui.detail.conf.ml") : T("ui.detail.conf", {min: META.conf_min, k: META.conf_k});
     add(box, [
       heading(r.n, T("ui.detail.sub", {where: where(r), reads: num(r.r)}) +
         (typeof r.z === "number" ? T("ui.detail.size", {z: r.z}) : "")),
       h("div", "rpt-card rpt-srna-verdict", [
         tag(r.c),
-        h("span", "rpt-srna-big", r.f === null ? T("ui.na") : r.f.toFixed(2)),
-        h("span", "rpt-srna-bar wide", fill),
-        h("span", "rpt-srna-note", T("ui.detail.conf"))]),
+        h("span", "rpt-srna-big", confText(r)),
+        r.c === "ambiguous" ? null : h("span", "rpt-srna-bar wide", fill),
+        h("span", "rpt-srna-note", confNote)]),
       h("div", "rpt-srna-say", d.verdict),
       h("h3", "rpt-srna-h", T("ui.detail.why"))]);
     var list = h("div", "rpt-card rpt-card__body");
+    if (d.note) { list.appendChild(h("p", "rpt-srna-note", d.note)); }
     d.checks.forEach(function (c) {
       var lv = LEVEL[parseInt(c[1], 10)] || "unavailable";
+      // checks that do not define the class are grey context, not red/green
+      var css = c[3] ? LEVEL_CSS[lv] : "context";
+      var line = T("ui.check.line", {title: T("check." + c[0] + ".title"), status: T("status." + lv)});
       list.appendChild(h("div", "rpt-srna-ev", [
-        h("div", "ico " + lv, STATUS_ICON[lv]),
-        h("div", "", [h("b", "", T("ui.check.line", {title: T("check." + c[0] + ".title"), status: T("status." + lv)})),
+        h("div", "ico " + css, STATUS_ICON[lv]),
+        h("div", "", [h("b", "", c[3] ? line : line + " (" + T("check.context") + ")"),
           h("div", "rpt-srna-sub", c[2])])]));
     });
     box.appendChild(list);
-    add(box, [h("h3", "rpt-srna-h", T("ui.detail.figs")), figures(d.sig),
+    add(box, [h("h3", "rpt-srna-h", T("ui.detail.figs")), figures(d.sig, r),
       h("h3", "rpt-srna-h", T("ui.detail.whynot"))]);
     var wt = h("tbody");
     d.why.forEach(function (w) {
