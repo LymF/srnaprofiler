@@ -456,7 +456,8 @@
     var conf = r.f === null ? 0 : Math.max(0, Math.min(1, r.f));
     var fill = h("i");
     fill.setAttribute("style", "width:" + Math.round(conf * 100) + "%");
-    var confNote = r.c === "ambiguous" ? T("ui.detail.conf.amb") : META.mode === "ml" ?
+    var confNote = r.c === "ambiguous" ? T("ui.detail.conf.amb") :
+      r.c === "miRNA" ? T("ui.detail.conf.mirna") : META.mode === "ml" ?
       T("ui.detail.conf.ml") : T("ui.detail.conf", {min: META.conf_min, k: META.conf_k});
     add(box, [
       heading(r.n, T("ui.detail.sub", {where: where(r), reads: num(r.r)}) +

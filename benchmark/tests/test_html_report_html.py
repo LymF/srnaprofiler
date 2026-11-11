@@ -206,3 +206,9 @@ def test_meta_floor_is_json_safe(tmp_path):
     out = tmp_path / "r.html"
     report_html.build_report(sel, SUMMARY, {}, "t", str(out))
     assert data_of(out.read_text())["meta"]["floor"] is None
+
+
+def test_mirna_confidence_note():
+    # classify sets confidence 1.0 for miRNA (miRDeep2), not a softmax over classes
+    assert 'T("ui.detail.conf.mirna")' in _CODE
+    assert "miRDeep2" in rt.STRINGS["ui.detail.conf.mirna"]

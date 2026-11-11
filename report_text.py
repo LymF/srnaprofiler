@@ -174,6 +174,7 @@ STRINGS = {
     "ui.detail.size": " | dominant size {z} nt",
     "ui.detail.conf": "confidence: how strongly the evidence favours this class over the others ({k} classes compared). The lowest possible value is {min}, 1 divided by {k}, which means no preference; it is not a probability of being right.",
     "ui.detail.conf.ml": "confidence: the trained model's score for its top class, from 0 to 1; it is not a probability of being right.",
+    "ui.detail.conf.mirna": "confidence: set to 1 for every miRNA, because the class comes from the hairpin search (miRDeep2), not from comparing classes.",
     "ui.detail.conf.amb": "No confidence is shown for an unresolved region: the number the tool stores belongs to the nearest class, which was not assigned.",
     "ui.detail.why": "Why this class?",
     "ui.check.line": "{title}: {status}",
