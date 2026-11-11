@@ -93,3 +93,54 @@ def test_library_summary_with_fragments(tmp_path):
     p.write_text("chrom\tstart\tend\treads\tread_span\treason\nc\t0\t9\t5.5\t9\tx\nc\t0\t9\t4.5\t9\tx\n")
     s = rd.library_summary([], str(p))
     assert s["fragments"] == 2 and s["fragment_reads"] == 10.0 and s["library_reads"] is None
+
+
+# ---- final review fixes ----
+
+def test_start_end_are_ints_and_none_safe(tmp_path):
+    cl = rd.load_clusters(_write(tmp_path / "a.tsv", [_row(start="100.0", end="250.0"),
+                                                      _row(name="c2", start="NA", end="")]))
+    assert cl[0].start == 100 and isinstance(cl[0].start, int)
+    assert cl[0].end == 250 and isinstance(cl[0].end, int)
+    assert cl[1].start is None and cl[1].end is None
+
+
+def test_detect_kingdom_from_gates_or_classes():
+    a = _cl("a", 500, .9)
+    assert rd.detect_kingdom([a]) == "animal"
+    b = _cl("b", 500, .9)
+    b.gates = {"hcsiRNA": False, "siRNA": True}
+    assert rd.detect_kingdom([a, b]) == "plant"
+    c = _cl("c", 500, .9)
+    c.cls = "phasiRNA"
+    assert rd.detect_kingdom([c]) == "plant"
+    assert rd.select([a, b], 0).kingdom == "plant"
+    assert rd.select([a], 0).kingdom == "animal"
+
+
+def test_detect_mode():
+    a = _cl("a", 500, .9)
+    assert rd.detect_mode([a]) == "rules"
+    a.evidence = "ml:hgb"
+    assert rd.detect_mode([a]) == "ml"
+
+
+def test_select_puts_ambiguous_after_resolved():
+    amb = _cl("amb", 900, .99)
+    amb.cls = "ambiguous"
+    ok = _cl("ok", 400, .6)
+    s = rd.select([amb, ok], 0, max_detail=1)
+    assert [c.name for c in s.shown] == ["ok", "amb"]
+    assert [c.name for c in s.detail] == ["ok"]
+
+
+def test_class_specs_follow_the_rules_files():
+    a = rd.class_specs("animal")
+    assert a["piRNA"]["defining"] == {"1u", "pingpong", "size"}
+    assert a["siRNA"]["defining"] == {"strand", "size"}
+    assert a["piRNA"]["size"] == (24, 31) and a["piRNA"]["min_length"] == 1000
+    p = rd.class_specs("plant")
+    assert p["hcsiRNA"]["defining"] == {"5a", "size"}
+    assert p["phasiRNA"]["defining"] == {"phasing", "size"}
+    assert p["phasiRNA24"]["phase_max_p"] == 0.01
+    assert "piRNA" not in p

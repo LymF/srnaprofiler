@@ -1,9 +1,19 @@
 """Data layer for the HTML report: read clusters.tsv and apply the depth floor."""
 import csv
+import functools
+import os
 import statistics
 from dataclasses import dataclass, field
 
+import yaml
+
 _E_KEYS = ("1u", "5a", "fractop_bid", "pingpong", "phase")
+# Classes only the plant config has; their gate_* columns or calls mark a plant run.
+PLANT_CLASSES = ("phasiRNA", "phasiRNA24", "hcsiRNA")
+_RULES = {"animal": "rules.yaml", "plant": "rules.plant.yaml"}
+# defining_evidence names in the rules files -> report check keys
+_EV_CHECK = {"1u": "1u", "5a": "5a", "fractop_bid": "strand", "pingpong": "pingpong",
+             "phase": "phasing", "size": "size"}
 
 
 def _num(x):
@@ -15,6 +25,11 @@ def _num(x):
     return None if v != v else v
 
 
+def _int(x):
+    v = _num(x)
+    return None if v is None else int(v)
+
+
 def _str(x):
     return "" if x is None or x in ("NA", "N") else x
 
@@ -23,8 +38,8 @@ def _str(x):
 class Cluster:
     name: str
     chrom: str
-    start: float
-    end: float
+    start: int
+    end: int
     reads: float
     reads_rpm: float
     cls: str
@@ -44,13 +59,14 @@ class Cluster:
     e: dict = field(default_factory=dict)
     gates: dict = field(default_factory=dict)
     has_evidence: bool = False
+    read_span: int = None
 
 
 def _row_to_cluster(row, has_evidence):
     n = _num(row.get("dicer_call"))
     return Cluster(
         name=row.get("name", ""), chrom=row.get("chrom", ""),
-        start=_num(row.get("start")), end=_num(row.get("end")),
+        start=_int(row.get("start")), end=_int(row.get("end")),
         reads=_num(row.get("reads")), reads_rpm=_num(row.get("reads_rpm")),
         cls=_str(row.get("cls")), confidence=_num(row.get("confidence")),
         dicer_call=None if n is None else int(n),
@@ -63,7 +79,7 @@ def _row_to_cluster(row, has_evidence):
         e={k: _num(row.get(f"e_{k}")) for k in _E_KEYS},
         gates={k[5:]: v == "1" for k, v in row.items()
                if k.startswith("gate_") and _num(v) is not None},
-        has_evidence=has_evidence,
+        has_evidence=has_evidence, read_span=_int(row.get("read_span")),
     )
 
 
@@ -74,6 +90,51 @@ def load_clusters(path):
         return [_row_to_cluster(r, has_ev) for r in rd]
 
 
+def detect_kingdom(clusters):
+    """"plant" when any plant-only class shows up as a gate_* column or a call.
+
+    The TSV does not record which rules file classify used; the plant classes are
+    the only reliable trace of it. An old TSV with neither reads as "animal".
+    """
+    for c in clusters:
+        if c.cls in PLANT_CLASSES or any(k in PLANT_CLASSES for k in (c.gates or {})):
+            return "plant"
+    return "animal"
+
+
+def detect_mode(clusters):
+    """"ml" when classify ran with --classifier ml (evidence column "ml:<algorithm>")."""
+    return "ml" if any((c.evidence or "").startswith("ml:") for c in clusters) else "rules"
+
+
+@functools.lru_cache(maxsize=None)
+def class_specs(kingdom):
+    """Per-class display facts from the shipped rules file of this kingdom.
+
+    {class: {"defining": set of check keys, "size": (lo, hi) or None,
+    "min_length": bp or None, "phase_max_p": float or None, "by_phase": bool}}.
+    A run with a custom --config may differ; the report cannot know it.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), _RULES[kingdom])
+    with open(path) as fh:
+        classes = (yaml.safe_load(fh) or {}).get("classes") or {}
+    out = {}
+    for name, spec in classes.items():
+        spec = spec or {}
+        if not spec.get("enabled", True):
+            continue
+        names = set()
+        for slot in spec.get("defining_evidence", []):
+            names.update(slot if isinstance(slot, list) else [slot])
+        size = spec.get("size") or {}
+        out[name] = {"defining": {_EV_CHECK[n] for n in names if n in _EV_CHECK},
+                     "size": (size["lo"], size["hi"]) if "lo" in size and "hi" in size else None,
+                     "min_length": spec.get("cluster_min_length"),
+                     "phase_max_p": spec.get("phase_max_pvalue"),
+                     "by_phase": "phase" in names}
+    return out
+
+
 @dataclass
 class Selection:
     shown: list
@@ -82,14 +143,19 @@ class Selection:
     n_hidden: int
     floor: float
     capped: bool
+    kingdom: str = "animal"
+    mode: str = "rules"
 
 
 def select(clusters, floor, max_detail=3000):
     shown = [c for c in clusters if c.reads is not None and c.reads >= floor]
-    shown.sort(key=lambda c: (-(c.confidence if c.confidence is not None else -1.0), -c.reads))
+    # ambiguous rows carry the nearest class's confidence: list them after resolved ones
+    shown.sort(key=lambda c: (c.cls == "ambiguous",
+                              -(c.confidence if c.confidence is not None else -1.0), -c.reads))
     return Selection(shown=shown, detail=shown[:max_detail], n_total=len(clusters),
                      n_hidden=len(clusters) - len(shown), floor=floor,
-                     capped=len(shown) > max_detail)
+                     capped=len(shown) > max_detail, kingdom=detect_kingdom(clusters),
+                     mode=detect_mode(clusters))
 
 
 def library_summary(clusters, fragments_path):
