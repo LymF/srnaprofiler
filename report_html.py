@@ -92,13 +92,10 @@ def _payload(sel, summary, signals, title):
 
 
 def _footer():
-    return html.escape(
-        "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. "
-        f"1U, ping-pong and phasing scores: present at {rt.DISPLAY_PRESENT:g} or more, weak at "
-        f"{rt.DISPLAY_WEAK:g} or more. A at position 10: present at {rt.DISPLAY_10A_PRESENT:g} "
-        f"or more, weak at {rt.DISPLAY_10A_WEAK:g} or more. Size consistency: present at "
-        f"{rt._SIZE_PRESENT:g} or more, weak at {rt._SIZE_WEAK:g} or more. "
-        "They only decide how a bar is worded in this report.")
+    return html.escape(rt.STRINGS["ui.footer"].format(
+        present=f"{rt.DISPLAY_PRESENT:g}", weak=f"{rt.DISPLAY_WEAK:g}",
+        p10=f"{rt.DISPLAY_10A_PRESENT:g}", w10=f"{rt.DISPLAY_10A_WEAK:g}",
+        psize=f"{rt.DISPLAY_SIZE_PRESENT:g}", wsize=f"{rt.DISPLAY_SIZE_WEAK:g}"))
 
 
 def build_report(sel, summary, signals, title, out_path):
@@ -107,7 +104,7 @@ def build_report(sel, summary, signals, title, out_path):
     # "<" cannot close the script element; JSON still decodes it back
     data = data.replace("<", "\\u003c")
     parts = {"CSS": _read("report.css"), "JS": _read("app.js"), "DATA": data,
-             "TITLE": html.escape(title or "srnaprofiler report"), "FOOTER": _footer()}
+             "TITLE": html.escape(title or rt.STRINGS["ui.title.default"]), "FOOTER": _footer()}
     # one pass: substituted text is never rescanned for tokens
     out = re.sub(r"%%(CSS|JS|DATA|TITLE|FOOTER)%%", lambda m: parts[m.group(1)],
                  _read("template.html"))

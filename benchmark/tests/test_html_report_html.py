@@ -107,3 +107,42 @@ def test_cap_rows_without_detail(tmp_path):
 def test_footer_states_display_thresholds(tmp_path):
     _, html, _ = build(tmp_path, [mk()])
     assert "display-only" in html and str(rt.DISPLAY_PRESENT) in html
+
+
+_APP = open(os.path.join(os.path.dirname(__file__), "..", "..", "report_assets", "app.js"),
+            encoding="utf-8").read()
+_CODE = re.sub(r"(?m)^\s*//.*$", "", _APP)
+
+
+def test_app_text_keys_exist_in_strings():
+    keys = re.findall(r'\bT\("([^"]+)"', _CODE)
+    assert keys
+    missing = [k for k in keys if not k.endswith(".") and k not in rt.STRINGS]
+    assert not missing
+    # dynamic keys: check.<key>.title and status.<level>
+    for k in ("size", "1u", "10a", "strand", "pingpong", "phasing", "multimap"):
+        assert f"check.{k}.title" in rt.STRINGS
+    for lv in ("present", "weak", "absent", "unavailable"):
+        assert f"status.{lv}" in rt.STRINGS
+    for k in re.findall(r'"(ui\.[\w.]+)"', _CODE):
+        assert k in rt.STRINGS
+
+
+def test_app_has_no_hardcoded_english_phrases():
+    # A literal is a phrase when it is only letters, spaces and light punctuation and has
+    # two or more words (CSS class lists contain '-', '_' or digits and are skipped).
+    # Allowed: "use strict" and the CSS pairs "dot <status>" / "ico <status>".
+    pat = re.compile(r'"([A-Za-z][A-Za-z\' ,.:;!?]*[A-Za-z]) ?"')
+    bad = []
+    for m in pat.finditer(_CODE):
+        lit = m.group(1).strip()
+        if " " not in lit or lit == "use strict" or lit.split()[0] in ("dot", "ico"):
+            continue
+        bad.append(lit)
+    assert bad == []
+
+
+def test_footer_and_title_come_from_strings(tmp_path):
+    _, html, _ = build(tmp_path, [mk()], title="")
+    assert "display-only" in rt.STRINGS["ui.footer"]
+    assert rt.STRINGS["ui.title.default"] in html
