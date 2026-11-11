@@ -58,6 +58,7 @@ predictions from `mirna`, is what keeps them labelled correctly.
 | `mirna` | find and validate miRNA loci, so `classify` can carve them out |
 | `classify` | call loci, measure their signatures, assign a class |
 | `classplots` | look at the result: per-class and per-locus figures |
+| `report` | read the result: one offline HTML page with plain-language explanations |
 
 ### Main parameters
 
@@ -138,6 +139,33 @@ One file per kingdom, and it is meant to be edited. Everything below is per clas
 
 Every weight is multiplied by its own class's size window, so a signature cannot drag a locus
 into a class whose length range it does not occupy.
+
+---
+
+## Report
+
+`report` turns a `classify` run into one self-contained HTML file (no internet needed) for readers
+who are new to small RNAs: a library overview, a sortable cluster list, a page per cluster with the
+evidence behind its class and why the other classes were rejected, and a glossary.
+
+```
+srnaprofiler report --clusters run.clusters.tsv --bam sample.sorted.bam -o out -p run
+```
+
+It writes `out/run.report.html`. It only reads the `classify` outputs and the BAM; nothing in
+`classify` changes, and it is opt-in.
+
+| flag | default | meaning |
+|---|---|---|
+| `--min-reads` | 300 | depth floor in raw reads (the `reads` column, 1/NH-weighted): clusters below it are left out of the report and counted as hidden |
+| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (highest confidence first); the rest stay in the table |
+| `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
+| `--title` | built-in | page title |
+
+The floor only filters the view. It does not change how loci are called or classified. The evidence
+dots (size, 1U, 10A, ping-pong, phasing) use display-only cutoffs, stated in the page footer; they
+are not the classifier's thresholds. Run `classify` with a version that writes the `e_*` columns,
+or the dots show "not available".
 
 ---
 
