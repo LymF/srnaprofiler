@@ -26,8 +26,13 @@ from mlmodels import REGISTRY
 from mlfeatures import FEATURES, REPRO_COLS, RULE_COLS
 
 log = logging.getLogger(__name__)
+# "bio": only the textbook small-RNA signals (read size, strand, 1U/10A/5A, ping-pong, phasing);
+# no abundance, mapping or locus-shape features, which can carry species-specific shortcuts.
+_NOT_BIO = {"reads", "reads_rpm", "distinct_seqs", "multimap_frac", "unique_frac",
+            "density_pvalue", "read_span", "start_entropy", "top_start_frac", "starts_per_kb"}
 VARIANTS = {"main": list(FEATURES), "stack": list(FEATURES) + list(RULE_COLS),
-            "repro": list(FEATURES) + list(REPRO_COLS)}
+            "repro": list(FEATURES) + list(REPRO_COLS),
+            "bio": [f for f in FEATURES if f not in _NOT_BIO and not f.startswith("ctx_")]}
 XSPECIES = ("Arabidopsis thaliana", "Oryza sativa")
 
 
