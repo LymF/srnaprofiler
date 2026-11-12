@@ -2335,6 +2335,7 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-legend .ln-dash { width: 16px; height: 0; border-top: 2px dashed; display: inline-block; }
 .rpt-srna-fig__plot { position: relative; width: 100%; }
 .rpt-srna-fig__plot svg { display: block; overflow: visible; }
+.rpt-srna-fig__plot--scroll { overflow-x: auto; }
 .rpt-srna-fig__table { max-height: 420px; overflow: auto; }
 .rpt-srna-fig__table .rpt-srna-note { margin-top: 0; }
 .rpt-srna-hit { fill: transparent; }

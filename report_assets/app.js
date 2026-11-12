@@ -839,7 +839,7 @@
   var live = [];
   var observer = null;
   function figure(o) {
-    var plot = h("div", "rpt-srna-fig__plot");
+    var plot = h("div", "rpt-srna-fig__plot" + (o.width ? " rpt-srna-fig__plot--scroll" : ""));
     plot.style.height = o.height + "px";
     var tbl = h("div", "rpt-srna-fig__table");
     tbl.setAttribute("hidden", "");
@@ -860,7 +860,8 @@
       var ae = document.activeElement;
       var fk = svg && ae && ae.parentNode === svg && ae.getAttribute ? ae.getAttribute("data-h") : null;
       clear(plot);
-      svg = svgRoot(cw, o.height, lab);
+      // a figure wider than its box (o.width) scrolls inside it
+      svg = svgRoot(o.width ? Math.max(cw, o.width) : cw, o.height, lab);
       drawCtx = {marks: {}, focus: {}, sets: 0};
       o.draw(svg, cw, o.height);
       var restore = drawCtx.focus;
@@ -876,7 +877,7 @@
         tableOn = !tableOn;
         if (tableOn && !tbl.firstChild) {
           var t = o.table();
-          add(tbl, [note(t.exact ? T("ui.fig.exact") : T("ui.fig.precision")), dataTable(t.head, t.rows)]);
+          add(tbl, [note(t.exact ? T("ui.fig.exact") : T("ui.fig.precision")), dataTable(t.head, t.rows)].concat(t.more || []));
         }
         if (tableOn) { plot.setAttribute("hidden", ""); tbl.removeAttribute("hidden"); } else {
           tbl.setAttribute("hidden", ""); plot.removeAttribute("hidden"); render(true);
@@ -899,7 +900,7 @@
     var el = h("section", "rpt-srna-fig" + (o.wide ? " rpt-srna-fig--wide" : ""), [
       h("div", "rpt-srna-fig__head", [title, tools]), leg,
       o.body || plot, o.body ? null : tbl]);
-    el.setAttribute("data-fig", o.letter || o.file);
+    el.setAttribute("data-fig", o.letter || o.id || o.file);
     if (!o.body) { (o.live || live).push({plot: plot, render: render}); }
     return el;
   }
@@ -1482,6 +1483,204 @@
       h("div", "rpt-srna-scroll", h("table", "rpt-srna-table", [h("thead", "", head), tb])),
       note(T("ck.note")), META.mode === "ml" ? note(T("ck.ml")) : null]);
   }
+  // ---- miRNA hairpin: precursor, fold, reads and numbers (a miRNA cluster matched to --mirna) ----
+  // Segment colours follow miRDeep2 (mature red, loop yellow, star purple), taken from the palette
+  // already in the page: the ping-pong red, the warning amber and the piRNA purple. The solid
+  // colour is only a band; letters sit on a light tint in dark ink and the segments are named in text.
+  var MIR_FILL = {m: "#e41a1c", lp: "#e0921c", s: "#7c4dff"};
+  var MIR_TINT = {m: "#fbd0d0", lp: "#fbe9c6", s: "#e4dcff"};
+  var MIR_NAME = {m: "mi.seg.mature", lp: "mi.seg.loop", s: "mi.seg.star"};
+  var MONO = "IBM Plex Mono, ui-monospace, monospace";
+  var HP = {cell: 8, x0: 48, right: 196, row: 18, cov: 64};
+  function hpX(p) { return HP.x0 + p * HP.cell; }
+  function miSeg(mi, p) {
+    var keys = ["m", "s", "lp"];
+    for (var i = 0; i < keys.length; i++) {
+      var g = mi[keys[i]];
+      if (g && p >= g[0] && p < g[1]) { return keys[i]; }
+    }
+    return "";
+  }
+  // a run of letters locked to the cell grid whatever the font's own advance
+  function mono(a, y, s, fill, weight) {
+    return sv("text", {x: f2(hpX(a)), y: f2(y), textLength: s.length * HP.cell, lengthAdjust: "spacing",
+      "font-family": MONO, fill: fill, "data-ink": "1", "font-weight": weight || null, "pointer-events": "none"}, s);
+  }
+  function miLayout(mi) {
+    var L = {reads: !!(mi.rd && mi.rd.length)}, y = 6;
+    if (L.reads) { L.covTitle = y + 10; L.covTop = y + 18; L.covBase = L.covTop + HP.cov; y = L.covBase + 12; }
+    L.lab = y + 12;
+    L.band = y + 18;
+    L.seq = y + 26;
+    y = L.seq + 18;
+    if (mi.db) { L.db = y + 15; y = L.db + 4; }
+    L.tick = y + 15;
+    y = L.tick + 8;
+    L.rd = y;
+    y += (L.reads ? mi.rd.length : 0) * HP.row;
+    if (L.reads && mi.more) { L.more = y + 16; y += 24; }
+    L.H = y + 8;
+    return L;
+  }
+  function miDraw(svg, W, mi, L) {
+    var n = mi.L, xEnd = hpX(n), i, k;
+    var cov = mi.cov || [], top = L.reads ? maxOf(cov) : 0;
+    if (L.reads) {
+      var tk = ticks(top, 3);
+      svg.appendChild(text(HP.x0, L.covTitle, T("mi.axis.cov"), {}));
+      yGrid(svg, HP.x0, xEnd, L.covBase, HP.cov, -1, tk);
+      var d = "";
+      for (i = 0; i < n; i++) {
+        if (!(cov[i] > 0)) { continue; }
+        var hgt = cov[i] / tk.top * HP.cov;
+        d += "M" + f2(hpX(i)) + "," + f2(L.covBase) + "h" + (HP.cell - 1) + "v" + f2(-hgt) + "h" + (1 - HP.cell) + "Z";
+      }
+      if (d) { svg.appendChild(sv("path", {d: d, fill: ACCENT, "class": "mk-area up"})); }
+      zeroLine(svg, HP.x0, xEnd, L.covBase);
+    }
+    // segment bands, their names and the tinted letters
+    var segs = [["m", mi.m], ["lp", mi.lp], ["s", mi.s]];
+    segs.forEach(function (sg) {
+      var g = sg[1];
+      if (!g) { return; }
+      svg.appendChild(sv("rect", {x: f2(hpX(g[0])), y: L.band, width: (g[1] - g[0]) * HP.cell, height: 4,
+        fill: MIR_FILL[sg[0]], "class": "mk-band"}));
+      svg.appendChild(text(hpX(g[0]), L.lab, T(MIR_NAME[sg[0]]), {fill: INK}));
+    });
+    // runs of one segment kind, each with its tint
+    var a = 0;
+    while (a < n) {
+      k = miSeg(mi, a);
+      var b = a + 1;
+      while (b < n && miSeg(mi, b) === k) { b++; }
+      if (k) {
+        svg.appendChild(sv("rect", {x: f2(hpX(a)), y: L.seq, width: (b - a) * HP.cell, height: 18,
+          fill: MIR_TINT[k], "class": "mk-tint"}));
+      }
+      svg.appendChild(mono(a, L.seq + 13, mi.seq.slice(a, b), INK));
+      a = b;
+    }
+    svg.appendChild(text(HP.x0 - 6, L.seq + 13, "5′", {anchor: "end"}));
+    svg.appendChild(text(xEnd + 6, L.seq + 13, "3′", {}));
+    if (mi.db) { svg.appendChild(mono(0, L.db, mi.db, INK2)); }
+    for (i = 9; i < n; i += 10) {
+      svg.appendChild(text(hpX(i) + HP.cell / 2, L.tick, String(i + 1), {anchor: "middle", cls: "tk-x"}));
+    }
+    if (!L.reads) { return; }
+    var mx = 0;
+    mi.rd.forEach(function (r) { if (r[3] > mx) { mx = r[3]; } });
+    mi.rd.forEach(function (r, j) {
+      var y = L.rd + j * HP.row, s = r[2], ra = r[0], rb = r[1];
+      svg.appendChild(sv("rect", {x: f2(hpX(ra)), y: y + 1, width: (rb - ra) * HP.cell, height: HP.row - 3,
+        fill: r[4] ? MIR_TINT[r[4]] : "#f1f5f9", "class": "mk-read"}));
+      var c = 0;
+      while (c < s.length) {
+        var ch = s.charAt(c), mis = ch !== ch.toLowerCase();
+        if (mis) {
+          svg.appendChild(sv("rect", {x: f2(hpX(ra + c)), y: y + 1, width: HP.cell, height: HP.row - 3,
+            fill: INK, "class": "mk-mis"}));
+          svg.appendChild(sv("text", {x: f2(hpX(ra + c) + HP.cell / 2), y: y + 13, "text-anchor": "middle",
+            "font-family": MONO, fill: SURF, "data-ink": "1", "font-weight": 500, "pointer-events": "none"}, ch));
+          c++;
+          continue;
+        }
+        var e = c + 1;
+        while (e < s.length && s.charAt(e) === s.charAt(e).toLowerCase()) { e++; }
+        svg.appendChild(mono(ra + c, y + 13, s.slice(c, e), INK2));
+        c = e;
+      }
+      var bw = Math.max(2, Math.round(r[3] / mx * 54));
+      svg.appendChild(sv("rect", {x: f2(xEnd + 10), y: y + 5, width: bw, height: 8, fill: INK2, "class": "mk-bar"}));
+      svg.appendChild(text(xEnd + 72, y + 13, exact(r[3]), {}));
+      if (r[4]) { svg.appendChild(text(xEnd + 136, y + 13, T(MIR_NAME[r[4]]), {fill: INK})); }
+    });
+    if (L.more) {
+      svg.appendChild(text(HP.x0, L.more, T("mi.more", {n: num(mi.more), reads: num(mi.mr)}), {}));
+    }
+  }
+  function miTable(mi) {
+    var rows = [], n = mi.L, i;
+    for (i = 0; i < n; i++) {
+      var k = miSeg(mi, i);
+      rows.push([String(i + 1), mi.seq.charAt(i), mi.db ? mi.db.charAt(i) : T("ui.na"),
+        k ? T(MIR_NAME[k]) : "", mi.cov ? exact(mi.cov[i]) : T("ui.na")]);
+    }
+    var more = [];
+    if (mi.rd && mi.rd.length) {
+      var rr = mi.rd.map(function (r) {
+        return [String(r[0] + 1), String(r[1]), r[2], exact(r[3]), r[4] ? T(MIR_NAME[r[4]]) : T("mi.kind.other")];
+      });
+      var head = ["mi.th.start", "mi.th.end", "mi.th.seq", "mi.th.reads", "mi.th.type"].map(function (t) { return T(t); });
+      more.push(dataTable(head, rr));
+    }
+    return {exact: true, head: ["mi.th.pos", "mi.th.base", "mi.th.fold", "mi.th.seg", "mi.th.depth"].map(function (t) { return T(t); }),
+      rows: rows, more: more};
+  }
+  function miFigure(mi, r) {
+    var L = miLayout(mi), tot = 0;
+    (mi.rd || []).forEach(function (q) { tot += q[3]; });
+    tot += mi.mr || 0;
+    var legend = ["m", "lp", "s"].filter(function (k) {
+      return k === "lp" ? mi.lp : mi[k];
+    }).map(function (k) { return {kind: "sw", color: MIR_FILL[k], label: T(MIR_NAME[k])}; });
+    if (L.reads) { legend.push({kind: "sw", color: INK, label: T("mi.lg.mismatch")}); }
+    var el = figure({id: "hairpin", title: T("mi.title"), tip: T("mi.tip"), n: L.reads ? T("ui.fig.n", {n: num(tot)}) : null,
+      legend: legend, height: L.H, width: hpX(mi.L) + HP.right, wide: true, file: fileName(r, "hairpin"),
+      draw: function (svg, W) { miDraw(svg, W, mi, L); }, table: function () { return miTable(mi); }});
+    var strand = T("mi.strand", {st: mi.st === "-" ? "−" : "+", chrom: r.h});
+    var notes = [note(strand)];
+    if (mi.db) {
+      if (mi.mfe !== undefined) { notes.push(note(T("mi.struct", {mfe: mi.mfe}))); }
+    } else {
+      notes.push(note(T("mi.nostruct." + (mi.ns || "m"))));
+    }
+    if (mi.nowin) {
+      notes.push(note(T("mi.nowin")));
+    } else if (!L.reads) {
+      notes.push(note(T("mi.noreads")));
+    } else {
+      notes.push(note(T("mi.reads.note")));
+      if (mi.anti || mi.ovh) { notes.push(note(T("mi.anti", {anti: num(mi.anti || 0), ovh: num(mi.ovh || 0)}))); }
+    }
+    add(el, notes);
+    return el;
+  }
+  function miValue(k, v) {
+    if (v === null || v === undefined) { return T("ui.na"); }
+    if (typeof v === "string") { return v; }
+    if (k === "precision") { return T("mi.obs.pct", {p: exact(v)}); }
+    return k === "mature_reads" || k === "star_reads" ? exact(v) : String(v);
+  }
+  function miNumbers(mi) {
+    var tb = h("tbody");
+    mi.t.forEach(function (p) {
+      var name = h("th", "", T("mi.num." + p[0]));
+      name.setAttribute("scope", "row");
+      tb.appendChild(h("tr", "", [name, h("td", "rpt-srna-mono", miValue(p[0], p[1]))]));
+    });
+    var head = h("tr", "", [h("th", "", T("ck.th.check")), h("th", "", T("ck.th.observed"))]);
+    var crit = h("tbody");
+    mi.pc.forEach(function (p) {
+      var name = h("th", "", T("mi.crit." + p[0]));
+      name.setAttribute("scope", "row");
+      var st = p[1];
+      crit.appendChild(h("tr", "", [name, h("td", "rpt-srna-mono", p[2]), h("td", "", p[3]),
+        h("td", "rpt-srna-ck__st s" + st, [icon(CK_PATH[st] || CK_PATH[2], 14, "0 0 16 16"),
+          h("span", "", T("ck.st." + st))])]));
+    });
+    var chead = h("tr", "", ["ck.th.check", "ck.th.observed", "ck.th.rule", "ck.th.status"].map(function (k) {
+      return h("th", "", T(k));
+    }));
+    return h("div", "rpt-srna-fig--wide", [
+      h("section", "rpt-srna-ck", [h("h3", "rpt-srna-h", T("mi.num.title")), note(T("mi.num.note")),
+        h("div", "rpt-srna-scroll", h("table", "rpt-srna-table", [h("thead", "", head), tb]))]),
+      h("section", "rpt-srna-ck", [h("h3", "rpt-srna-h", T("mi.crit.title")), note(T("mi.crit.note")),
+        h("div", "rpt-srna-scroll", h("table", "rpt-srna-table", [h("thead", "", chead), crit]))])]);
+  }
+  function mirnaBlock(mi, r) {
+    return h("div", "rpt-srna-figs", [mi.seq ? miFigure(mi, r) : note(T("mi.noseq")), miNumbers(mi)]);
+  }
+
   function openCluster(i) {
     var r = rows[i], d = D.details[String(i)];
     var box = clear(document.getElementById("sec-detail"));
@@ -1516,6 +1715,7 @@
     add(box, [h("p", "rpt-srna-say", T(d.v, {reason: r.u || ""})), strip(d, r), checklist(d, r)]);
     show("detail");
     h2.focus({preventScroll: true});
+    if (d.mi) { box.appendChild(mirnaBlock(d.mi, r)); }
     box.appendChild(figures(d, r));
     live.forEach(function (f) { f.render(); });
     watch();
