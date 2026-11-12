@@ -294,35 +294,25 @@
     ovLive.push({plot: plot, render: render});
     return plot;
   }
+  // sorted horizontal bars, class name written on the row, so colour is never the only cue
   function donut(counts) {
     var keys = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
     var total = 0;
     keys.forEach(function (k) { total += counts[k]; });
     if (!total) { return emptyMsg(T("ui.donut.empty")); }
-    return sized(170, T("ui.card.classes"), function (svg) { donutDraw(svg, keys, counts, total); });
-  }
-  function donutDraw(svg, keys, counts, total) {
-    var a = -Math.PI / 2, R = 70, r = 44, cx = 85, cy = 85;
-    function pt(rad, ang) { return f2(cx + rad * Math.cos(ang)) + "," + f2(cy + rad * Math.sin(ang)); }
-    keys.forEach(function (k) {
-      var f = counts[k] / total * 2 * Math.PI;
-      if (f >= 2 * Math.PI - 1e-9) {
-        svg.appendChild(sv("circle", {cx: cx, cy: cy, r: (R + r) / 2, fill: "none", "stroke-width": R - r,
-          "class": "f-" + ckey(k) + " s-" + ckey(k)}));
-      } else {
-        var big = f > Math.PI ? 1 : 0;
-        var d = "M" + pt(R, a) + "A" + R + "," + R + " 0 " + big + " 1 " + pt(R, a + f) +
-          "L" + pt(r, a + f) + "A" + r + "," + r + " 0 " + big + " 0 " + pt(r, a) + "Z";
-        svg.appendChild(sv("path", {d: d, "class": "f-" + ckey(k)}));
-      }
-      a += f;
+    return sized(keys.length * 26 + 8, T("ui.card.classes"), function (svg, cw) {
+      donutDraw(svg, cw, keys, counts, total);
     });
-    svg.appendChild(sv("text", {x: cx, y: cy + 5, "text-anchor": "middle", "class": "t-strong"}, num(total)));
-    keys.slice(0, 6).forEach(function (k, i) {
-      svg.appendChild(sv("rect", {x: 186, y: 26 + i * 22, width: 12, height: 12, rx: 3,
-        "class": "f-" + ckey(k)}));
-      svg.appendChild(sv("text", {x: 204, y: 37 + i * 22},
-        k + " " + (counts[k] / total * 100).toFixed(1) + "%"));
+  }
+  function donutDraw(svg, cw, keys, counts, total) {
+    var labelW = 96, valW = 112, x0 = labelW + 8, maxW = Math.max(40, cw - x0 - valW);
+    var top = counts[keys[0]];
+    keys.forEach(function (k, i) {
+      var y = 4 + i * 26, w = Math.max(2, Math.round(counts[k] / top * maxW));
+      svg.appendChild(sv("text", {x: labelW, y: y + 15, "text-anchor": "end"}, k));
+      svg.appendChild(sv("rect", {x: x0, y: y + 2, width: w, height: 18, rx: 3, "class": "f-" + ckey(k)}));
+      svg.appendChild(sv("text", {x: x0 + w + 8, y: y + 15},
+        (counts[k] / total * 100).toFixed(1) + "% \u00b7 " + num(counts[k])));
     });
   }
   // stacked bars of the dominant size per class

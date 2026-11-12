@@ -142,8 +142,8 @@ def test_full_dataset(tmp_path):
     assert len(d["rows"]) == 300 and sum(x["d"] for x in d["rows"]) == 300
     assert r["rows"] == r["clickable"] == 50          # one page
     assert d["strings"]["ui.page.info"].format(p=1, pages=6, n=300) in r["listText"]
-    assert r["ov"]["svg"] == 2                        # donut + size histogram
-    assert r["ov"]["path"] == 2                       # two classes in the donut
+    assert r["ov"]["svg"] == 2                        # class bars + size histogram
+    assert r["ov"]["path"] == 0                       # class bars use rects, no slices
     check_page(r)
     assert r["seqRows"] == 10
     assert r["detailH"] == "c299"                     # highest confidence tie -> most reads
@@ -205,7 +205,7 @@ def test_ambiguous_only(tmp_path):
     sel, d, r = go(tmp_path, cl)
     check_common(d, r)
     assert r["rows"] == r["clickable"] == 4
-    assert r["ov"]["svg"] == 2 and r["ov"]["circle"] == 1   # one class: full ring
+    assert r["ov"]["svg"] == 2 and r["ov"]["circle"] == 0   # one class: one bar, no ring
     check_page(r)
     assert d["strings"]["ui.conf.amb"].format(cls="piRNA") in r["detailText"]
     assert d["strings"]["ui.ctx.conf.na"] in r["detailText"]
@@ -219,7 +219,7 @@ def test_plant_like(tmp_path):
     sel, d, r = go(tmp_path, cl)
     check_common(d, r)
     assert d["meta"]["kingdom"] == "plant"
-    assert r["rows"] == 4 and r["ov"]["path"] == 3
+    assert r["rows"] == 4 and r["ov"]["path"] == 0
     check_page(r)
     assert d["strings"]["ui.fig.pp.plant"] in r["detailText"]
 
