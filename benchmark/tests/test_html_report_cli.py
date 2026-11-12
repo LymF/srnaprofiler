@@ -132,8 +132,46 @@ def test_threads_default_and_run_report_guard(tmp_path):
 
 
 def test_report_with_threads(tmp_path):
-    report_cli.run_report(args_for(tmp_path, threads=2))
-    assert (tmp_path / "out" / "x" / "report.report.html").exists()
+    # more than 50 clusters, so the worker pool (not the single-process path) runs
+    a = args_for(tmp_path, threads=2)
+    rows = ["\t".join(map(str, ["cl%d" % i, "c1", i * 10, i * 10 + 200, 500, 50, "piRNA", 0.9,
+                                26, 0.8, 0.5, 0.8, 0.5, 3, 0.5, 0.1, 0.9, "False", "UGA", ""]))
+            for i in range(120)]
+    open(a.clusters, "w").write("\n".join(["\t".join(COLS)] + rows) + "\n")
+    report_cli.run_report(a)
+    out = tmp_path / "out" / "x" / "report.report.html"
+    m = re.search(r'<script type="application/json" id="report-data">(.*?)</script>',
+                  out.read_text(), re.S)
+    assert len(json.loads(m.group(1))["rows"]) == 120
+
+
+def test_warns_on_very_large_max_detail(tmp_path, capsys):
+    report_cli.run_report(args_for(tmp_path, max_detail=5001))
+    err = capsys.readouterr().err
+    assert "WARN" in err and "--max-detail" in err and "7 MB" in err
+    report_cli.run_report(args_for(tmp_path, max_detail=5000))
+    assert "7 MB" not in capsys.readouterr().err
+
+
+def test_max_detail_default_is_3000():
+    import srnaprofiler
+    d = srnaprofiler.build_parser().parse_args(
+        ["report", "--clusters", "a", "--bam", "b", "-o", "o"])
+    assert d.max_detail == 3000
+
+
+def test_readme_mentions_threads_and_no_glossary():
+    text = open(os.path.join(os.path.dirname(__file__), "..", "..", "README.md")).read()
+    assert "--threads" in text
+    assert "glossary" not in text.lower()
+
+
+def test_banner_uses_shared_version(capsys):
+    import srnaprofiler
+    import version
+    srnaprofiler.print_header()
+    out = capsys.readouterr().out
+    assert f"v{version.__version__}" in out
 
 
 def test_version_single_source():

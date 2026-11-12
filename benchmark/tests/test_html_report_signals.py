@@ -393,3 +393,13 @@ def test_failed_cluster_still_zero_filled_with_threads(tmp_path, capsys):
     assert out["bad1"]["n_alns"] == 0 and not out["k5"].get("failed")
     err = capsys.readouterr().err
     assert err.count("WARN") == 1 and "2 cluster(s)" in err and "bad1: no coordinates" in err
+
+
+def test_missing_chromosome_with_threads(tmp_path, capsys):
+    bam, cl = _many_clusters(tmp_path, 120)
+    cl[10] = Cluster("gone1", "chrZ", 0, 500)
+    cl[90] = Cluster("gone2", "chrZ", 0, 500)
+    out = rs.signals_for(bam, cl, xm_as_nh=False, threads=2)
+    assert out["gone1"]["n_alns"] == 0 and out["gone2"]["n_alns"] == 0
+    assert not out["gone1"].get("failed") and not out["gone2"].get("failed")
+    assert "WARN" not in capsys.readouterr().err

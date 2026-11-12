@@ -31,9 +31,11 @@ def print_header():
     RESET = '\033[0m'
     BG_BLUE = '\033[104m'  # Light blue background
     
+    ver = f"v{__version__}"
+    pad = " " * max(1, 30 - len(f"  sRNAProfiler  │  {ver}"))
     header = f"""
 {BOLD}{BLUE}                    ╔══════════════════════════════╗
-                    ║  {WHITE}sRNA{GREEN}Profiler{BLUE}  │  v1.0       ║
+                    ║  {WHITE}sRNA{GREEN}Profiler{BLUE}  │  {ver}{pad}║
                     ║                              ║
                     ╚══════════════════════════════╝{RESET}
 
@@ -494,7 +496,9 @@ themselves are defined there. Every module takes --help.
     rp.add_argument("--max-detail", dest="max_detail", type=int, default=3000,
                     help="Clusters that get figures and detail (default: %(default)s)")
     rp.add_argument("--threads", type=_positive_int, default=1,
-                    help="Worker processes for the figure data (default: %(default)s)")
+                    help="Worker processes for the figure data (default: %(default)s). "
+                         "Pays off only for large inputs and on Linux (fork); "
+                         "on macOS/Windows (spawn) start-up cost can outweigh the gain")
     rp.add_argument("--fragments", default=None,
                     help="classify .fragments.tsv (default: the one beside --clusters)")
     rp.add_argument("--title", default=None, help="Report title")

@@ -144,33 +144,42 @@ into a class whose length range it does not occupy.
 
 ## Report
 
-`report` turns a `classify` run into one self-contained HTML file (no internet needed) for readers
-who are new to small RNAs: a library overview, a sortable cluster list, a page per cluster with the
-evidence behind its class and why the other classes were rejected, and a glossary.
+`report` turns a `classify` run into one offline HTML file (fonts embedded, no network needed) for
+readers who are new to small RNAs. It is an opt-in subcommand you run after `classify`; nothing in
+`classify` changes.
 
 ```
 srnaprofiler report --clusters run.clusters.tsv --bam sample.sorted.bam -o out -p run
 ```
 
-It writes `out/run.report.html`. It only reads the `classify` outputs and the BAM; nothing in
-`classify` changes, and it is opt-in.
+It writes `out/run.report.html`. It only reads the `classify` outputs and the BAM.
+
+The file has three parts:
+
+- **About tab**: what the report shows and how to read it.
+- **Overview and cluster list**: the library summary, then a sortable, filterable list of clusters.
+- **Cluster page**: the evidence behind the class and why the other classes were rejected, with
+  these figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
+  nucleotide logo, top sequences and library context. Sense is drawn up and antisense down. Each
+  figure has a table view and a "Download SVG" button.
 
 | flag | default | meaning |
 |---|---|---|
 | `--min-reads` | 300 | depth floor in raw reads (the `reads` column, 1/NH-weighted): clusters below it are left out of the report and counted as hidden |
-| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (resolved clusters by confidence first, ambiguous ones after them); the rest stay in the table |
+| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (resolved clusters by confidence first, ambiguous ones after them); the rest stay in the list. Each page is about 7 KB, so about 7 MB per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
+| `--threads` | 1 | worker processes for the figure data. Pays off only for large inputs and on Linux (fork) |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
 | `--title` | built-in | page title |
 
 The BAM must be indexed (`samtools index`); without the index `report` stops with an error.
-The floor only filters the view. It does not change how loci are called or classified. The evidence
-dots use display-only cutoffs, stated in the page footer; they are not the classifier's thresholds.
-They are size, 1U, 10A, ping-pong and phasing for an animal run, and size, 1U, 5'A, strand balance
-and phasing for a plant run. A run counts as plant when the table has a plant-only class
-(`phasiRNA`, `phasiRNA24`, `hcsiRNA`) as a `gate_*` column or a call; which checks define each
-class is read from the shipped `rules.yaml` / `rules.plant.yaml`, so a custom `--config` may
-differ. Run `classify` with a version that writes the `e_*` columns, or the dots show "not
-available".
+The floor only filters the view. It does not change how loci are called or classified.
+
+The kingdom (animal or plant) is detected from the clusters file: a run counts as plant when the
+table has a plant-only class (`phasiRNA`, `phasiRNA24`, `hcsiRNA`) as a `gate_*` column or a call.
+The class definitions are read from the shipped `rules.yaml` / `rules.plant.yaml`, so a run with a
+custom `--config` may define classes differently. The evidence dots and strip use display-only
+cutoffs, stated in the page footer; they are not the classifier's thresholds. Run `classify` with
+a version that writes the `e_*` columns, or the dots show "not available".
 
 ---
 
