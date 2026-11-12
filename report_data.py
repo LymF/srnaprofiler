@@ -59,7 +59,6 @@ class Cluster:
     e: dict = field(default_factory=dict)
     gates: dict = field(default_factory=dict)
     has_evidence: bool = False
-    read_span: int = None
     pct_5a: float = None
 
 
@@ -80,7 +79,7 @@ def _row_to_cluster(row, has_evidence):
         e={k: _num(row.get(f"e_{k}")) for k in _E_KEYS},
         gates={k[5:]: v == "1" for k, v in row.items()
                if k.startswith("gate_") and _num(v) is not None},
-        has_evidence=has_evidence, read_span=_int(row.get("read_span")),
+        has_evidence=has_evidence,
         pct_5a=_num(row.get("pct_5a")),
     )
 

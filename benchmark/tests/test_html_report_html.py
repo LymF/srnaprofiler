@@ -131,7 +131,7 @@ _APP = open(os.path.join(os.path.dirname(__file__), "..", "..", "report_assets",
 _CODE = re.sub(r"(?m)^\s*//.*$", "", _APP)
 
 
-@pytest.mark.xfail(strict=False, reason="front end lands in Task 5")
+@pytest.mark.xfail(strict=True, reason="front end lands in Task 5")
 def test_app_text_keys_exist_in_strings():
     keys = re.findall(r'\bT\("([^"]+)"', _CODE)
     assert keys
@@ -239,7 +239,7 @@ def test_signals_quantised_shape_and_bound(tmp_path):
     assert len(q) <= 400 and out["sq"] == sig["seqs"] and out["dom"] == 24
     err, mx = _worst(out["ph"]["+"], sig["phasing"]["+"])
     assert err <= mx / 198 * 1.001
-    assert set(out["sz"]) == {"lo", "A", "C", "G", "U"}
+    assert set(out["sz"]) == {"lo", "max", "A", "C", "G", "U"}
     assert all(0 <= x <= 99 for pos in out["lg"]["+"] for x in pos) and len(out["lg"]["+"]) == 26
     json.dumps(out, allow_nan=False)
 
@@ -318,8 +318,63 @@ def test_meta_floor_is_json_safe(tmp_path):
     assert data_of(out.read_text())["meta"]["floor"] is None
 
 
-@pytest.mark.xfail(strict=False, reason="front end lands in Task 5")
 def test_mirna_confidence_note():
     # classify sets confidence 1.0 for miRNA (miRDeep2), not a softmax over classes
     assert 'T("ui.detail.conf.mirna")' in _CODE
     assert "miRDeep2" in rt.STRINGS["ui.detail.conf.mirna"]
+
+
+def test_signals_carry_read_counts_and_bins():
+    sig = full_sig()
+    out = report_html._signals(sig)
+    assert out["n"] == 900 and out["nb"] == 400
+    want = sum(sig["sizes"][b][s][24 - 18] for b in "ACGU" for s in "+-")
+    assert abs(out["nd"] - want) < 0.06
+    assert report_html._signals(dict(sig, dominant=None))["nd"] == 0
+
+
+def test_sizes_stack_error_within_one_percent_of_panel_max():
+    import random
+    r = random.Random(11)
+    for _ in range(30):
+        sig = full_sig(r)
+        for b in "ACGU":
+            for s in "+-":
+                sig["sizes"][b][s] = [v * r.random() for v in sig["sizes"][b][s]]
+        sz = report_html._signals(sig)["sz"]
+        top = max(max(sig["sizes"][b][s]) for b in "ACGU" for s in "+-")
+        assert abs(sz["max"] - top) <= top * 1e-5
+        for si, s in enumerate("+-"):
+            for i in range(18):
+                got = sum(report_html.dequantise([sz["max"], sz[b][si]], 18, top=999)[i]
+                          for b in "ACGU")
+                want = sum(sig["sizes"][b][s][i] for b in "ACGU")
+                assert abs(got - want) <= 0.01 * sz["max"]
+    assert report_html._quant_group([[0.0], [0.0]]) == (0, [[], []])
+
+
+def test_quant_keeps_scale_of_tiny_max():
+    m, q = report_html._quant([1e-12, 0])
+    assert m == 1e-12 and q == [99]
+
+
+def test_meta_defining_animal(tmp_path):
+    _, html, _ = build(tmp_path, [mk()])
+    df = data_of(html)["meta"]["defining"]
+    assert df["piRNA"] == ["1u", "pingpong", "size"]
+    assert df["siRNA"] == ["size", "strand"]
+    assert "hcsiRNA" not in df
+
+
+def test_logo_tolerates_nan_and_none():
+    sig = full_sig()
+    sig["logo"]["+"][0] = {"A": float("nan"), "C": None, "G": 0.5, "U": 0.5}
+    out = report_html._signals(sig)
+    assert out["lg"]["+"][0] == [0, 0, 50, 50]
+    json.dumps(out, allow_nan=False)
+
+
+def test_review_flag_reaches_rows(tmp_path):
+    _, html, _ = build(tmp_path, [mk("a", reads=900, review=True), mk("b", reads=500)])
+    rows = {r["n"]: r for r in data_of(html)["rows"]}
+    assert rows["a"]["rv"] == 1 and "rv" not in rows["b"]

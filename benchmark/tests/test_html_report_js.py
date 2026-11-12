@@ -87,7 +87,7 @@ def sigs(sel, kind="ok"):
     return out
 
 
-XFAIL = pytest.mark.xfail(strict=False, reason="front end lands in Task 5")
+XFAIL = pytest.mark.xfail(strict=True, reason="front end lands in Task 5")
 
 
 def page(tmp_path, clusters, kind="ok", **kw):

@@ -4,6 +4,7 @@ Payload (JSON in <script id="report-data">), read by the front end:
   library, counts, warnings, strings (STRINGS table), rows, details, meta.
   rows[i]: n name, h chrom, s start, e end, r reads, c class, f confidence (null when
     ambiguous), z dominant length, v dot levels (one digit per dot, see _LEVEL),
+    rv 1 if the classifier flagged the locus for review (else absent),
     d 1 if details[str(i)] exists, nc nearest class and u reason (ambiguous only).
   details[str(i)]:
     v verdict key in strings (verdict.<class> or verdict.generic; the ambiguous
@@ -12,13 +13,19 @@ Payload (JSON in <script id="report-data">), read by the front end:
       10a (animal) or 5a (plant), strand (value = plus-strand share), pingpong
       (z, animal), phasing (p), multimap (share); level is a _LEVEL digit string,
     ctx [reads_pct, conf_pct|null] (percentiles among shown clusters),
-    sig: {"err":1} | {"none":1} | quantised figure data. Every array is a pair
-      [max, ints]: ints 0..99, value = int * max / 99, trailing zeros dropped
-      (pad with 0 to the axis length), [0, []] when all zero.
-      dom dominant length; sz {lo, A|C|G|U: [plus, minus]} reads per length from lo;
-      ph {+,-} phasing, offsets 1..100; pp ping-pong, offsets 1..30;
-      cv {s start, b bin size, +, -} mean depth per bin; en {b, +, -} 5' ends per bin;
-      lg {+,-}: per position [A,C,G,U] ints 0..99 (fraction * 99);
+    sig: {"err":1} | {"none":1} | quantised figure data:
+      n total aligned reads the panels are drawn from (int), nd weighted reads at
+      the dominant length (logo and sizes panel), dom dominant length, nb number
+      of bins of cv and en (the arrays below are padded with 0 to their fixed length).
+      Pairs [max, ints]: ints 0..99, value = int * max / 99, trailing zeros dropped,
+      [0, []] when all zero (error <= max / 198).
+      sz {lo, max, A|C|G|U: [plus, minus]}: ONE shared max for the 8 arrays, ints
+        0..999, value = int * max / 999 (a stack of 4 bases errs <= 0.2% of max);
+        18 slots per array, lengths lo..35.
+      ph {+,-} phasing, 100 slots (offsets 1..100); pp ping-pong, 30 slots (1..30);
+      cv {s start, b bin size, +, -} mean depth per bin, nb slots;
+      en {b, +, -} 5' ends per bin, nb slots;
+      lg {+,-}: 26 positions, each [A,C,G,U] ints 0..99 (fraction * 99);
       sq rows [sequence, length, strand, reads, 5' base] exact.
   meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
@@ -59,25 +66,47 @@ def _n(x, nd=2):
     return round(x, nd)
 
 
+def _fin(v):
+    return v if (v is not None and math.isfinite(v) and v > 0) else 0.0
+
+
+def _ints(vals, m, top):
+    q = [round(top * v / m) for v in vals]
+    while q and q[-1] == 0:
+        q.pop()
+    return q
+
+
+def _qmax(m):
+    # 6 significant digits keep the scale of tiny maxima
+    return float(f"{m:.6g}")
+
+
 def _quant(values):
     """[max, ints]: ints 0..99 = round(99 * v / max), trailing zeros dropped.
 
     value ~ int * max / 99, error at most max / 198. All-zero input is [0, []].
     """
-    vals = [v if (v is not None and math.isfinite(v) and v > 0) else 0.0 for v in values]
+    vals = [_fin(v) for v in values]
     m = max(vals, default=0.0)
     if m <= 0:
         return [0, []]
-    q = [round(99 * v / m) for v in vals]
-    while q and q[-1] == 0:
-        q.pop()
-    return [_n(float(f"{m:.6g}"), 6), q]
+    return [_qmax(m), _ints(vals, m, 99)]
 
 
-def dequantise(pair, n=None):
-    """Inverse of _quant, padded with zeros to n values (test and table-view use)."""
+def _quant_group(arrays, top=999):
+    """(max, [ints...]) with one shared max over all arrays (stacked panels)."""
+    arrs = [[_fin(v) for v in a] for a in arrays]
+    m = max((max(a, default=0.0) for a in arrs), default=0.0)
+    if m <= 0:
+        return 0, [[] for _ in arrs]
+    return _qmax(m), [_ints(a, m, top) for a in arrs]
+
+
+def dequantise(pair, n=None, top=99):
+    """Inverse of _quant (top=99) or of one sz array with its shared max (top=999)."""
     m, q = pair
-    out = [i * m / 99 for i in q]
+    out = [i * m / top for i in q]
     return out + [0.0] * (n - len(out)) if n else out
 
 
@@ -91,16 +120,21 @@ def _signals(sig):
     if not sig.get("n_alns"):
         return {"none": 1}
     cov, ends, sz = sig["cov"], sig["ends"], sig["sizes"]
+    lo, dom = sz.get("lo", 18), sig.get("dominant")
+    m, q = _quant_group([sz[b][s] for b in "ACGU" for s in "+-"])
+    nd = 0.0
+    if dom is not None and 0 <= dom - lo < len(sz["A"]["+"]):
+        nd = sum(_fin(sz[b][s][dom - lo]) for b in "ACGU" for s in "+-")
     return {
-        "dom": sig.get("dominant"),
-        "sz": dict({"lo": sz.get("lo", 18)},
-                   **{b: [_quant(sz[b]["+"]), _quant(sz[b]["-"])] for b in "ACGU"}),
+        "n": round(sig["n_alns"]), "nd": _n(nd, 1), "dom": dom, "nb": len(cov["+"]),
+        "sz": dict({"lo": lo, "max": m},
+                   **{b: [q[2 * i], q[2 * i + 1]] for i, b in enumerate("ACGU")}),
         "ph": {s: _quant(sig["phasing"][s]) for s in "+-"},
         "pp": _quant(sig["pingpong"]),
         "cv": {"s": _n(cov["start"], 0), "b": cov["bin"],
                "+": _quant(cov["+"]), "-": _quant(cov["-"])},
         "en": {"b": ends["bin"], "+": _quant(ends["+"]), "-": _quant(ends["-"])},
-        "lg": {s: [[round(99 * (p.get(b) or 0)) for b in "ACGU"] for p in sig["logo"][s]]
+        "lg": {s: [[round(99 * _fin(p.get(b))) for b in "ACGU"] for p in sig["logo"][s]]
                for s in "+-"},
         "sq": [[q[0], q[1], q[2], _n(q[3], 3), q[4]] for q in sig.get("seqs", [])],
     }
@@ -114,6 +148,8 @@ def _row(i, c, has_detail, ex, kingdom):
     r = {"n": c.name, "h": c.chrom, "s": _n(c.start, 0), "e": _n(c.end, 0), "r": _n(c.reads, 1),
          "c": c.cls, "f": None if amb else _n(c.confidence), "z": c.dicer_call, "v": v,
          "d": 1 if has_detail else 0}
+    if c.review:
+        r["rv"] = 1
     if amb:
         r["nc"] = rt.nearest_class(c)
     if ex["unresolved"]:
