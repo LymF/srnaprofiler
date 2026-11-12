@@ -230,6 +230,42 @@ STRINGS = {
     "ui.detail.conf.amb": "Not shown: the stored value belongs to the nearest class, which was not assigned.",
     "ui.footer.animal": "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. 1U, strand, ping-pong and phasing scores: present at {present} or more, weak at {weak} or more. A at position 10: present at {p10} or more, weak at {w10} or more. Size consistency: present at {psize} or more, weak at {wsize} or more. Multimapping: moderate at {mmod} or more, high at {mhigh} or more. They only decide how a bar is worded in this report.",
     "ui.footer.plant": "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. 1U, 5'A, strand and phasing scores: present at {present} or more, weak at {weak} or more. Size consistency: present at {psize} or more, weak at {wsize} or more. Multimapping: moderate at {mmod} or more, high at {mhigh} or more. They only decide how a bar is worded in this report.",
+    "check.1u_pingpong.title": "Starts with U or ping-pong",
+    "check.length.title": "Cluster length",
+    "check.density.title": "Read density",
+    "ck.title": "Why {cls}",
+    "ck.title.amb": "Why this is unresolved: checks for the nearest class, {cls}",
+    "ck.mirna": "The class comes from the miRDeep2 hairpin search, so no read-signature checks apply.",
+    "ck.ml": "The class came from the trained model. These are the class's basic checks; the evidence rows are for reference.",
+    "ck.note": "Evidence checks have no cutoff of their own: the classifier weighs them in a score, and a row is met here when its effect is above chance. The size window and cluster criteria are hard limits.",
+    "ck.th.check": "Check",
+    "ck.th.observed": "Observed",
+    "ck.th.rule": "Rule",
+    "ck.th.status": "Result",
+    "ck.st.1": "Met",
+    "ck.st.0": "Not met",
+    "ck.st.2": "Not available",
+    "ck.st.3": "Not tested",
+    "ck.thr.size": "Dominant size of {lo} to {hi} nt",
+    "ck.thr.size1": "Dominant size of {lo} nt",
+    "ck.thr.1u": "Share of 5' U above chance (95% confidence)",
+    "ck.thr.5a": "Share of 5' A above chance (95% confidence)",
+    "ck.thr.strand": "Minority strand above 10% of the reads (95% confidence)",
+    "ck.thr.pingpong": "10 nt overlap above the other overlaps (95% confidence)",
+    "ck.thr.1u_pingpong": "Either 5' U above chance or the 10 nt overlap above the other overlaps (95% confidence)",
+    "ck.thr.phasing": "Cycles in register above chance (95% confidence)",
+    "ck.thr.phasing_p": "Phasing test p of {p} or less, and cycles in register above chance (95% confidence)",
+    "ck.thr.length": "Reads span at least {n} bp",
+    "ck.thr.density": "Reads denser than chance (p of {p} or less)",
+    "ck.obs.size": "{z} nt",
+    "ck.obs.nosize": "no size call",
+    "ck.obs.1u": "{pct}% start with U",
+    "ck.obs.5a": "{pct}% start with A",
+    "ck.obs.strand": "{pct}% on the minority strand",
+    "ck.obs.pingpong": "z = {z}",
+    "ck.obs.phasing": "p = {p}, {n} cycles",
+    "ck.obs.strength": ", strength {e}",
+    "ck.obs.span": "{n} bp",
 }
 
 # Report check keys shown per kingdom; the first five are the list's evidence dots.
@@ -293,12 +329,15 @@ def confidence_floor(kingdom="animal"):
     return 1.0 / len(report_data.class_specs(kingdom))
 
 
-def nearest_class(c):
-    """Nearest class named in the evidence trail; None without a size call or a trail."""
-    if c.dicer_call is None:
-        return None
+def trail_nearest(c):
+    """Nearest class named in the evidence trail, with or without a size call."""
     m = _NEAREST.search(c.evidence or "")
     return m.group(1) if m else None
+
+
+def nearest_class(c):
+    """Nearest class named in the evidence trail; None without a size call or a trail."""
+    return None if c.dicer_call is None else trail_nearest(c)
 
 
 def ambiguous_reason(c):

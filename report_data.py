@@ -60,6 +60,7 @@ class Cluster:
     gates: dict = field(default_factory=dict)
     has_evidence: bool = False
     pct_5a: float = None
+    phase_number: float = None
 
 
 def _row_to_cluster(row, has_evidence):
@@ -81,6 +82,7 @@ def _row_to_cluster(row, has_evidence):
                if k.startswith("gate_") and _num(v) is not None},
         has_evidence=has_evidence,
         pct_5a=_num(row.get("pct_5a")),
+        phase_number=_num(row.get("phase_number")),
     )
 
 
@@ -113,7 +115,9 @@ def class_specs(kingdom):
     """Per-class display facts from the shipped rules file of this kingdom.
 
     {class: {"defining": set of check keys, "size": (lo, hi) or None,
-    "min_length": bp or None, "phase_max_p": float or None, "by_phase": bool}}.
+    "min_length": bp or None, "phase_max_p": float or None, "by_phase": bool,
+    "slots": defining_evidence as written (a nested list is an OR slot),
+    "density_p": cluster_max_density_pvalue or None}}.
     A run with a custom --config may differ; the report cannot know it.
     """
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), _RULES[kingdom])
@@ -132,7 +136,10 @@ def class_specs(kingdom):
                      "size": (size["lo"], size["hi"]) if "lo" in size and "hi" in size else None,
                      "min_length": spec.get("cluster_min_length"),
                      "phase_max_p": spec.get("phase_max_pvalue"),
-                     "by_phase": "phase" in names}
+                     "by_phase": "phase" in names,
+                     "slots": [list(s) if isinstance(s, list) else [s]
+                               for s in spec.get("defining_evidence", [])],
+                     "density_p": spec.get("cluster_max_density_pvalue")}
     return out
 
 

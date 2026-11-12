@@ -13,6 +13,9 @@ Payload (JSON in <script id="report-data">), read by the front end:
       10a (animal) or 5a (plant), strand (value = plus-strand share), pingpong
       (z, animal), phasing (p), multimap (share); level is a _LEVEL digit string,
     ctx [reads_pct, conf_pct|null] (percentiles among shown clusters),
+    ck [class, [status, observed text], ...] class checklist, rows in meta.cl[class] order
+      (status: 1 met, 0 not met, 2 not available, 3 not tested; class is the nearest class
+      for an ambiguous cluster; absent for miRNA, other and ML-ambiguous), see report_checks,
     sig: {"err":1} | {"none":1} | quantised figure data:
       n total aligned reads the panels are drawn from (int), nd weighted reads at
       the dominant length (logo and sizes panel), dom dominant length, nb number
@@ -29,7 +32,8 @@ Payload (JSON in <script id="report-data">), read by the front end:
       sq rows [sequence, length, strand, reads, 5' base] exact.
   meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
-    conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary.
+    conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary,
+    cl {class: [[check name key, rule text], ...]} the checklist rows per class.
 """
 import base64
 import html
@@ -38,6 +42,7 @@ import math
 import os
 import re
 
+import report_checks
 import report_data
 import report_text as rt
 import version
@@ -158,11 +163,15 @@ def _row(i, c, has_detail, ex, kingdom):
     return r
 
 
-def _detail(c, ex, sig, ctx):
-    return {"v": ex["verdict"],
-            "strip": [[k, _LEVEL[lv], _n(v, 4)] for k, lv, v in ex["strip"]],
-            "ctx": [ctx["reads_pct"], ctx["conf_pct"]],
-            "seq": c.major_rna, "rpm": _n(c.reads_rpm), "sig": _signals(sig)}
+def _detail(c, ex, sig, ctx, kingdom="animal"):
+    d = {"v": ex["verdict"],
+         "strip": [[k, _LEVEL[lv], _n(v, 4)] for k, lv, v in ex["strip"]],
+         "ctx": [ctx["reads_pct"], ctx["conf_pct"]],
+         "seq": c.major_rna, "rpm": _n(c.reads_rpm), "sig": _signals(sig)}
+    ck = report_checks.checklist(c, kingdom)
+    if ck:
+        d["ck"] = ck
+    return d
 
 
 def _payload(sel, summary, signals, title):
@@ -177,7 +186,7 @@ def _payload(sel, summary, signals, title):
         rows.append(_row(i, c, has, ex, kingdom))
         counts[c.cls] = counts.get(c.cls, 0) + 1
         if has:
-            details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name])
+            details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name], kingdom)
     lib = {k: _n(summary.get(k), 4) for k in
            ("library_reads", "cluster_reads", "unique_share", "fragments", "fragment_reads")}
     S = rt.STRINGS
@@ -196,7 +205,7 @@ def _payload(sel, summary, signals, title):
                  "dot_names": [S[f"ui.dot.{k}"] for k in rt.DOTS[kingdom]],
                  "dot_legend": rt.dot_legend(kingdom), "kt": rt.kingdom_text(kingdom),
                  "n_hidden": sel.n_hidden, "capped": bool(sel.capped),
-                 "n_detail": len(sel.detail),
+                 "n_detail": len(sel.detail), "cl": report_checks.skeleton(kingdom),
                  "reads_shown": _n(sum(c.reads or 0 for c in sel.shown), 1),
                  "summary": rt.summary_sentence(counts, sel.floor)},
     }

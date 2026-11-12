@@ -62,6 +62,9 @@ if (rowEl) {
   res.opened = true;
   res.active1 = H.active();
   res.detail = H.counts(det);
+  // the checklist's row icons are not figures
+  var ckEl = H.byClass(det, "rpt-srna-ck", "section")[0];
+  res.detail.svg -= ckEl ? H.all(ckEl, "svg").length : 0;
   res.detailText = H.text(det);
   res.detailH = H.text(H.all(H.byClass(det, "rpt-srna-head")[0], "h2")[0]);
   res.strip = H.all(H.byClass(det, "rpt-srna-strip")[0], "div").filter(function (e) {
@@ -616,10 +619,14 @@ def test_redraw_on_resize(tmp_path):
     r = run_js(tmp_path, text, """
     H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
     var det = H.id("sec-detail");
-    var before = H.all(det, "svg").map(function (s) { return s.getAttribute("width"); });
+    function figs() {   // not the 14 px checklist icons
+      return H.all(det, "svg").map(function (s) { return s.getAttribute("width"); })
+        .filter(function (w) { return w !== "14"; });
+    }
+    var before = figs();
     var n = H.observed();
     H.resize(410);
-    var after = H.all(det, "svg").map(function (s) { return s.getAttribute("width"); });
+    var after = figs();
     return [before, n, after];""")
     assert set(r[0]) == {"720"} and r[1] == 9 and set(r[2]) == {"410"}   # 7 figures + 2 overview
 
@@ -894,3 +901,65 @@ def test_harness_detects_probe_failure(tmp_path):
     _, text, _ = page(tmp_path, [mk()])
     with pytest.raises(JsError):
         run_js(tmp_path, text, 'H.click(H.id("sec-about")); return 1;')
+
+
+CK_PROBE = """
+H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+var det = H.id("sec-detail");
+var ck = H.byClass(det, "rpt-srna-ck", "section")[0];
+if (!ck) { return null; }
+var order = det.children.map(function (c) { return H.cls(c); });
+return {text: H.text(ck), head: H.text(H.all(ck, "h3")[0]),
+        rows: (H.all(ck, "tbody")[0] ? H.all(H.all(ck, "tbody")[0], "tr") : []).map(function (tr) {
+          return H.all(tr, "td").map(H.text).concat(H.text(H.all(tr, "th")[0])); }),
+        svg: H.all(ck, "svg").length,
+        before: H.byClass(det, "rpt-srna-figs").length ? true : false};
+"""
+
+
+def ck_page(tmp_path, clusters):
+    _, text, d = page(tmp_path, clusters)
+    return d, run_js(tmp_path, text, CK_PROBE)
+
+
+def test_checklist_rows_icons_and_text(tmp_path):
+    d, r = ck_page(tmp_path, [mk("a", cls="piRNA", dicer_call=27, start=0, end=5000)])
+    S = d["strings"]
+    assert r["head"] == S["ck.title"].format(cls="piRNA")
+    assert len(r["rows"]) == 4
+    assert r["rows"][0][-1] == S["check.size.title"]
+    assert S["ck.st.1"] in r["rows"][0][2]            # result is text, not only colour
+    assert r["svg"] == 4                              # and an icon per row
+    assert S["ck.thr.length"].format(n=1000) in r["text"]
+    assert S["ck.note"] in r["text"]
+
+
+def test_checklist_failed_rows_say_not_met(tmp_path):
+    d, r = ck_page(tmp_path, [mk("a", cls="ambiguous", dicer_call=19, evidence="nearest=piRNA; x=1",
+                                  e={k: 0.0 for k in ("1u", "5a", "fractop_bid", "pingpong", "phase")})])
+    S = d["strings"]
+    assert r["head"] == S["ck.title.amb"].format(cls="piRNA")
+    assert [x[2] for x in r["rows"]] == [S["ck.st.0"], S["ck.st.0"], S["ck.st.3"], S["ck.st.3"]]
+
+
+def test_checklist_mirna_has_one_line(tmp_path):
+    d, r = ck_page(tmp_path, [mk("m", cls="miRNA")])
+    assert d["strings"]["ck.mirna"] in r["text"] and r["rows"] == []
+
+
+def test_checklist_plant_and_old_tsv(tmp_path):
+    d, r = ck_page(tmp_path, [mk("h", cls="hcsiRNA", dicer_call=24, gates={"hcsiRNA": True},
+                                  start=0, end=300)])
+    assert len(r["rows"]) == 2
+    cl = [mk("o", cls="siRNA", dicer_call=21, e={}, has_evidence=False)]
+    d, r = ck_page(tmp_path, cl)
+    assert r["rows"][1][2] == d["strings"]["ck.st.2"]
+
+
+def test_checklist_sits_between_strip_and_figures(tmp_path):
+    _, text, d = page(tmp_path, [mk("a", cls="piRNA", dicer_call=27, start=0, end=5000)])
+    r = run_js(tmp_path, text, """
+    H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+    return H.id("sec-detail").children.map(function (c) { return H.cls(c); });""")
+    i = r.index("rpt-srna-ck")
+    assert r[i - 1] == "rpt-srna-strip" and r[i + 1] == "rpt-srna-figs"

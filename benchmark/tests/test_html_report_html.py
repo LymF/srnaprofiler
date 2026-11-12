@@ -467,7 +467,8 @@ def test_strings_have_no_orphans():
         src = open(os.path.join(os.path.dirname(__file__), "..", "..", f), encoding="utf-8").read()
         # the STRINGS table itself does not count as a use
         py += re.sub(r"STRINGS = \{.*?\n\}", "", src, flags=re.S)
-    dynamic = ("verdict.", "status.", "check.", "amb.crit.", "ui.dot.", "ui.help.sizes.")
+    dynamic = ("verdict.", "status.", "check.", "amb.crit.", "ui.dot.", "ui.help.sizes.",
+                   "ck.thr.", "ck.obs.", "ck.st.")
     orphans = [k for k in rt.STRINGS
                if f'"{k}"' not in code and f'"{k}"' not in py and not k.startswith(dynamic)]
     assert orphans == []

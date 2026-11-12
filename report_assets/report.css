@@ -2362,3 +2362,15 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
   padding: var(--rpt-space-3) var(--rpt-space-4); font-family: var(--rpt-font-mono); font-size: 14px;
   line-height: 24px; color: var(--rpt-text); overflow-x: auto; white-space: pre; }
 .rpt-about__card-sub { font-size: 13px; color: var(--rpt-text-2); }
+
+/* ---- class checklist ---- */
+.rpt-srna-ck { margin: var(--rpt-space-4) 0; }
+.rpt-srna-ck .rpt-srna-h { margin-top: 0; }
+.rpt-srna-ck th[scope="row"] { color: var(--rpt-text); white-space: nowrap; }
+.rpt-srna-ck td { color: var(--rpt-text-2); }
+.rpt-srna-ck td.rpt-srna-mono { color: var(--rpt-text); }
+.rpt-srna-ck__st { white-space: nowrap; color: var(--rpt-text) !important; }
+.rpt-srna-ck__st svg { vertical-align: -2px; margin-right: 6px; }
+.rpt-srna-ck__st.s1 svg { color: var(--rpt-success); }
+.rpt-srna-ck__st.s0 svg { color: var(--rpt-danger); }
+.rpt-srna-ck__st.s2 svg, .rpt-srna-ck__st.s3 svg { color: var(--rpt-text-3); }

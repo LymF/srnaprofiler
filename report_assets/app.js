@@ -1376,6 +1376,35 @@
     add(box, [rc, cc]);
     return box;
   }
+  // ---- class checklist: why the class was assigned (or withheld), one row per check ----
+  // 16x16 glyphs, so the result never rests on colour alone: tick, cross, dash, ring
+  var CK_PATH = {1: "M6.5 11.2L3.3 8l-1.1 1.1 4.3 4.3 8-8-1.1-1.1z",
+    0: "M4 3L3 4l4 4-4 4 1 1 4-4 4 4 1-1-4-4 4-4-1-1-4 4z",
+    2: "M3 7h10v2H3z",
+    3: "M8 3a5 5 0 100 10A5 5 0 008 3zm0 1.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7z"};
+  function checklist(d, r) {
+    var ck = d.ck, plan = ck && (META.cl || {})[ck[0]];
+    if (r.c === "miRNA") {
+      return h("section", "rpt-srna-ck", [h("h3", "rpt-srna-h", T("ck.title", {cls: r.c})), note(T("ck.mirna"))]);
+    }
+    if (!ck || !plan) { return null; }
+    var head = h("tr", "", ["ck.th.check", "ck.th.observed", "ck.th.rule", "ck.th.status"].map(function (k) {
+      return h("th", "", T(k));
+    }));
+    var tb = h("tbody");
+    plan.forEach(function (p, i) {
+      var row = ck[i + 1] || [2, ""], st = row[0];
+      var name = h("th", "", T(p[0]));
+      name.setAttribute("scope", "row");
+      var gl = icon(CK_PATH[st] || CK_PATH[2], 14, "0 0 16 16");
+      tb.appendChild(h("tr", "", [name, h("td", "rpt-srna-mono", row[1]), h("td", "", p[1]),
+        h("td", "rpt-srna-ck__st s" + st, [gl, h("span", "", T("ck.st." + st))])]));
+    });
+    return h("section", "rpt-srna-ck", [
+      h("h3", "rpt-srna-h", T(r.c === "ambiguous" ? "ck.title.amb" : "ck.title", {cls: ck[0]})),
+      h("div", "rpt-srna-scroll", h("table", "rpt-srna-table", [h("thead", "", head), tb])),
+      note(T("ck.note")), META.mode === "ml" ? note(T("ck.ml")) : null]);
+  }
   function openCluster(i) {
     var r = rows[i], d = D.details[String(i)];
     var box = clear(document.getElementById("sec-detail"));
@@ -1407,7 +1436,7 @@
       h2.focus({preventScroll: true});
       return;
     }
-    add(box, [h("p", "rpt-srna-say", T(d.v, {reason: r.u || ""})), strip(d, r)]);
+    add(box, [h("p", "rpt-srna-say", T(d.v, {reason: r.u || ""})), strip(d, r), checklist(d, r)]);
     show("detail");
     h2.focus({preventScroll: true});
     box.appendChild(figures(d, r));
