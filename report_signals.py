@@ -1,79 +1,161 @@
-"""Per-cluster figure data (sizes, nt composition, coverage, ping-pong) from a BAM."""
+"""Per-cluster figure data for the HTML report, read in one pass from the BAM.
+
+Each cluster region is fetched once and aggregated into Counters keyed by
+(strand, pos, length, nh, 5' base) and by distinct sequence, so memory is
+bounded by distinct keys, not by read count. Numbers match `class_signals`.
+"""
 from collections import Counter
+from itertools import accumulate
 
 import pysam
 
-import class_signals
 import samio
 import utils
+from features import revcomp
+from signals import offset_spectrum
 
 _NT_POS = 26
 _PP_HI = 30
+_PHASE_MAX = 100
+_SKIP = 0x4 | 0x100 | 0x800  # unmapped, secondary, supplementary (samio._keep)
 
 
 def _r(x):
-    return round(x, 3)
+    return round(float(x), 3)
 
 
-def _bin_lane(lane, bin_size):
-    return [float(sum(lane[i:i + bin_size])) for i in range(0, len(lane), bin_size)]
+def _accumulate(fh, chrom, start, end, *, xm_as_nh):
+    """One pass over the region: (records kept, key Counter, sequence Counter).
 
-
-def cluster_signals(alns, start, end, size_lo=18, size_hi=35, max_bins=120, dominant=None):
-    """Figure data for one cluster window [start, end); see the module docstring.
-
-    `dominant` is the cluster's size call (dicer_call); without it the dominant
-    size is the most abundant length inside [size_lo, size_hi].
+    keys: (strand, pos, length, nh, 5' base) -> record count.
+    seqs: (is_reverse, stored sequence) -> 1/NH-weighted reads.
     """
-    alns = list(alns)
-    n = size_hi - size_lo + 1
-    plus, minus = [0.0] * n, [0.0] * n
+    keys, seqs = Counter(), Counter()
+    n = 0
+    for rec in fh.fetch(chrom, start, end):
+        if rec.flag & _SKIP:
+            continue
+        seq = rec.query_sequence
+        if not seq:
+            continue
+        nh = samio._nh(rec, xm_as_nh)
+        rev = rec.is_reverse
+        if rev:
+            keys["-", rec.reference_start, len(seq), nh, revcomp(seq[-1])] += 1
+        else:
+            keys["+", rec.reference_start, len(seq), nh, seq[0]] += 1
+        seqs[rev, seq] += 1.0 / nh
+        n += 1
+    return n, keys, seqs
+
+
+def _mean_bins(lane, bin_size):
+    out = []
+    for i in range(0, len(lane), bin_size):
+        part = lane[i:i + bin_size]
+        out.append(_r(sum(part) / len(part)))
+    return out
+
+
+def _build(n, keys, seqs, start, end, *, dominant=None, size_lo=18, size_hi=35,
+           max_bins=400, top_seqs=10):
+    """Figure data from the counters of `_accumulate`."""
+    span = size_hi - size_lo + 1
+    sizes = {b: {"+": [0.0] * span, "-": [0.0] * span} for b in "ACGU"}
     by_size = Counter()
-    for a in alns:
-        L = len(a.seq)
+    ends = {"+": Counter(), "-": Counter()}
+    length = max(end - start, 0)
+    diff = {"+": [0] * (length + 1), "-": [0] * (length + 1)}
+    for (s, pos, L, nh, b), c in keys.items():
+        w = c / nh
+        b = "U" if b == "T" else b  # as base_composition: uppercase ACGT only
         if size_lo <= L <= size_hi:
-            w = 1.0 / a.nh
-            (plus if a.strand == "+" else minus)[L - size_lo] += w
-        by_size[L] += 1.0 / a.nh
+            by_size[L] += w
+            if b in sizes:
+                sizes[b][s][L - size_lo] += w
+        ends[s][pos if s == "+" else pos + L - 1] += w
+        lo, hi = max(pos, start), min(pos + L, end)  # clipped like coverage_track
+        if lo < hi:
+            diff[s][lo - start] += c
+            diff[s][hi - start] -= c
 
-    # nucleotide composition of the dominant-size reads
-    nt = [{"A": 0, "C": 0, "G": 0, "U": 0} for _ in range(_NT_POS)]
-    in_win = {L: v for L, v in by_size.items() if size_lo <= L <= size_hi}
-    dom = dominant if dominant is not None and size_lo <= dominant <= size_hi else (
-        max(in_win, key=lambda s: (in_win[s], -s)) if in_win else None)
-    if dom is not None:
-        tot = [0.0] * _NT_POS
-        cnt = [{"A": 0.0, "C": 0.0, "G": 0.0, "U": 0.0} for _ in range(_NT_POS)]
-        for a in alns:
-            if len(a.seq) != dom:
+    if dominant is None or not size_lo <= dominant <= size_hi:
+        dominant = max(by_size, key=lambda k: (by_size[k], -k)) if by_size else None
+
+    bin_size = max(1, -(-length // max_bins))
+    cov, end_bins = {"start": start, "bin": bin_size}, {"bin": bin_size}
+    for s in "+-":
+        cov[s] = _mean_bins(list(accumulate(diff[s][:length])), bin_size)
+        lane = [0.0] * len(cov[s])
+        for p, w in ends[s].items():
+            if start <= p < end:
+                lane[(p - start) // bin_size] += w
+        end_bins[s] = [_r(v) for v in lane]
+
+    pp = offset_spectrum(ends["+"], ends["-"], lo=1, hi=_PP_HI)
+    phasing = {}
+    for s in "+-":
+        # offset_spectrum keys are distance + 1 (see class_signals.phasing_series)
+        raw = offset_spectrum(ends[s], ends[s], lo=2, hi=_PHASE_MAX + 1)
+        phasing[s] = [_r(raw.get(k + 1, 0.0)) for k in range(1, _PHASE_MAX + 1)]
+
+    # distinct sequences, RNA-oriented, T as U
+    rna = Counter()
+    for (rev, seq), w in seqs.items():
+        o = (revcomp(seq) if rev else seq).upper().replace("T", "U")
+        rna[o, "-" if rev else "+"] += w
+    rows = sorted(rna.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))
+    top = [[o, len(o), s, _r(w), o[0]] for (o, s), w in rows[:top_seqs]]
+
+    logo = {}
+    for s in "+-":
+        cnt = [dict.fromkeys("ACGU", 0.0) for _ in range(_NT_POS)]
+        for (o, st), w in rna.items():
+            if st != s or len(o) != dominant:
                 continue
-            w = 1.0 / a.nh
-            for i, b in enumerate(class_signals._oriented(a)[:_NT_POS]):
-                b = "U" if b in "Tt" else b.upper()
-                if b in cnt[i]:
+            for i, b in enumerate(o[:_NT_POS]):
+                if b in "ACGU":
                     cnt[i][b] += w
-                    tot[i] += w
-        for i in range(_NT_POS):
-            if tot[i] > 0:
-                nt[i] = {b: _r(v / tot[i]) for b, v in cnt[i].items()}
+        tots = [sum(p.values()) for p in cnt]
+        logo[s] = [{b: _r(v / t) for b, v in p.items()} if t > 0 else dict.fromkeys("ACGU", 0)
+                   for p, t in zip(cnt, tots)]
 
-    sense, anti = class_signals.coverage_track(alns, start, end)
-    bin_size = max(1, -(-len(sense) // max_bins))
-    pp = class_signals.pingpong_offsets(alns, hi=_PP_HI)
     return {
-        "sizes": {"lo": size_lo, "plus": [_r(v) for v in plus],
-                  "minus": [_r(v) for v in minus]},
-        "nt": nt,
-        "coverage": {"start": start, "bin": bin_size,
-                     "plus": _bin_lane(sense, bin_size),
-                     "minus": _bin_lane(anti, bin_size)},
+        "n_alns": n,
+        "dominant": dominant,
+        "sizes": dict({"lo": size_lo},
+                      **{b: {s: [_r(v) for v in sizes[b][s]] for s in "+-"} for b in "ACGU"}),
+        "phasing": phasing,
         "pingpong": [_r(pp.get(o, 0.0)) for o in range(1, _PP_HI + 1)],
-        "n_alns": len(alns),
+        "cov": cov,
+        "ends": end_bins,
+        "logo": logo,
+        "seqs": top,
     }
 
 
-def signals_for(bam_path, clusters, xm_as_nh=None):
-    """One figure-data entry per cluster name; a failing region is zero-filled."""
+def cluster_signals(fh, chrom, start, end, *, xm_as_nh, dominant=None, size_lo=18,
+                    size_hi=35, max_bins=400, top_seqs=10):
+    """Figure data for one cluster window [start, end) of an open AlignmentFile.
+
+    `dominant` is the cluster's size call; without it (or outside the size
+    window) the most abundant length inside [size_lo, size_hi] is used.
+    """
+    n, keys, seqs = _accumulate(fh, chrom, start, end, xm_as_nh=xm_as_nh)
+    return _build(n, keys, seqs, start, end, dominant=dominant, size_lo=size_lo,
+                  size_hi=size_hi, max_bins=max_bins, top_seqs=top_seqs)
+
+
+def _empty(start, end):
+    return _build(0, Counter(), Counter(), start, end)
+
+
+def signals_for(bam_path, clusters, xm_as_nh=None, threads=1):
+    """One figure-data entry per cluster name; a failing region is zero-filled.
+
+    `threads` is accepted for the CLI; the worker pool is added in the next
+    task, until then every value runs single-threaded.
+    """
     if xm_as_nh is None:
         xm_as_nh = samio.prefers_xm_as_nh(bam_path)
     out = {}
@@ -84,21 +166,19 @@ def signals_for(bam_path, clusters, xm_as_nh=None):
             if c.start is None or c.end is None:
                 failed += 1
                 first = first or f"{c.name}: no coordinates"
-                out[c.name] = dict(cluster_signals([], 0, 0), failed=True)
+                out[c.name] = dict(_empty(0, 0), failed=True)
                 continue
-            alns, bad = [], False
-            if c.chrom in refs:
-                try:
-                    alns = list(samio.read_region_handle(
-                        fh, c.chrom, c.start, c.end, xm_as_nh=xm_as_nh))
-                except Exception as e:
-                    failed += 1
-                    bad = True
-                    first = first or f"{type(e).__name__}: {e}"
-            out[c.name] = cluster_signals(alns, c.start, c.end,
-                                          dominant=getattr(c, "dicer_call", None))
-            if bad:
-                out[c.name]["failed"] = True
+            dom = getattr(c, "dicer_call", None)
+            if c.chrom not in refs:
+                out[c.name] = _empty(c.start, c.end)
+                continue
+            try:
+                n, keys, seqs = _accumulate(fh, c.chrom, c.start, c.end, xm_as_nh=xm_as_nh)
+                out[c.name] = _build(n, keys, seqs, c.start, c.end, dominant=dom)
+            except Exception as e:
+                failed += 1
+                first = first or f"{type(e).__name__}: {e}"
+                out[c.name] = dict(_empty(c.start, c.end), failed=True)
     if failed:
         utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
                   f"(zero-filled); first error: {first}", "WARN")
