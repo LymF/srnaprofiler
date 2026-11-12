@@ -285,7 +285,7 @@ def _exe_xy(db):
     try:
         with tempfile.TemporaryDirectory() as tmp:
             seq = "N" * len(db)
-            p = subprocess.run([exe, "-t", "1", "-o", "ps"], input=f"{seq}\n{db}\n",
+            p = subprocess.run([exe, "-t", "1"], input=f"{seq}\n{db}\n",
                                capture_output=True, text=True, timeout=120, cwd=tmp)
             if p.returncode != 0:
                 return []
