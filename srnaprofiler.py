@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 # Import the analysis modules
+from version import __version__
 from qc import run_qc
 from mapping import run_mapping
 from mirna import run_mirna_analysis
@@ -50,6 +51,16 @@ def print_header():
     print(header)
 
 
+def _positive_int(v):
+    try:
+        n = int(v)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be an integer >= 1 (got {v!r})")
+    return n
+
+
 def build_parser():
     """Build the command-line argument parser."""
     parser = argparse.ArgumentParser(
@@ -85,7 +96,7 @@ themselves are defined there. Every module takes --help.
     parser.add_argument(
         "--version", 
         action="version", 
-        version="%(prog)s 1.0"
+        version=f"%(prog)s {__version__}"
     )
     
     parser.add_argument(
@@ -482,6 +493,8 @@ themselves are defined there. Every module takes --help.
                     help="Hide clusters below this read count (default: %(default)s)")
     rp.add_argument("--max-detail", dest="max_detail", type=int, default=3000,
                     help="Clusters that get figures and detail (default: %(default)s)")
+    rp.add_argument("--threads", type=_positive_int, default=1,
+                    help="Worker processes for the figure data (default: %(default)s)")
     rp.add_argument("--fragments", default=None,
                     help="classify .fragments.tsv (default: the one beside --clusters)")
     rp.add_argument("--title", default=None, help="Report title")

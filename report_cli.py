@@ -9,6 +9,7 @@ import report_data
 import report_html
 import report_signals
 import report_text
+import version
 from utils import log
 
 
@@ -50,6 +51,8 @@ def run_report(args):
         _fail(f"--max-detail must be 0 or more (got {args.max_detail})")
     if not math.isfinite(args.min_reads) or args.min_reads < 0:
         _fail(f"--min-reads must be a finite number, 0 or more (got {args.min_reads})")
+    if args.threads < 1:
+        _fail(f"--threads must be 1 or more (got {args.threads})")
     _need(args.clusters, "clusters TSV")
     _need(args.bam, "BAM")
     _need_index(args.bam)
@@ -65,8 +68,9 @@ def run_report(args):
         log(f"report: detail capped at the top {args.max_detail} of {len(sel.shown)} "
             f"clusters (raise --max-detail to include more)", "WARN")
 
+    # Task 3 reads version.__version__ for the report meta
     summary = report_data.library_summary(clusters, frags)
-    signals = report_signals.signals_for(args.bam, sel.detail)
+    signals = report_signals.signals_for(args.bam, sel.detail, threads=args.threads)
     os.makedirs(args.outdir, exist_ok=True)
     out = os.path.join(args.outdir, f"{args.prefix}.report.html")
     title = args.title or report_text.STRINGS["ui.title.default"]

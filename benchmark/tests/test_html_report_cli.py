@@ -34,7 +34,8 @@ def args_for(tmp_path, **kw):
     bam = tmp_path / "s.bam"
     bamutil.make_bam(bam, [("c1", 100, False), ("c1", 110, False), ("c2", 300, False)])
     a = dict(clusters=str(clusters), bam=str(bam), outdir=str(tmp_path / "out" / "x"),
-             prefix="report", min_reads=0.0, max_detail=3000, fragments=None, title=None)
+             prefix="report", min_reads=0.0, max_detail=3000, fragments=None, title=None,
+             threads=1)
     a.update(kw)
     return SimpleNamespace(**a)
 
@@ -108,3 +109,38 @@ def test_bad_numbers_are_clear_errors(tmp_path, kw):
     with pytest.raises(SystemExit) as e:
         report_cli.run_report(args_for(tmp_path, **kw))
     assert "report:" in str(e.value)
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "abc", "1.5"])
+def test_threads_must_be_positive_int(bad, capsys):
+    import srnaprofiler
+    with pytest.raises(SystemExit) as e:
+        srnaprofiler.build_parser().parse_args(
+            ["report", "--clusters", "a", "--bam", "b", "-o", "o", "--threads", bad])
+    assert e.value.code != 0
+    assert "--threads" in capsys.readouterr().err
+
+
+def test_threads_default_and_run_report_guard(tmp_path):
+    import srnaprofiler
+    d = srnaprofiler.build_parser().parse_args(
+        ["report", "--clusters", "a", "--bam", "b", "-o", "o"])
+    assert d.threads == 1
+    with pytest.raises(SystemExit) as e:
+        report_cli.run_report(args_for(tmp_path, threads=0))
+    assert "--threads" in str(e.value)
+
+
+def test_report_with_threads(tmp_path):
+    report_cli.run_report(args_for(tmp_path, threads=2))
+    assert (tmp_path / "out" / "x" / "report.report.html").exists()
+
+
+def test_version_single_source():
+    import subprocess
+    import version
+    root = os.path.join(os.path.dirname(__file__), "..", "..")
+    r = subprocess.run([sys.executable, os.path.join(root, "srnaprofiler.py"), "--version"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and version.__version__ in (r.stdout + r.stderr)
+    assert "Traceback" not in r.stderr

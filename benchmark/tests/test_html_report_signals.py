@@ -365,3 +365,31 @@ def test_logo_and_seqs_equal_reference(tmp_path):
             t = sum(p.values())
             exp = {b: (v / t if t else 0.0) for b, v in p.items()}
             assert d["logo"][s][i] == pytest.approx(exp, abs=1e-3)
+
+
+def _many_clusters(tmp_path, n=120):
+    rng = random.Random(3)
+    reads = [("c1", rng.randrange(0, 4900), "".join(rng.choice("ACGT") for _ in range(22)),
+              rng.choice("+-"), 1) for _ in range(600)]
+    bam = tmp_path / "m.bam"
+    bamutil.make_seq_bam(bam, reads, (("c1", 5000),))
+    cl = [Cluster(f"k{i}", "c1", i * 40, i * 40 + 300) for i in range(n)]
+    return str(bam), cl
+
+
+def test_threads_give_identical_signals(tmp_path):
+    bam, cl = _many_clusters(tmp_path)
+    a = rs.signals_for(bam, cl, xm_as_nh=False, threads=1)
+    b = rs.signals_for(bam, cl, xm_as_nh=False, threads=2)
+    assert a == b and list(a) == list(b) and len(a) == 120
+
+
+def test_failed_cluster_still_zero_filled_with_threads(tmp_path, capsys):
+    bam, cl = _many_clusters(tmp_path, 120)
+    cl[3] = Cluster("bad1", "c1", None, 500)
+    cl[100] = Cluster("bad2", "c1", 0, None)
+    out = rs.signals_for(bam, cl, xm_as_nh=False, threads=2)
+    assert out["bad1"]["failed"] and out["bad2"]["failed"]
+    assert out["bad1"]["n_alns"] == 0 and not out["k5"].get("failed")
+    err = capsys.readouterr().err
+    assert err.count("WARN") == 1 and "2 cluster(s)" in err and "bad1: no coordinates" in err

@@ -172,35 +172,61 @@ def _empty(start, end):
     return _build(0, Counter(), Counter(), start, end)
 
 
-def signals_for(bam_path, clusters, xm_as_nh=None, threads=1):
-    """One figure-data entry per cluster name; a failing region is zero-filled.
+_CHUNK = 50  # clusters per worker task
 
-    `threads` is accepted for the CLI; the worker pool is added in the next
-    task, until then every value runs single-threaded.
+
+def _chunk_signals(bam_path, items, xm_as_nh):
+    """(signals by name, failed count, first error) for plain-tuple clusters.
+
+    items: (name, chrom, start, end, dicer_call). Opens its own AlignmentFile,
+    so it can run in a worker process.
     """
-    if xm_as_nh is None:
-        xm_as_nh = samio.prefers_xm_as_nh(bam_path)
     out = {}
     failed, first = 0, None
     with pysam.AlignmentFile(bam_path, "rb") as fh:
         refs = set(fh.references)
-        for c in clusters:
-            if c.start is None or c.end is None:
+        for name, chrom, start, end, dom in items:
+            if start is None or end is None:
                 failed += 1
-                first = first or f"{c.name}: no coordinates"
-                out[c.name] = dict(_empty(0, 0), failed=True)
+                first = first or f"{name}: no coordinates"
+                out[name] = dict(_empty(0, 0), failed=True)
                 continue
-            dom = getattr(c, "dicer_call", None)
-            if c.chrom not in refs:
-                out[c.name] = _empty(c.start, c.end)
+            if chrom not in refs:
+                out[name] = _empty(start, end)
                 continue
             try:
-                n, keys, seqs = _accumulate(fh, c.chrom, c.start, c.end, xm_as_nh=xm_as_nh)
-                out[c.name] = _build(n, keys, seqs, c.start, c.end, dominant=dom)
+                n, keys, seqs = _accumulate(fh, chrom, start, end, xm_as_nh=xm_as_nh)
+                out[name] = _build(n, keys, seqs, start, end, dominant=dom)
             except Exception as e:
                 failed += 1
                 first = first or f"{type(e).__name__}: {e}"
-                out[c.name] = dict(_empty(c.start, c.end), failed=True)
+                out[name] = dict(_empty(start, end), failed=True)
+    return out, failed, first
+
+
+def signals_for(bam_path, clusters, xm_as_nh=None, threads=1):
+    """One figure-data entry per cluster name; a failing region is zero-filled.
+
+    threads > 1 splits the clusters into chunks run in worker processes (each
+    opens its own BAM handle); the result is the same dict as threads=1.
+    """
+    if xm_as_nh is None:
+        xm_as_nh = samio.prefers_xm_as_nh(bam_path)
+    items = [(c.name, c.chrom, c.start, c.end, getattr(c, "dicer_call", None))
+             for c in clusters]
+    chunks = [items[i:i + _CHUNK] for i in range(0, len(items), _CHUNK)]
+    if threads > 1 and len(chunks) > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=min(threads, len(chunks))) as ex:
+            results = list(ex.map(_chunk_signals, [bam_path] * len(chunks), chunks,
+                                  [xm_as_nh] * len(chunks)))
+    else:
+        results = [_chunk_signals(bam_path, ch, xm_as_nh) for ch in chunks]
+    out, failed, first = {}, 0, None
+    for o, f, e in results:  # chunk order keeps the first error deterministic
+        out.update(o)
+        failed += f
+        first = first or e
     if failed:
         utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
                   f"(zero-filled); first error: {first}", "WARN")
