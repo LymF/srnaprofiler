@@ -301,3 +301,67 @@ def test_threads_argument_accepted(tmp_path):
     cl = [Cluster("b", "c1", 0, 500)]
     assert rs.signals_for(str(bam), cl, xm_as_nh=False, threads=4) == \
         rs.signals_for(str(bam), cl, xm_as_nh=False)
+
+
+def _binned_reference(lane, B):
+    return [round(sum(lane[i:i + B]) / len(lane[i:i + B]), 3) for i in range(0, len(lane), B)]
+
+
+@pytest.mark.parametrize("start,end,max_bins", [
+    (37, 1040, 100),   # 1003 bp: bin 11, partial last bin, clipped window
+    (90, 213, 400),    # shorter than max_bins: bin 1
+    (5, 1205, 7),      # few large bins
+])
+def test_coverage_bins_equal_per_base_reference(tmp_path, start, end, max_bins):
+    rng = random.Random(start + end)
+    reads = [("c1", rng.randint(0, 1250), _seq(rng, rng.randint(15, 40)), rng.choice("+-"),
+              rng.choice([1, 3])) for _ in range(500)]
+    reads += [("c1", start - 5, "A" * 30, "+", 1), ("c1", end - 3, "C" * 25, "-", 1)]
+    alns = [a for a in _alns(reads) if a.pos < end and a.pos + len(a.seq) > start]
+    d = _sig(tmp_path, reads, start, end, max_bins=max_bins)
+    B = d["cov"]["bin"]
+    assert B == -(-(end - start) // max_bins) and len(d["cov"]["+"]) <= max_bins
+    plus, minus = class_signals.coverage_track(alns, start, end)
+    assert d["cov"]["+"] == _binned_reference(plus, B)
+    assert d["cov"]["-"] == _binned_reference(minus, B)
+    p5, m5 = class_signals.five_prime_ends(alns)
+    for s, ends in (("+", p5), ("-", m5)):
+        ref = [0.0] * len(d["cov"][s])
+        for p, w in ends.items():
+            if start <= p < end:
+                ref[(p - start) // B] += w
+        assert d["ends"][s] == pytest.approx([round(v, 3) for v in ref], abs=1e-3)
+
+
+def test_logo_and_seqs_equal_reference(tmp_path):
+    rng = random.Random(7)
+    pool = [_seq(rng, rng.choice([20, 21, 21, 22, 24])) for _ in range(40)]
+    reads = [("c1", rng.randint(0, 800), rng.choice(pool), rng.choice("+-"),
+              rng.choice([1, 2, 3, 5])) for _ in range(600)]
+    alns = _alns(reads)
+    d = _sig(tmp_path, reads, 0, 1000, top_seqs=15)
+    # straightforward reference from class_signals._oriented
+    w = {}
+    for a in alns:
+        k = (class_signals._oriented(a).replace("T", "U"), a.strand)
+        w[k] = w.get(k, 0.0) + 1.0 / a.nh
+    ref_rows = sorted(w.items(), key=lambda kv: (-round(kv[1], 9), kv[0][0], kv[0][1]))[:15]
+    assert [r[:3] + [r[4]] for r in d["seqs"]] == \
+        [[o, len(o), s, o[0]] for (o, s), _ in ref_rows]
+    assert [r[3] for r in d["seqs"]] == pytest.approx([round(v, 3) for _, v in ref_rows],
+                                                      abs=1e-3)
+    dom = d["dominant"]
+    by_len = {}
+    for a in alns:
+        by_len[len(a.seq)] = by_len.get(len(a.seq), 0.0) + 1.0 / a.nh
+    assert dom == max(by_len, key=lambda k: (by_len[k], -k))
+    for s in "+-":
+        cnt = [dict.fromkeys("ACGU", 0.0) for _ in range(26)]
+        for a in alns:
+            if a.strand == s and len(a.seq) == dom:
+                for i, b in enumerate(class_signals._oriented(a).replace("T", "U")[:26]):
+                    cnt[i][b] += 1.0 / a.nh
+        for i, p in enumerate(cnt):
+            t = sum(p.values())
+            exp = {b: (v / t if t else 0.0) for b, v in p.items()}
+            assert d["logo"][s][i] == pytest.approx(exp, abs=1e-3)

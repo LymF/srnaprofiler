@@ -1,12 +1,15 @@
 """Per-cluster figure data for the HTML report, read in one pass from the BAM.
 
-Each cluster region is fetched once and aggregated into Counters keyed by
-(strand, pos, length, nh, 5' base) and by distinct sequence, so memory is
-bounded by distinct keys, not by read count. Numbers match `class_signals`.
+Each cluster region is fetched once and aggregated into two Counters, one keyed
+by (strand, pos, length, nh, 5' base) and one by distinct
+sequence (all lengths, for the sequences table); no per-read
+list is kept. Memory is bounded by the number of distinct keys plus distinct
+sequences: at most the number of records, and small for redundant small-RNA
+data. The sequence Counter is not capped (an evicted sequence could return and
+change the top rows); coverage and 5' ends are binned, so they cost O(bins),
+not O(cluster length). Numbers match `class_signals`.
 """
 from collections import Counter
-from itertools import accumulate
-
 import pysam
 
 import samio
@@ -49,11 +52,28 @@ def _accumulate(fh, chrom, start, end, *, xm_as_nh):
     return n, keys, seqs
 
 
-def _mean_bins(lane, bin_size):
-    out = []
-    for i in range(0, len(lane), bin_size):
-        part = lane[i:i + bin_size]
-        out.append(_r(sum(part) / len(part)))
+def _add_cov(sums, full, a, b, c, B):
+    """Add depth c over window offsets [a, b) to per-bin base sums.
+
+    Partial first/last bins get c * overlap directly; fully covered bins go
+    through the difference array `full` (c * B each).
+    """
+    ba, bb = a // B, (b - 1) // B
+    if ba == bb:
+        sums[ba] += c * (b - a)
+        return
+    sums[ba] += c * ((ba + 1) * B - a)
+    sums[bb] += c * (b - bb * B)
+    if bb > ba + 1:
+        full[ba + 1] += c * B
+        full[bb] -= c * B
+
+
+def _cov_means(sums, full, B, length):
+    out, run = [], 0
+    for i, v in enumerate(sums):
+        run += full[i]
+        out.append(_r((v + run) / min(B, length - i * B)))
     return out
 
 
@@ -65,7 +85,10 @@ def _build(n, keys, seqs, start, end, *, dominant=None, size_lo=18, size_hi=35,
     by_size = Counter()
     ends = {"+": Counter(), "-": Counter()}
     length = max(end - start, 0)
-    diff = {"+": [0] * (length + 1), "-": [0] * (length + 1)}
+    B = max(1, -(-length // max_bins))  # bin size
+    nbins = -(-length // B)
+    sums = {s: [0] * nbins for s in "+-"}
+    full = {s: [0] * (nbins + 1) for s in "+-"}
     for (s, pos, L, nh, b), c in keys.items():
         w = c / nh
         b = "U" if b == "T" else b  # as base_composition: uppercase ACGT only
@@ -76,20 +99,18 @@ def _build(n, keys, seqs, start, end, *, dominant=None, size_lo=18, size_hi=35,
         ends[s][pos if s == "+" else pos + L - 1] += w
         lo, hi = max(pos, start), min(pos + L, end)  # clipped like coverage_track
         if lo < hi:
-            diff[s][lo - start] += c
-            diff[s][hi - start] -= c
+            _add_cov(sums[s], full[s], lo - start, hi - start, c, B)
 
     if dominant is None or not size_lo <= dominant <= size_hi:
         dominant = max(by_size, key=lambda k: (by_size[k], -k)) if by_size else None
 
-    bin_size = max(1, -(-length // max_bins))
-    cov, end_bins = {"start": start, "bin": bin_size}, {"bin": bin_size}
+    cov, end_bins = {"start": start, "bin": B}, {"bin": B}
     for s in "+-":
-        cov[s] = _mean_bins(list(accumulate(diff[s][:length])), bin_size)
-        lane = [0.0] * len(cov[s])
+        cov[s] = _cov_means(sums[s], full[s], B, length)
+        lane = [0.0] * nbins
         for p, w in ends[s].items():
             if start <= p < end:
-                lane[(p - start) // bin_size] += w
+                lane[(p - start) // B] += w
         end_bins[s] = [_r(v) for v in lane]
 
     pp = offset_spectrum(ends["+"], ends["-"], lo=1, hi=_PP_HI)
@@ -104,7 +125,8 @@ def _build(n, keys, seqs, start, end, *, dominant=None, size_lo=18, size_hi=35,
     for (rev, seq), w in seqs.items():
         o = (revcomp(seq) if rev else seq).upper().replace("T", "U")
         rna[o, "-" if rev else "+"] += w
-    rows = sorted(rna.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))
+    # ties compared at 1e-9 so float summation order cannot reorder them
+    rows = sorted(rna.items(), key=lambda kv: (-round(kv[1], 9), kv[0][0], kv[0][1]))
     top = [[o, len(o), s, _r(w), o[0]] for (o, s), w in rows[:top_seqs]]
 
     logo = {}
