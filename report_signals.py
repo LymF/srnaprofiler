@@ -231,3 +231,64 @@ def signals_for(bam_path, clusters, xm_as_nh=None, threads=1):
         utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
                   f"(zero-filled); first error: {first}", "WARN")
     return out
+
+
+# ---- whole-library read lengths (one extra pass, by contig) ----
+
+LEN_LO, LEN_HI = 16, 40  # exact bins; below and above go to the two overflow bins
+
+
+def _len_slot(n):
+    return 0 if n < LEN_LO else LEN_HI - LEN_LO + 2 if n > LEN_HI else n - LEN_LO + 1
+
+
+def _contigs_lengths(bam_path, contigs, xm_as_nh):
+    """1/NH-weighted read counts per length slot over the given contigs."""
+    counts = [0.0] * (LEN_HI - LEN_LO + 3)
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        for contig in contigs:
+            for rec in fh.fetch(contig):
+                if rec.flag & _SKIP:
+                    continue
+                n = rec.query_length
+                if n:
+                    counts[_len_slot(n)] += 1.0 / samio._nh(rec, xm_as_nh)
+    return counts
+
+
+def _balanced(stats, parts):
+    """Split (contig, alignments) pairs into at most `parts` groups of similar size."""
+    groups = [[] for _ in range(max(1, min(parts, len(stats))))]
+    load = [0] * len(groups)
+    for contig, n in sorted(stats, key=lambda x: -x[1]):
+        i = load.index(min(load))
+        groups[i].append(contig)
+        load[i] += n
+    return [g for g in groups if g]
+
+
+def library_lengths(bam_path, xm_as_nh=None, threads=1):
+    """Read-length histogram of the whole library.
+
+    {"lo", "hi", "counts": [<lo, lo..hi, >hi] (len 27), "unmapped": int}. Primary mapped
+    alignments, each weighted by 1/NH like the cluster counts (so the total is on the same
+    scale as the library size behind RPM); secondary, supplementary and unmapped records are
+    not counted. `unmapped` is the BAM's own unmapped record count (from the index), not
+    weighted. threads > 1 splits the contigs over worker processes.
+    """
+    if xm_as_nh is None:
+        xm_as_nh = samio.prefers_xm_as_nh(bam_path)
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        stats = fh.get_index_statistics()
+        unmapped = fh.nocoordinate + sum(s.unmapped for s in stats)
+        work = [(s.contig, s.mapped) for s in stats if s.mapped > 0]
+    groups = _balanced(work, threads)
+    if threads > 1 and len(groups) > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=len(groups)) as ex:
+            parts = list(ex.map(_contigs_lengths, [bam_path] * len(groups), groups,
+                                [xm_as_nh] * len(groups)))
+    else:
+        parts = [_contigs_lengths(bam_path, g, xm_as_nh) for g in groups]
+    counts = [sum(col) for col in zip(*parts)] if parts else [0.0] * (LEN_HI - LEN_LO + 3)
+    return {"lo": LEN_LO, "hi": LEN_HI, "counts": counts, "unmapped": int(unmapped)}

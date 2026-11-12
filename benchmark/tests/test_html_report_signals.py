@@ -403,3 +403,61 @@ def test_missing_chromosome_with_threads(tmp_path, capsys):
     assert out["gone1"]["n_alns"] == 0 and out["gone2"]["n_alns"] == 0
     assert not out["gone1"].get("failed") and not out["gone2"].get("failed")
     assert "WARN" not in capsys.readouterr().err
+
+
+# ---- whole-library read lengths (library quality strip) ----
+
+def _len_bam(tmp_path, lens, nh=None, chroms=(("c1", 5000), ("c2", 5000)), extra=()):
+    reads = []
+    for i, (L, ch) in enumerate(lens):
+        reads.append((ch, 10 + 40 * i, "A" * L, "+" if i % 2 else "-", nh or 1))
+    reads += list(extra)
+    bam = tmp_path / "lib.bam"
+    bamutil.make_seq_bam(bam, reads, chroms)
+    return str(bam)
+
+
+def test_library_lengths_bins_and_overflow(tmp_path):
+    bam = _len_bam(tmp_path, [(15, "c1"), (16, "c1"), (22, "c1"), (22, "c2"), (40, "c2"), (41, "c2")])
+    r = rs.library_lengths(bam)
+    c = r["counts"]
+    assert (r["lo"], r["hi"]) == (16, 40) and len(c) == 27
+    assert c[0] == 1 and c[1] == 1 and c[1 + 6] == 2 and c[25] == 1 and c[26] == 1
+    assert sum(c) == 6
+
+
+def test_library_lengths_weights_by_nh_and_skips_secondary_and_unmapped(tmp_path):
+    reads = [("c1", 10, "A" * 22, "+", 2), ("c1", 60, "A" * 22, "+", 1),
+             ("c1", 110, "A" * 30, "+", 1, 256),          # secondary
+             ("c1", 160, "A" * 25, "+", 1, 2048),         # supplementary
+             ("c1", 210, "A" * 21, "+", 1, 4)]            # unmapped
+    bam = tmp_path / "w.bam"
+    bamutil.make_seq_bam(bam, reads)
+    r = rs.library_lengths(str(bam))
+    assert r["counts"][1 + 6] == pytest.approx(1.5)
+    assert sum(r["counts"]) == pytest.approx(1.5)
+    assert r["unmapped"] == 1
+
+
+def test_library_lengths_threads_match(tmp_path):
+    rng = random.Random(3)
+    chroms = tuple((f"c{i}", 5000) for i in range(5))
+    lens = [(rng.randint(12, 45), f"c{rng.randrange(5)}") for _ in range(300)]
+    bam = _len_bam(tmp_path, lens, chroms=chroms)
+    a, b = rs.library_lengths(bam, threads=1), rs.library_lengths(bam, threads=3)
+    assert a["counts"] == pytest.approx(b["counts"]) and a["unmapped"] == b["unmapped"]
+
+
+def test_library_lengths_bowtie1_xm_as_nh(tmp_path):
+    bam = tmp_path / "x.bam"
+    header = {"HD": {"VN": "1.6"}, "SQ": [{"SN": "c1", "LN": 5000}]}
+    with pysam.AlignmentFile(str(tmp_path / "u.bam"), "wb", header=header) as out:
+        a = pysam.AlignedSegment(out.header)
+        a.query_name, a.query_sequence = "r", "A" * 22
+        a.reference_id, a.reference_start, a.cigar, a.flag = 0, 5, [(0, 22)], 0
+        a.set_tag("XM", 4)
+        out.write(a)
+    pysam.sort("-o", str(bam), str(tmp_path / "u.bam"))
+    pysam.index(str(bam))
+    assert rs.library_lengths(str(bam), xm_as_nh=True)["counts"][7] == pytest.approx(0.25)
+    assert rs.library_lengths(str(bam), xm_as_nh=False)["counts"][7] == pytest.approx(1.0)
