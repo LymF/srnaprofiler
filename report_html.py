@@ -31,6 +31,7 @@ Payload (JSON in <script id="report-data">), read by the front end:
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
     conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary.
 """
+import base64
 import html
 import json
 import math
@@ -201,6 +202,23 @@ def _payload(sel, summary, signals, title):
     }
 
 
+# IBM Plex, latin subset (OFL, see report_assets/fonts/LICENSE-IBM-Plex.txt)
+_FONTS = (("IBM Plex Sans", "ibm-plex-sans-latin-{w}-normal.woff2"),
+          ("IBM Plex Mono", "ibm-plex-mono-latin-{w}-normal.woff2"))
+
+
+def _font_faces():
+    """@font-face rules with the woff2 files inlined as base64 data URIs."""
+    out = []
+    for family, pattern in _FONTS:
+        for w in (400, 500):
+            with open(os.path.join(_DIR, "fonts", pattern.format(w=w)), "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode("ascii")
+            out.append(f"@font-face{{font-family:'{family}';font-style:normal;font-weight:{w};"
+                       f"font-display:swap;src:url(data:font/woff2;base64,{b64}) format('woff2');}}")
+    return "\n".join(out) + "\n"
+
+
 def _footer():
     return html.escape(rt.STRINGS["ui.footer"].format(
         present=f"{rt.DISPLAY_PRESENT:g}", weak=f"{rt.DISPLAY_WEAK:g}",
@@ -214,7 +232,7 @@ def build_report(sel, summary, signals, title, out_path):
                       separators=(",", ":"), allow_nan=False)
     # "<" cannot close the script element; JSON still decodes it back
     data = data.replace("<", "\\u003c")
-    parts = {"CSS": _read("report.css"), "JS": _read("app.js"), "DATA": data,
+    parts = {"CSS": _font_faces() + _read("report.css"),"JS": _read("app.js"), "DATA": data,
              "TITLE": html.escape(title or rt.STRINGS["ui.title.default"]), "FOOTER": _footer()}
     # one pass: substituted text is never rescanned for tokens
     out = re.sub(r"%%(CSS|JS|DATA|TITLE|FOOTER)%%", lambda m: parts[m.group(1)],
