@@ -704,6 +704,31 @@ def test_coverage_coordinates_are_one_based(tmp_path):
     assert r["C"] == [want, want] and r["E"] == [want, want]
 
 
+def test_coverage_ticks_are_one_based_bases(tmp_path):
+    d, root = fig_svg(tmp_path, [mk("c1", reads=900)], None, "C")
+    cv = d["details"]["0"]["sig"]["cv"]
+    s0, end = cv["s"], cv["s"] + d["details"]["0"]["sig"]["nb"] * cv["b"]
+
+    def xa(p0):                                         # x of a 0-based position
+        return LEFT + (p0 - s0) / (end - s0) * (720 - RIGHT - LEFT)
+    ticks = [(int(e.text.replace(",", "")), float(e.get("x"))) for e in root.iter()
+             if "tk-x" in (e.get("class") or "") and e.get("text-anchor") == "middle"]
+    assert len(ticks) >= 2
+    step = ticks[1][0] - ticks[0][0]
+    for p, x in ticks:
+        assert p > s0 and p % step == 0                 # round 1-based positions
+        assert abs(x - xa(p - 1)) < 0.02, (p, x)        # at the left edge of base p
+
+
+def test_logo_title_shows_exact_nd_only(tmp_path):
+    import math
+    d, f = figs_of(tmp_path)
+    nd = d["details"]["0"]["sig"]["nd"]
+    want = d["strings"]["ui.fig.n"].format(n=f"{int(math.floor(nd + 0.5)):,}")
+    assert want in f["F"]["title"] and f["F"]["title"].count("n\u00a0=") == 1
+    assert "n\u00a0=" not in f["F"]["svg"]                # no per-strand n in the panels
+
+
 def test_hovered_column_lifts_and_clears(tmp_path):
     _, text, d = page(tmp_path, [mk("c1", reads=900)])
     r = run_js(tmp_path, text, """
