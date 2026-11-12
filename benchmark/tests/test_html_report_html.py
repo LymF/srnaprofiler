@@ -131,7 +131,6 @@ _APP = open(os.path.join(os.path.dirname(__file__), "..", "..", "report_assets",
 _CODE = re.sub(r"(?m)^\s*//.*$", "", _APP)
 
 
-@pytest.mark.xfail(strict=True, reason="front end lands in Task 5")
 def test_app_text_keys_exist_in_strings():
     keys = re.findall(r'\bT\("([^"]+)"', _CODE)
     assert keys
@@ -155,7 +154,8 @@ def test_app_has_no_hardcoded_english_phrases():
     bad = []
     for m in pat.finditer(_CODE):
         lit = m.group(1).strip()
-        if " " not in lit or lit == "use strict" or lit.split()[0] in ("dot", "ico"):
+        if (" " not in lit or lit in ("use strict", "noopener noreferrer")
+                or lit.split()[0] in ("dot", "ico")):
             continue
         bad.append(lit)
     assert bad == []
@@ -378,3 +378,128 @@ def test_review_flag_reaches_rows(tmp_path):
     _, html, _ = build(tmp_path, [mk("a", reads=900, review=True), mk("b", reads=500)])
     rows = {r["n"]: r for r in data_of(html)["rows"]}
     assert rows["a"]["rv"] == 1 and "rv" not in rows["b"]
+
+
+# ---- v2 front end: fonts, motion, text size ----
+
+_ASSETS = os.path.join(os.path.dirname(__file__), "..", "..", "report_assets")
+_CSS = open(os.path.join(_ASSETS, "report.css"), encoding="utf-8").read()
+_MARK = "srnaprofiler additions"
+_OWN_CSS = _CSS[_CSS.index(_MARK):]
+
+
+def test_fonts_are_inlined_and_no_inter(tmp_path):
+    _, html, _ = build(tmp_path, [mk()])
+    faces = re.findall(r"@font-face\{([^}]*)\}", html)
+    assert 1 <= len(faces) <= 4
+    fams = {re.search(r"font-family:'([^']+)'", f).group(1) for f in faces}
+    assert fams == {"IBM Plex Sans", "IBM Plex Mono"}
+    assert {re.search(r"font-weight:(\d+)", f).group(1) for f in faces} == {"400", "500"}
+    assert all("url(data:font/woff2;base64," in f for f in faces)
+    assert "fonts.googleapis" not in html and "fonts.gstatic" not in html
+    assert not re.search(r"\bInter\b", html)
+    assert len([f for f in os.listdir(os.path.join(_ASSETS, "fonts")) if f.endswith(".woff2")]) <= 4
+    assert os.path.exists(os.path.join(_ASSETS, "fonts", "LICENSE-IBM-Plex.txt"))
+    # weights used by the stylesheet's own block stay at 400/500
+    assert set(re.findall(r"font-weight:\s*(\d+)", _OWN_CSS)) <= {"400", "500"}
+
+
+def test_no_scroll_reveal():
+    for src in (_APP, _CSS):
+        for bad in ("IntersectionObserver", "animation-timeline", "scroll-timeline",
+                    '"scroll"', "'scroll'", "onscroll"):
+            assert bad not in src, bad
+        banned = {"all", "width", "height", "top", "left", "right", "bottom", "margin", "padding",
+                  "max-height", "min-height", "inset"}
+        for decl in re.findall(r"transition(?:-property)?\s*:([^;]*);", src):
+            props = {p.split()[0] for p in decl.split(",") if p.split()}
+            assert not props & banned and not any(p.startswith(("margin-", "padding-"))
+                                                  for p in props), decl
+    # keyframes of the own block move only opacity and transform
+    for body in re.findall(r"@keyframes[^{]*\{(.*?\})\s*\}", _OWN_CSS, re.S):
+        props = set(re.findall(r"([a-z-]+)\s*:", body))
+        assert props <= {"opacity", "transform"}, props
+
+
+def test_reduced_motion_block_exists():
+    m = re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\}", _OWN_CSS, re.S)
+    assert m
+    body = m.group(1)
+    assert "animation: none" in body and "transition: none" in body
+    assert "opacity: 1" in body                      # nothing stays hidden
+    for tok in ("--m-in: 150ms", "--m-out: 120ms", "--m-press: 90ms", "--m-panel: 200ms",
+                "--m-slide: 240ms", "cubic-bezier(.2, .8, .2, 1)", "cubic-bezier(.22, 1, .36, 1)"):
+        assert tok in _OWN_CSS, tok
+
+
+def test_min_text_size():
+    sizes = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)px", _OWN_CSS)]
+    assert sizes and min(sizes) >= 13
+    rems = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)rem", _OWN_CSS)]
+    assert all(r * 16 >= 13 for r in rems)
+    for tok in ("--rpt-text-xs", "--rpt-text-sm"):
+        v = float(re.search(tok + r":\s*([\d.]+)rem", _CSS).group(1))
+        assert v * 16 >= 13
+    # the SVG helpers set one size constant, never a literal under 13
+    fs = re.search(r"\bvar FS = (\d+);", _CODE)
+    assert fs and int(fs.group(1)) >= 13
+    for lit in re.findall(r'"font-size"\s*:\s*([\d.]+)', _CODE):
+        assert float(lit) >= 13
+    assert not re.search(r"font-?[sS]ize[^;\n]*\b([0-9]|1[0-2])px", _CODE)
+
+
+def test_app_js_has_no_glossary_code():
+    for bad in ("glossary", "Glossary", "references", "renderRefs", "refNum", "cite",
+                "ui.gl.", "ui.ref.", "ui.howto", "ui.detail.why", "whynot", "cautions",
+                "d.checks", "d.why"):
+        assert bad not in _CODE, bad
+
+
+def test_app_has_no_inner_html():
+    for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"):
+        assert bad not in _APP
+
+
+def test_strings_have_no_orphans():
+    code = _CODE
+    py = ""
+    for f in ("report_text.py", "report_html.py"):
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..", f), encoding="utf-8").read()
+        # the STRINGS table itself does not count as a use
+        py += re.sub(r"STRINGS = \{.*?\n\}", "", src, flags=re.S)
+    dynamic = ("verdict.", "status.", "check.", "amb.crit.", "ui.dot.", "ui.help.sizes.")
+    orphans = [k for k in rt.STRINGS
+               if f'"{k}"' not in code and f'"{k}"' not in py and not k.startswith(dynamic)]
+    assert orphans == []
+
+
+def _call_vars(code, start):
+    """Keys of the object literal passed after T("key", ...), or None when there is none."""
+    i = start
+    while code[i] in " \n":
+        i += 1
+    if code[i] != ",":
+        return None
+    i = code.index("{", i)
+    depth, j = 0, i
+    while True:
+        depth += {"{": 1, "}": -1}.get(code[j], 0)
+        if depth == 0:
+            break
+        j += 1
+    body, flat, depth = code[i + 1:j], "", 0
+    for ch in body:                                # keep only the top level of the literal
+        depth += {"{": 1, "(": 1, "[": 1, "}": -1, ")": -1, "]": -1}.get(ch, 0)
+        flat += ch if depth == 0 or ch in "{([" and depth == 1 else " "
+    return set(re.findall(r"(\w+)\s*:", flat))
+
+
+def test_placeholders_match_their_calls():
+    for m in re.finditer(r'\bT\("([^"]+)"(?!\s*\+)', _CODE):
+        key = m.group(1)
+        need = set(re.findall(r"\{(\w+)\}", rt.STRINGS[key]))
+        got = _call_vars(_CODE, m.end())
+        if need:
+            assert got is not None and need <= got, (key, need, got)
+        else:
+            assert not got, (key, got)
