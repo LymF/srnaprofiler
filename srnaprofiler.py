@@ -501,6 +501,10 @@ themselves are defined there. Every module takes --help.
                          "on macOS/Windows (spawn) start-up cost can outweigh the gain")
     rp.add_argument("--fragments", default=None,
                     help="classify .fragments.tsv (default: the one beside --clusters)")
+    rp.add_argument("--mirna", default=None,
+                    help="`mirna` .mirna.tsv: draws the miRNA hairpin figure on the page of each "
+                         "miRNA cluster it matches (default: <prefix>.mirna.tsv beside --clusters, "
+                         "if present)")
     rp.add_argument("--fastp", default=None,
                     help="fastp .json for the trimming numbers in the library quality strip "
                          "(default: <prefix>.fastp.json beside --clusters, if present)")

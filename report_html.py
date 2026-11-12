@@ -33,6 +33,13 @@ Payload (JSON in <script id="report-data">), read by the front end:
       en {b, +, -} 5' ends per bin, nb slots;
       lg {+,-}: 26 positions, each [A,C,G,U] ints 0..99 (fraction * 99);
       sq rows [sequence, length, strand, reads, 5' base] exact.
+    mi (only for a miRNA cluster matched to a row of --mirna): the hairpin figure and its
+      numbers, see report_mirna.figure_data: n name, st strand, L length, seq precursor (RNA),
+      m/s/lp [a, b] mature, star and loop (0-based half-open, strand-oriented), db dot-bracket
+      and mfe or ns (m RNAfold missing, f failed), rd [[a, b, sequence (lower case matches),
+      reads, kind m|s|""]], cov per-base depth, more/mr rows and reads not drawn, anti/ovh
+      reads not shown, lo genomic start of the precursor window, nowin 1 when the window could not be placed, t numbers [[key, value]],
+      pc plant criteria [[key, status 1/0/2, observed, rule]]. Exact, not quantised.
   meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
     conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary,
@@ -47,6 +54,7 @@ import re
 
 import report_checks
 import report_data
+import report_mirna
 import report_text as rt
 import version
 
@@ -166,7 +174,7 @@ def _row(i, c, has_detail, ex, kingdom):
     return r
 
 
-def _detail(c, ex, sig, ctx, kingdom="animal"):
+def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None):
     d = {"v": ex["verdict"],
          "strip": [[k, _LEVEL[lv], _n(v, 4)] for k, lv, v in ex["strip"]],
          "ctx": [ctx["reads_pct"], ctx["conf_pct"]],
@@ -174,22 +182,27 @@ def _detail(c, ex, sig, ctx, kingdom="animal"):
     ck = report_checks.checklist(c, kingdom)
     if ck:
         d["ck"] = ck
+    if mirna:
+        row, folded = mirna
+        d["mi"] = report_mirna.figure_data(row, folded, (sig or {}).get("hp"))
     return d
 
 
-def _payload(sel, summary, signals, title):
+def _payload(sel, summary, signals, title, mirna=None):
     summary = summary or {}
     detail_ids = {id(c) for c in sel.detail}
     ctx = report_data.library_context(sel.shown)
     rows, details, counts = [], {}, {}
     kingdom = sel.kingdom
+    mirna = mirna or {}
     for i, c in enumerate(sel.shown):
         ex = rt.explain(c, kingdom)
         has = id(c) in detail_ids
         rows.append(_row(i, c, has, ex, kingdom))
         counts[c.cls] = counts.get(c.cls, 0) + 1
         if has:
-            details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name], kingdom)
+            details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name], kingdom,
+                                      mirna.get(c.name))
     lib = {k: _n(summary.get(k), 4) for k in
            ("library_reads", "cluster_reads", "unique_share", "fragments", "fragment_reads")}
     if summary.get("qc"):
@@ -245,8 +258,9 @@ def _footer(kingdom="animal"):
         mmod=f"{rt.DISPLAY_MULTIMAP_MODERATE:g}", mhigh=f"{rt.DISPLAY_MULTIMAP_HIGH:g}"))
 
 
-def build_report(sel, summary, signals, title, out_path):
-    data = json.dumps(_payload(sel, summary, signals or {}, title),
+def build_report(sel, summary, signals, title, out_path, mirna=None):
+    """mirna: {cluster name: (report_mirna.Row, (dot-bracket, mfe, tool missing))} or None."""
+    data = json.dumps(_payload(sel, summary, signals or {}, title, mirna),
                       separators=(",", ":"), allow_nan=False)
     # "<" cannot close the script element; JSON still decodes it back
     data = data.replace("<", "\\u003c")
