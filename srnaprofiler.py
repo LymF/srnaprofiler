@@ -31,7 +31,7 @@ def print_header():
     RESET = '\033[0m'
     BG_BLUE = '\033[104m'  # Light blue background
     
-    ver = f"v{__version__}"
+    ver = f"v{__version__}"[:10]
     pad = " " * max(1, 30 - len(f"  sRNAProfiler  │  {ver}"))
     header = f"""
 {BOLD}{BLUE}                    ╔══════════════════════════════╗

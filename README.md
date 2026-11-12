@@ -156,12 +156,12 @@ It writes `out/run.report.html`. It only reads the `classify` outputs and the BA
 
 The file has three parts:
 
-- **About tab**: what the report shows and how to read it.
+- **About tab**: the tool name, tagline, version, GitHub link and install commands.
 - **Overview and cluster list**: the library summary, then a sortable, filterable list of clusters.
 - **Cluster page**: the evidence behind the class and why the other classes were rejected, with
   these figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
-  nucleotide logo, top sequences and library context. Sense is drawn up and antisense down. Each
-  figure has a table view and a "Download SVG" button.
+  nucleotide logo, top sequences and library context. Sense is drawn up and antisense down. Every
+  figure except the top-sequences one has a table view and a "Download SVG" button.
 
 | flag | default | meaning |
 |---|---|---|
