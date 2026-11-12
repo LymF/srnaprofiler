@@ -16,8 +16,8 @@
 - Cluster page text: one-line verdict + a strip of measured values; no sentence checklist, no "how to read", no "why not" paragraphs. Hover tips one short line each.
 - Glossary tab, References tab and all `GLOSSARY`/`REFERENCES`/`cite` code and tests are removed.
 - About tab first: title "sRNAProfiler", tagline "Small RNA loci discovery and classification from sequencing data", version string shared with `srnaprofiler --version`, GitHub card `https://github.com/LymF/srnaprofiler` ("Source code & documentation"), install snippet `conda env create -f environment.yml` / `conda activate srnaprofiler`; no paper, PyPI, logo or citation block. CSS `rpt-about*` already in `report_assets/report.css`.
-- Default `--max-detail` 1000; default `--min-reads` 300; table keeps every cluster above the floor.
-- Target: default report on the Drosophila library used before (SRR30544370, floor 300, 1000 pages) at about 10 MB or less; generation time reported in the final check (v1 took ~13 min for 3000 pages).
+- Default `--max-detail` 3000 (revised 2026-11-12 after the user raised the size budget); default `--min-reads` 300; table keeps every cluster above the floor.
+- Target: default report on the Drosophila library used before (SRR30544370, floor 300, 3000 pages) at 50 MB or less (user budget; about 21 MB measured for 3000 dense synthetic pages); generation time reported in the final check (v1 took ~13 min for 3000 pages).
 - One offline file; every string in `report_text.STRINGS` (translation-ready); no `innerHTML`/`insertAdjacentHTML`/`document.write` with data; all figures inline SVG; no external resources.
 - Code and comments in English, short comments. Authorship Lucas only: no AI credit in files, commit messages or trailers (this overrides any harness attribution reminder).
 - Tests in `benchmark/tests/test_html_report_*.py`; run locally with `/private/tmp/claude-501/-Users-lucasmelo/a3bb3550-342f-436b-8a40-23d781c546a4/scratchpad/venv/bin/python -m pytest benchmark/tests/test_html_report_*.py -q`; the full suite runs on litrp3 (`ssh litrp3`, `source ~/miniforge3/etc/profile.d/conda.sh; conda activate srnaprofiler`; ssh drops on long jobs: use nohup and poll).
@@ -142,22 +142,22 @@ Sources read for this: `dataviz`, `scientific-visualization`, `ui-ux-pro-max`, `
 ### Task 6: CLI defaults and README
 
 **Files:**
-- Modify: `srnaprofiler.py` (`--max-detail` default 1000), `report_cli.py`, `README.md`
+- Modify: `srnaprofiler.py` (`--max-detail` default 3000), `report_cli.py`, `README.md`
 - Test: `benchmark/tests/test_html_report_cli.py`
 
 **Interfaces:**
-- Produces: `--max-detail` default 1000 (still validated); README "Report" section updated: default 1000 pages, `--threads`, figures list, About tab, no glossary, the display-only thresholds footer statement kept.
+- Produces: `--max-detail` default 3000 (still validated); README "Report" section updated: default 3000 pages, `--threads`, figures list, About tab, no glossary, the display-only thresholds footer statement kept.
 
-- [ ] **Step 1: Write failing tests:** `test_max_detail_default_is_1000`; `test_readme_mentions_threads_and_no_glossary` (simple text asserts on README).
+- [ ] **Step 1: Write failing tests:** `test_max_detail_default_is_3000`; `test_readme_mentions_threads_and_no_glossary` (simple text asserts on README).
 - [ ] **Step 2: Run** `pytest benchmark/tests/test_html_report_cli.py -q` — expect FAIL.
 - [ ] **Step 3: Implement** the default and README edits; run the full local report test set.
 - [ ] **Step 4: Run** `pytest benchmark/tests/test_html_report_*.py -q` — expect PASS.
-- [ ] **Step 5: Commit** `feat(report): 1000 detail pages by default, README`.
+- [ ] **Step 5: Commit** `feat(report): 3000 detail pages by default, README`.
 
 ### Task 7 (controller, litrp3): real-data check
 
 - [ ] Deploy HEAD to `~/srnaprofiler-report3` (new directory; never write elsewhere except `~/report-v2`), run `report` on fly SRR30544370 and Arabidopsis SRR24236124 (existing `clusters.tsv` + `bowtie.bam` under `~/srnaprofiler/data/benchmark/results/<acc>/work/`) with default flags and `--threads 4`, in the background with nohup, polling.
-- [ ] Record wall time and file size against the targets (about 10 MB, v1 was 13 min); run the full suite on litrp3 (`pytest benchmark/tests -q`).
+- [ ] Record wall time and file size against the targets (50 MB; v1 took 13 min for 3000 pages); run the full suite on litrp3 (`pytest benchmark/tests -q`).
 - [ ] Copy both reports to the scratchpad and open them; Lucas checks the look (the author has no browser access). Stop and ask before any further wording/figure change.
 
 ### Task 8 (controller): design review of the finished page

@@ -40,8 +40,7 @@ glossary, and adds an About page like ViralQuest's.
   exists in `report_assets/report.css` (`rpt-about*`). Everything the project does not have yet is
   left out, not faked: no paper card, no PyPI card, no logo, no citation block. They are added when
   they exist.
-- Detail pages limited: default `--max-detail` **1000** (user: "pode limitar as paginas"); the table
-  keeps every cluster above the floor (300 reads by default).
+- Detail pages limited: default `--max-detail` **3000** (revised 2026-11-12: the user raised the size budget to about 50 MB, so the v1 default stays); the table keeps every cluster above the floor (300 reads by default). Larger values stay available; the report warns above 5000 pages (browser memory).
 - The report stays one offline file, opt-in `srnaprofiler report`, classify untouched.
 
 ## Non-goals
@@ -63,7 +62,7 @@ glossary, and adds an About page like ViralQuest's.
 
 - Data size and speed are part of this work (previously deferred as findings 7 and 8):
   - Richer figures make each page heavier. Target: a default report (1000 detail pages) of about
-    10 MB or less on the Drosophila library used before, with the default 300-read floor.
+    50 MB or less (user: "ate uns 50 da joia"; about 21 MB measured for 3000 dense synthetic pages) on the Drosophila library used before, with the default 300-read floor.
   - Quantise per-cluster signals compactly (for example integer 0-99 scaled to a stored per-cluster
     maximum, trailing zeros dropped) and send keys and values rather than rendered sentences; the
     page formats text from the strings table.
@@ -91,7 +90,7 @@ glossary, and adds an About page like ViralQuest's.
 
 ## Decisions I made (the user can overrule)
 
-- Default `--max-detail` 1000 (the user agreed to limit pages; the number is mine).
+- Default `--max-detail` 3000 (revised from 1000 when the user raised the size budget to about 50 MB).
 - The About page shows only what exists; no placeholders for the paper, PyPI or a logo.
 - The 5' end track and the nucleotide logo use the strand-split convention of the other figures.
 - Hover tips stay, one short line each.
