@@ -161,7 +161,7 @@ The file has three parts:
   sortable, filterable list of clusters.
 - **Cluster page**: the measured values, a "Why this class" checklist (below), then these
   figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
-  nucleotide logo, top sequences and library context. Sense is drawn up and antisense down. Every
+  nucleotide logo, top sequences and library context (a miRNA cluster matched to a `--mirna` table also gets the hairpin figure, below). Sense is drawn up and antisense down. Every
   figure except the top-sequences one has a table view and a "Download SVG" button.
 
 | flag | default | meaning |
@@ -170,6 +170,7 @@ The file has three parts:
 | `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (resolved clusters by confidence first, ambiguous ones after them); the rest stay in the list. Each page is about 7 KB, so about 7 MB per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
 | `--threads` | 1 | worker processes for the figure data. Pays off only for large inputs and on Linux (fork) |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
+| `--mirna` | `<prefix>.mirna.tsv` beside `--clusters` | the `mirna` module's table; draws the miRNA hairpin figure (below) on the page of each miRNA cluster it matches. An explicit file that does not exist is an error; an absent default file just means no figure |
 | `--fastp` | `<prefix>.fastp.json` beside `--clusters` | fastp JSON for reads before/after trimming and the adapter-trimmed share in the library quality strip |
 | `--qc-summary` | `<prefix>.qc_summary.txt` beside `--clusters` | `qc` summary, the fallback for reads before/after trimming |
 | `--no-library-qc` | off | skip the extra BAM pass that builds the library quality strip |
@@ -212,6 +213,51 @@ so they follow what the classifier does:
 - **miRNA** clusters get one line instead: the class comes from the miRDeep2 hairpin search.
 
 The rows reflect the shipped rules files; a run with a custom `--config` may differ.
+
+### miRNA hairpin
+
+With a `mirna` table (`--mirna`, or `<prefix>.mirna.tsv` beside `--clusters`), the page of a
+cluster classified miRNA gets, before the other figures, a figure "miRNA hairpin" and two small
+tables. A table row is matched to a cluster by chromosome and overlap, the rule of
+`classify --mirna-loci`: the row's interval must cover at least 50% of the cluster's span; with
+several candidates the largest overlap wins, a `Pass` before a `Fail`. Only clusters that have a
+detail page are drawn.
+
+- **Precursor and fold.** The precursor sequence of the table (5' to 3', on the miRNA's strand, as
+  RNA) in monospace, with the mature, loop and star segments tinted red, yellow and purple as
+  miRDeep2 does and also named in text. The colours are the report's existing red, amber and
+  purple; the letters stay in dark ink on a light tint, so the yellow does not have to carry
+  contrast by itself. Below it the dot-bracket structure from RNAfold (ViennaRNA), found as the
+  `RNAfold` executable on `PATH`, else the python module `RNA`. Without either the structure line is
+  left out and the figure says "Structure not available: RNAfold not installed." Nothing is cached
+  on disk. The sequence is the one miRScore was given: the hairpin plus up to 25 nt of genomic
+  flank on each side.
+- **Reads.** Read depth along the precursor (all collapsed reads), and under the sequence the BAM
+  reads that lie fully inside the precursor and align without indels or clipping, on the
+  precursor's strand (for a minus-strand precursor the reads are reverse-complemented and the
+  coordinates flipped). They are collapsed by position and sequence, counted with the usual 1/NH
+  weights, and the 25 most abundant are drawn with their read count as a number and a bar. Lower
+  case matches the precursor; an upper-case letter on a dark cell is a mismatch. A read is marked
+  mature or star when at least half of it overlaps that segment. Reads on the other strand and
+  reads running past the precursor ends are counted in a note, not drawn. The precursor is placed on
+  the genome from the table's `start`/`end` and the flank rule above; if its length does not fit,
+  the sequence is drawn without reads and a note says so. The reads are read in the same pass over the
+  BAM as the other figures. The table view lists every position and the drawn read rows; Download SVG
+  exports the figure (which scrolls sideways when the precursor is wide).
+- **Numbers.** Mature and star reads, precision, mismatches, bulges, precursor length (with
+  flanks) and hairpin locus length, miRDeep2 score and probability, randfold p-value, Rfam alert,
+  miRBase hit and same-seed hit, as given in the table (`NA` when the run lacked them).
+- **Plant criteria, shown for reference.** Three criteria of Axtell and Meyers (2018) that the
+  table can answer, each with Met / Not met / Not available as icon plus text, for every kingdom:
+  hairpin locus of 300 nt or less, at most 5 mismatches in the duplex, precision of at least 75%.
+  They are not used to call the class. The other criteria of that paper are not checked.
+
+Not drawn: a mature/star duplex view with the 2-nt 3' overhang, which would need the base pairs
+resolved from the fold; the duplex's mismatch count comes from the table instead. A table without
+a precursor sequence (miRScore did not run) gives the numbers and a message instead of the figure.
+
+Reference: Axtell, M. J., & Meyers, B. C. (2018). Revisiting criteria for plant MIRNA annotation
+in the era of big data. *The Plant Cell*, 30(2), 272-284. https://doi.org/10.1105/tpc.17.00851
 
 ### Library quality
 
