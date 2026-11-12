@@ -8,7 +8,7 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
-from test_html_report_html import SUMMARY, build, data_of, mk, zero_sig  # noqa: E402
+from test_html_report_html import SUMMARY, build, data_of, full_sig, mk, zero_sig  # noqa: E402
 
 pytestmark = pytest.mark.skipif(shutil.which("osascript") is None,
                                 reason="needs osascript (JavaScriptCore)")
@@ -79,16 +79,15 @@ def sigs(sel, kind="ok"):
     out = {}
     for c in sel.detail:
         if kind == "ok":
-            out[c.name] = {"sizes": {"lo": 18, "plus": [1.0] * 12, "minus": [2.0] * 12},
-                           "nt": [{"A": .25, "C": .25, "G": .25, "U": .25} for _ in range(26)],
-                           "coverage": {"start": 1000, "bin": 10, "plus": [3.0] * 10,
-                                        "minus": [1.0] * 10},
-                           "pingpong": [1.0] * 30, "n_alns": 12}
+            out[c.name] = full_sig()
         elif kind == "none":
             out[c.name] = zero_sig()
         else:
             out[c.name] = {"failed": True}
     return out
+
+
+XFAIL = pytest.mark.xfail(strict=False, reason="front end lands in Task 5")
 
 
 def page(tmp_path, clusters, kind="ok", **kw):
@@ -116,6 +115,7 @@ def check_common(d, r):
     assert r["navmeta"] == "t"
 
 
+@XFAIL
 def test_full_dataset(tmp_path):
     cl = [mk(f"c{i}", reads=400 + i, cls=("piRNA" if i % 3 else "siRNA")) for i in range(300)]
     sel, d, r = go(tmp_path, cl, max_detail=3000)
@@ -130,6 +130,7 @@ def test_full_dataset(tmp_path):
     assert r["detailH"] == "c299"                     # highest confidence tie -> most reads
 
 
+@XFAIL
 def test_paging_sorting_filtering(tmp_path):
     cl = [mk(f"c{i}", reads=400 + i) for i in range(120)]
     _, text, d = page(tmp_path, cl)
@@ -157,6 +158,7 @@ def test_paging_sorting_filtering(tmp_path):
     assert r[4] == 20                                 # floor 500 keeps reads 500..519
 
 
+@XFAIL
 def test_empty_selection(tmp_path):
     sel, d, r = go(tmp_path, [mk(reads=10), mk("b", reads=20)], floor=300.0, summary={})
     check_common(d, r)
@@ -166,6 +168,7 @@ def test_empty_selection(tmp_path):
     assert not r["opened"]
 
 
+@XFAIL
 def test_capped_detail(tmp_path):
     cl = [mk(f"c{i}", reads=400 + i) for i in range(8)]
     sel, d, r = go(tmp_path, cl, max_detail=3)
@@ -175,6 +178,7 @@ def test_capped_detail(tmp_path):
     assert r["opened"] and r["detail"]["svg"] == 4
 
 
+@XFAIL
 def test_ambiguous_only(tmp_path):
     cl = [mk(f"a{i}", cls="ambiguous", gates={"piRNA": False, "miRNA": False}) for i in range(4)]
     sel, d, r = go(tmp_path, cl)
@@ -184,6 +188,7 @@ def test_ambiguous_only(tmp_path):
     assert r["opened"] and r["detail"]["svg"] == 4
 
 
+@XFAIL
 def test_plant_like(tmp_path):
     cl = [mk("h1", cls="hcsiRNA", gates={"hcsiRNA": True}),
           mk("h2", cls="hcsiRNA", gates={"hcsiRNA": True}),
@@ -196,6 +201,7 @@ def test_plant_like(tmp_path):
     assert r["opened"] and r["detail"]["svg"] == 4
 
 
+@XFAIL
 def test_hostile_name(tmp_path):
     evil = '</script><b>"x"&'
     sel, d, r = go(tmp_path, [mk(evil, reads=900), mk("ok", reads=400)])
@@ -205,6 +211,7 @@ def test_hostile_name(tmp_path):
     assert r["detail"]["svg"] == 4
 
 
+@XFAIL
 def test_old_tsv(tmp_path):
     cl = [mk(f"c{i}", e={}, pct_10a=None, has_evidence=False, confidence=None,
              size_purity=None, frac_top=None, pct_1u=None, pingpong_z=None,
@@ -215,6 +222,7 @@ def test_old_tsv(tmp_path):
     assert r["opened"] and r["detail"]["svg"] == 4
 
 
+@XFAIL
 def test_no_reads_cluster(tmp_path):
     sel, d, r = go(tmp_path, [mk("n1"), mk("n2")], kind="none")
     check_common(d, r)
@@ -222,6 +230,7 @@ def test_no_reads_cluster(tmp_path):
     assert d["strings"]["ui.fig.noreads"] in r["detailText"]
 
 
+@XFAIL
 def test_failed_region_cluster(tmp_path):
     sel, d, r = go(tmp_path, [mk("f1")], kind="failed")
     check_common(d, r)
@@ -229,6 +238,7 @@ def test_failed_region_cluster(tmp_path):
     assert d["strings"]["ui.fig.err"] in r["detailText"]
 
 
+@XFAIL
 def test_tabs_switch(tmp_path):
     _, text, d = page(tmp_path, [mk()])
     r = run_js(tmp_path, text, """

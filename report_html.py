@@ -1,11 +1,38 @@
-"""Assemble the self-contained HTML report: inline CSS, JS and one JSON data block."""
+"""Assemble the self-contained HTML report: inline CSS, JS and one JSON data block.
+
+Payload (JSON in <script id="report-data">), read by the front end:
+  library, counts, warnings, strings (STRINGS table), rows, details, meta.
+  rows[i]: n name, h chrom, s start, e end, r reads, c class, f confidence (null when
+    ambiguous), z dominant length, v dot levels (one digit per dot, see _LEVEL),
+    d 1 if details[str(i)] exists, nc nearest class and u reason (ambiguous only).
+  details[str(i)]:
+    v verdict key in strings (verdict.<class> or verdict.generic; the ambiguous
+      one takes its reason from the row's u), seq major sequence, rpm,
+    strip [[key, level, value|null]]: keys size (value = dominant length), 1u,
+      10a (animal) or 5a (plant), strand (value = plus-strand share), pingpong
+      (z, animal), phasing (p), multimap (share); level is a _LEVEL digit string,
+    ctx [reads_pct, conf_pct|null] (percentiles among shown clusters),
+    sig: {"err":1} | {"none":1} | quantised figure data. Every array is a pair
+      [max, ints]: ints 0..99, value = int * max / 99, trailing zeros dropped
+      (pad with 0 to the axis length), [0, []] when all zero.
+      dom dominant length; sz {lo, A|C|G|U: [plus, minus]} reads per length from lo;
+      ph {+,-} phasing, offsets 1..100; pp ping-pong, offsets 1..30;
+      cv {s start, b bin size, +, -} mean depth per bin; en {b, +, -} 5' ends per bin;
+      lg {+,-}: per position [A,C,G,U] ints 0..99 (fraction * 99);
+      sq rows [sequence, length, strand, reads, 5' base] exact.
+  meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
+    (two lines), defining {class: [check keys the class is decided by]}, conf_min,
+    conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary.
+"""
 import html
 import json
 import math
 import os
 import re
 
+import report_data
 import report_text as rt
+import version
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_assets")
 _LEVEL = {"absent": "0", "weak": "1", "present": "2", "unavailable": "3",
@@ -32,11 +59,30 @@ def _n(x, nd=2):
     return round(x, nd)
 
 
-def _arr(xs, nd=2):
-    return [_n(v, nd) or 0 for v in xs]
+def _quant(values):
+    """[max, ints]: ints 0..99 = round(99 * v / max), trailing zeros dropped.
+
+    value ~ int * max / 99, error at most max / 198. All-zero input is [0, []].
+    """
+    vals = [v if (v is not None and math.isfinite(v) and v > 0) else 0.0 for v in values]
+    m = max(vals, default=0.0)
+    if m <= 0:
+        return [0, []]
+    q = [round(99 * v / m) for v in vals]
+    while q and q[-1] == 0:
+        q.pop()
+    return [_n(float(f"{m:.6g}"), 6), q]
+
+
+def dequantise(pair, n=None):
+    """Inverse of _quant, padded with zeros to n values (test and table-view use)."""
+    m, q = pair
+    out = [i * m / 99 for i in q]
+    return out + [0.0] * (n - len(out)) if n else out
 
 
 def _signals(sig):
+    """Quantised figure data of one cluster; see the module docstring for the keys."""
     if not sig:
         return None
     # explicit markers instead of empty axes
@@ -44,14 +90,20 @@ def _signals(sig):
         return {"err": 1}
     if not sig.get("n_alns"):
         return {"none": 1}
-    nt = [[round(100 * (p.get(b) or 0)) for b in "ACGU"] for p in sig.get("nt", [])]
-    cov = sig.get("coverage", {})
-    sz = sig.get("sizes", {})
-    return {"sz": [sz.get("lo", 18), _arr(sz.get("plus", [])), _arr(sz.get("minus", []))],
-            "nt": nt,
-            "cv": [_n(cov.get("start"), 0) or 0, cov.get("bin", 1),
-                   _arr(cov.get("plus", []), 1), _arr(cov.get("minus", []), 1)],
-            "pp": _arr(sig.get("pingpong", []))}
+    cov, ends, sz = sig["cov"], sig["ends"], sig["sizes"]
+    return {
+        "dom": sig.get("dominant"),
+        "sz": dict({"lo": sz.get("lo", 18)},
+                   **{b: [_quant(sz[b]["+"]), _quant(sz[b]["-"])] for b in "ACGU"}),
+        "ph": {s: _quant(sig["phasing"][s]) for s in "+-"},
+        "pp": _quant(sig["pingpong"]),
+        "cv": {"s": _n(cov["start"], 0), "b": cov["bin"],
+               "+": _quant(cov["+"]), "-": _quant(cov["-"])},
+        "en": {"b": ends["bin"], "+": _quant(ends["+"]), "-": _quant(ends["-"])},
+        "lg": {s: [[round(99 * (p.get(b) or 0)) for b in "ACGU"] for p in sig["logo"][s]]
+               for s in "+-"},
+        "sq": [[q[0], q[1], q[2], _n(q[3], 3), q[4]] for q in sig.get("seqs", [])],
+    }
 
 
 def _row(i, c, has_detail, ex, kingdom):
@@ -69,19 +121,17 @@ def _row(i, c, has_detail, ex, kingdom):
     return r
 
 
-def _detail(c, ex, sig):
-    return {"verdict": ex["verdict"],
-            "checks": [[k["key"], _LEVEL[k["status"]], k["detail"], 1 if k["coloured"] else 0]
-                       for k in ex["checks"]],
-            "note": ex["note"],
-            "why": [[w["cls"], w["reason"]] for w in ex["why_not"]],
-            "cautions": ex["cautions"], "seq": c.major_rna, "rpm": _n(c.reads_rpm),
-            "sig": _signals(sig)}
+def _detail(c, ex, sig, ctx):
+    return {"v": ex["verdict"],
+            "strip": [[k, _LEVEL[lv], _n(v, 4)] for k, lv, v in ex["strip"]],
+            "ctx": [ctx["reads_pct"], ctx["conf_pct"]],
+            "seq": c.major_rna, "rpm": _n(c.reads_rpm), "sig": _signals(sig)}
 
 
 def _payload(sel, summary, signals, title):
     summary = summary or {}
     detail_ids = {id(c) for c in sel.detail}
+    ctx = report_data.library_context(sel.shown)
     rows, details, counts = [], {}, {}
     kingdom = sel.kingdom
     for i, c in enumerate(sel.shown):
@@ -90,18 +140,23 @@ def _payload(sel, summary, signals, title):
         rows.append(_row(i, c, has, ex, kingdom))
         counts[c.cls] = counts.get(c.cls, 0) + 1
         if has:
-            details[str(i)] = _detail(c, ex, signals.get(c.name))
+            details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name])
     lib = {k: _n(summary.get(k), 4) for k in
            ("library_reads", "cluster_reads", "unique_share", "fragments", "fragment_reads")}
+    S = rt.STRINGS
     return {
         "library": lib, "counts": counts, "warnings": rt.warnings(sel, summary),
-        "rows": rows, "details": details, "strings": rt.STRINGS, "glossary": rt.GLOSSARY,
-        "references": [{"key": k, "text": t} for k, t in rt.REFERENCES.items()],
+        "rows": rows, "details": details, "strings": S,
         "meta": {"title": title, "floor": _n(sel.floor), "n_total": sel.n_total,
                  "kingdom": kingdom, "mode": sel.mode,
+                 "version": version.__version__, "github": S["ui.about.github"],
+                 "tagline": S["ui.about.tagline"],
+                 "install": [S["ui.about.install.1"], S["ui.about.install.2"]],
+                 "defining": {k: sorted(v["defining"])
+                              for k, v in report_data.class_specs(kingdom).items()},
                  "conf_min": _n(rt.confidence_floor(kingdom), 3),
                  "conf_k": round(1 / rt.confidence_floor(kingdom)),
-                 "dot_names": [rt.STRINGS[f"ui.dot.{k}"] for k in rt.DOTS[kingdom]],
+                 "dot_names": [S[f"ui.dot.{k}"] for k in rt.DOTS[kingdom]],
                  "dot_legend": rt.dot_legend(kingdom), "kt": rt.kingdom_text(kingdom),
                  "n_hidden": sel.n_hidden, "capped": bool(sel.capped),
                  "n_detail": len(sel.detail),

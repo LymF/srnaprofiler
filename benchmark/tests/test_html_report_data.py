@@ -144,3 +144,22 @@ def test_class_specs_follow_the_rules_files():
     assert p["phasiRNA"]["defining"] == {"phasing", "size"}
     assert p["phasiRNA24"]["phase_max_p"] == 0.01
     assert "piRNA" not in p
+
+
+def test_library_context_percentiles():
+    def mkc(n, reads, conf, cls="piRNA"):
+        c = _cl(n, reads, conf)
+        c.cls = cls
+        return c
+    cls = [mkc("a", 100, .5), mkc("b", 200, .6), mkc("c", 200, .7), mkc("d", 400, .9),
+           mkc("lone", 300, .8, cls="siRNA"), mkc("amb", 500, .99, cls="ambiguous")]
+    ctx = rd.library_context(cls)
+    assert ctx["a"]["reads_pct"] == 0 and ctx["amb"]["reads_pct"] == 100
+    # b and c tie at ranks 2-3: mean rank 2.5 of 6 -> 30
+    assert ctx["b"]["reads_pct"] == ctx["c"]["reads_pct"] == 30
+    assert ctx["lone"]["conf_pct"] is None and ctx["amb"]["conf_pct"] is None
+    assert [ctx[n]["conf_pct"] for n in "abcd"] == [0, 33, 67, 100]
+    tie = rd.library_context([mkc("x", 5, .5), mkc("y", 5, .5)])
+    assert tie["x"] == tie["y"] == {"reads_pct": 50, "conf_pct": 50}
+    assert rd.library_context([mkc("z", 5, .5)])["z"] == {"reads_pct": 100, "conf_pct": None}
+    assert rd.library_context([]) == {}

@@ -39,38 +39,14 @@ STRINGS = {
     "status.moderate": "moderate",
     "status.high": "high",
     "check.size.title": "Size consistency",
-    "check.size.detail": "Share of reads within 1 nt of the dominant length: {v}. Small RNAs of one class share a narrow range of lengths.",
     "check.1u.title": "Starts with U",
-    "check.1u.detail": "Evidence score {v}. Most piRNAs and miRNAs start with the base U.",
-    "check.1u.detail.plant": "Evidence score {v}. Plant miRNAs and many 21-nt siRNAs start with U, which sorts them into the AGO1 protein.",
     "check.10a.title": "A at position 10",
     "check.5a.title": "Starts with A",
-    "check.5a.detail": "Evidence score {v}. Most plant 24-nt heterochromatic siRNAs start with A, which sorts them into the AGO4 protein.",
-    "check.10a.detail": "Share of reads with A at position 10: {v}. Partner piRNAs in ping-pong amplification often carry an A at position 10.",
     "check.strand.title": "Strand balance",
-    "check.strand.detail": "Evidence score {v}. Hairpin and many piRNA loci are one-sided; Dicer products of long double-stranded RNA come from both strands.",
-    "check.strand.detail.plant": "Evidence score {v}. Hairpin (miRNA) loci are one-sided; Dicer products of long double-stranded RNA come from both strands.",
     "check.pingpong.title": "Ping-pong pairing",
-    "check.pingpong.detail": "Evidence score {v}. Reads on opposite strands overlap by 10 bases when piRNAs amplify each other.",
     "check.phasing.title": "Regular phasing",
-    "check.phasing.detail": "Evidence score {v}. Phased RNAs are cut at regular steps along one transcript.",
     "check.multimap.title": "Multimapping",
-    "check.multimap.detail": "Share of reads mapping to several places: {v}. Low is better; high values make the call less certain.",
     "check.context": "not needed for this class",
-    "check.note.none": "None of these checks decides this class on its own; they are shown as context.",
-    "check.note.miRNA": "miRNA calls come from the hairpin search (miRDeep2), not from these checks; they are shown as context.",
-    "check.na": "This table has no such value.",
-    "whynot.default": "The basic checks for {cls} were not met.",
-    "whynot.nosize": "No dominant read size could be called, so {cls} could not be tested.",
-    "whynot.size": "The dominant size ({z} nt) is outside the {cls} window ({lo} to {hi} nt).",
-    "whynot.length": "The region spans {span} bp, less than the {min} bp a {cls} cluster needs.",
-    "whynot.phasep": "The phasing test is not significant (p = {p}; {cls} needs {lim} or less).",
-    "whynot.phasing": "No regular phasing, which {cls} requires.",
-    "whynot.none": "No other class failed its basic checks (size window, cluster length, phasing test); the call above came from comparing the strength of the evidence.",
-    "whynot.unknown": "Per-class checks are not available in this table.",
-    "caution.noevidence": "This table predates the evidence columns, so some checks cannot be shown.",
-    "caution.review": "The tool flagged this region for review: the evidence for this class was not clearly stronger than for another class, or the reads were few. Treat the class as a suggestion.",
-    "caution.multimap": "Many reads map to several places, so counts here may be shared with other regions.",
     "amb.size": "the dominant read size ({z} nt) fits no class's size window; the closest class is {cls}.",
     "amb.nosize": "no dominant read size could be called, so no class could be tested.",
     "amb.criterion": "it looks most like {cls}, but it fails the {cls} cluster criterion: {list}.",
@@ -83,6 +59,25 @@ STRINGS = {
     "warn.few": "Fewer than {min} clusters passed the depth filter: only {n} (at least {floor} reads); {hidden} were hidden. To see more, rerun the report with a lower --min-reads value.",
     "warn.cap": "Only the top {n} clusters are shown in detail; the rest appear in the table only.",
     "warn.unique": "Only {pct}% of reads map to a single place; many small RNAs here may come from repeats, so classes are less certain.",
+    "ui.about.title": "About",
+    "ui.about.tagline": "Small RNA loci discovery and classification from sequencing data",
+    "ui.about.github": "https://github.com/LymF/srnaprofiler",
+    "ui.about.install.1": "conda env create -f environment.yml",
+    "ui.about.install.2": "conda activate srnaprofiler",
+    "ui.about.version": "Version",
+    "ui.fig.phasing": "Phasing along the strand",
+    "ui.fig.ends": "5' ends along the cluster",
+    "ui.fig.logo": "Base logo",
+    "ui.fig.seqs": "Most abundant sequences",
+    "ui.axis.reads": "Reads",
+    "ui.axis.length": "Length (nt)",
+    "ui.axis.position": "Position",
+    "ui.axis.offset": "Offset (nt)",
+    "ui.axis.bin": "Position along the cluster",
+    "ui.tip.bar": "{x}: {y} reads",
+    "ui.tip.base": "Position {x}: {base} {y}%",
+    "ui.tip.ctx": "Top {pct}% of clusters by reads",
+    "ui.tip.conf": "Higher than {pct}% of {cls} clusters",
     "ui.brand": "srnaprofiler",
     "ui.title.default": "srnaprofiler report",
     "ui.na": "n/a",
@@ -90,8 +85,6 @@ STRINGS = {
     "ui.howto": "How to read: ",
     "ui.tab.overview": "Overview",
     "ui.tab.clusters": "Clusters",
-    "ui.tab.glossary": "Glossary",
-    "ui.tab.references": "References",
     "ui.dot.size": "Size",
     "ui.dot.1u": "Starts with U",
     "ui.dot.10a": "A at position 10",
@@ -176,46 +169,11 @@ STRINGS = {
     "ui.detail.conf.ml": "confidence: the trained model's score for its top class, from 0 to 1; it is not a probability of being right.",
     "ui.detail.conf.mirna": "confidence: set to 1 for every miRNA, because the class comes from the hairpin search (miRDeep2), not from comparing classes.",
     "ui.detail.conf.amb": "No confidence is shown for an unresolved region: the number the tool stores belongs to the nearest class, which was not assigned.",
-    "ui.detail.why": "Why this class?",
-    "ui.check.line": "{title}: {status}",
     "ui.detail.figs": "The signals, in figures",
-    "ui.detail.whynot": "Why not another class?",
-    "ui.detail.cautions": "Cautions",
-    "ui.detail.nocautions": "No specific cautions for this cluster.",
     "ui.detail.seq": "Dominant sequence",
     "ui.detail.noseq": "No dominant sequence is recorded for this cluster.",
-    "ui.gl.title": "Glossary",
-    "ui.gl.sub": "For readers new to small RNAs. Numbers in brackets point to the References tab.",
-    "ui.ref.title": "References",
     "ui.footer": "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. 1U, 5'A, strand, ping-pong and phasing scores: present at {present} or more, weak at {weak} or more. A at position 10: present at {p10} or more, weak at {w10} or more. Size consistency: present at {psize} or more, weak at {wsize} or more. Multimapping: moderate at {mmod} or more, high at {mhigh} or more. They only decide how a bar is worded in this report.",
 }
-
-REFERENCES = {
-    "brennecke2007": "Brennecke, J., Aravin, A. A., Stark, A., Dus, M., Kellis, M., Sachidanandam, R., & Hannon, G. J. (2007). Discrete Small RNA-Generating Loci as Master Regulators of Transposon Activity in Drosophila. *Cell*, 128(6), 1089-1103. https://doi.org/10.1016/j.cell.2007.01.043",
-    "czech2016": "Czech, B., & Hannon, G. J. (2016). One Loop to Rule Them All: The Ping-Pong Cycle and piRNA-Guided Silencing. *Trends in Biochemical Sciences*, 41(4), 324-337. https://doi.org/10.1016/j.tibs.2015.12.008",
-    "bernstein2001": "Bernstein, E., Caudy, A. A., Hammond, S. M., & Hannon, G. J. (2001). Role for a bidentate ribonuclease in the initiation step of RNA interference. *Nature*, 409(6818), 363-366. https://doi.org/10.1038/35053110",
-    "hamilton1999": "Hamilton, A. J., & Baulcombe, D. C. (1999). A Species of Small Antisense RNA in Posttranscriptional Gene Silencing in Plants. *Science*, 286(5441), 950-952. https://doi.org/10.1126/science.286.5441.950",
-    "bartel2004": "Bartel, D. P. (2004). MicroRNAs. *Cell*, 116(2), 281-297. https://doi.org/10.1016/s0092-8674(04)00045-5",
-    "allen2005": "Allen, E., Xie, Z., Gustafson, A. M., & Carrington, J. C. (2005). microRNA-Directed Phasing during Trans-Acting siRNA Biogenesis in Plants. *Cell*, 121(2), 207-221. https://doi.org/10.1016/j.cell.2005.04.004",
-    "mi2008": "Mi, S., Cai, T., Hu, Y., Chen, Y., Hodges, E., Ni, F., Wu, L., Li, S., Zhou, H., Long, C., Chen, S., Hannon, G. J., & Qi, Y. (2008). Sorting of Small RNAs into Arabidopsis Argonaute Complexes Is Directed by the 5' Terminal Nucleotide. *Cell*, 133(1), 116-127. https://doi.org/10.1016/j.cell.2008.02.034",
-    "axtell2013": "Axtell, M. J. (2013). Classification and Comparison of Small RNAs from Plants. *Annual Review of Plant Biology*, 64(1), 137-159. https://doi.org/10.1146/annurev-arplant-050312-120043",
-}
-
-GLOSSARY = [
-    {"term": "small RNA", "text": "A short RNA molecule, roughly 20 to 30 bases long, that helps switch genes or mobile DNA on or off.", "cite": ["axtell2013"]},
-    {"term": "cluster", "text": "A stretch of the genome where many small RNA reads pile up. Each cluster is classified as a unit.", "cite": []},
-    {"term": "piRNA", "text": "A small RNA, found mostly in animal germlines, that silences mobile DNA and is produced from discrete genomic loci.", "cite": ["brennecke2007"]},
-    {"term": "siRNA", "text": "A small RNA of one tight size cut by the Dicer enzyme from double-stranded RNA.", "cite": ["bernstein2001", "hamilton1999"]},
-    {"term": "miRNA", "text": "A small RNA of about 21 to 22 bases cut from a hairpin-shaped precursor, which tunes gene activity.", "cite": ["bartel2004"]},
-    {"term": "phasiRNA", "text": "Plant small RNAs released in regular steps from one transcript, usually after a microRNA cuts it.", "cite": ["allen2005", "axtell2013"]},
-    {"term": "1U/10A", "text": "1U means the RNA starts with U; 10A means it has an A at position 10. Both are typical of piRNAs.", "cite": ["brennecke2007"]},
-    {"term": "ping-pong", "text": "A loop in which two piRNAs on opposite strands make each other, leaving pairs that overlap by 10 bases.", "cite": ["brennecke2007", "czech2016"]},
-    {"term": "phasing", "text": "Cuts at regular steps along a transcript, so reads fall into a repeating pattern.", "cite": ["allen2005"]},
-    {"term": "hcsiRNA", "text": "Heterochromatic siRNA: plant small RNAs of about 24 nt, made by Dicer from double-stranded RNA at repeats and transposons, that guide DNA silencing. Most start with A, which sorts them into the AGO4 protein. They are not phased.", "cite": ["axtell2013", "mi2008"]},
-    {"term": "ambiguous", "text": "The tool did not assign a class. Either the dominant read size fits no class's size range (or no dominant size could be called), or the region looks most like one class but fails that class's cluster criterion (a minimum length and, for piRNA, a read-density test), or, with the trained model, the model abstained. The region page gives the reason. This differs from the review flag, which marks an assigned class whose evidence was close to another class's.", "cite": []},
-    {"term": "confidence", "text": "How strongly the evidence favours the assigned class over the other classes the tool compared. The lowest possible value is 1 divided by the number of classes (0.5 with two classes), which means no preference; values near 1 mean one class clearly wins. With the trained model it is the model's score for its top class. It is not a probability of being right, and it is not shown for ambiguous regions.", "cite": []},
-    {"term": "multimapping", "text": "A read that fits several places in the genome, so its true origin is uncertain.", "cite": []},
-]
 
 # Report check keys shown per kingdom; the first five are the list's evidence dots.
 DOTS = {"animal": ("size", "1u", "10a", "pingpong", "phasing"),
@@ -280,10 +238,6 @@ def confidence_floor(kingdom="animal"):
     return 1.0 / len(report_data.class_specs(kingdom))
 
 
-def _fmt(v):
-    return "n/a" if v is None else f"{v:.2f}"
-
-
 def nearest_class(c):
     """Nearest class named in the evidence trail; None without a size call or a trail."""
     if c.dicer_call is None:
@@ -311,69 +265,34 @@ def ambiguous_reason(c):
     return S["amb.size"].format(z=c.dicer_call, cls=near)
 
 
-def _why_not(c, k, spec):
-    """The first basic check of class k this region fails, where the TSV shows it."""
-    S = STRINGS
-    if spec is None:
-        return S["whynot.default"].format(cls=k)
-    if c.dicer_call is None:
-        return S["whynot.nosize"].format(cls=k)
-    if spec["size"] and not spec["size"][0] <= c.dicer_call <= spec["size"][1]:
-        lo, hi = spec["size"]
-        return S["whynot.size"].format(z=c.dicer_call, cls=k, lo=lo, hi=hi)
-    span = c.read_span
-    if span is None and c.start is not None and c.end is not None:
-        span = c.end - c.start
-    if spec["min_length"] is not None and span is not None and span < spec["min_length"]:
-        return S["whynot.length"].format(span=span, min=spec["min_length"], cls=k)
-    lim = spec["phase_max_p"]
-    if lim is not None and (c.phase_pvalue is None or c.phase_pvalue > lim):
-        return S["whynot.phasep"].format(p=_fmt(c.phase_pvalue), cls=k, lim=f"{lim:g}")
-    if spec["by_phase"] and _level((c.e or {}).get("phase")) != "present":
-        return S["whynot.phasing"].format(cls=k)
-    return S["whynot.default"].format(cls=k)
+def verdict_key(c):
+    """STRINGS key of the one-line verdict; the front end formats it."""
+    key = f"verdict.{c.cls}"
+    return key if key in STRINGS else "verdict.generic"
+
+
+def strip(c, kingdom="animal"):
+    """Measured values for the strip: [key, level, value], value None when absent.
+
+    The level is the display-only status (see DISPLAY_*), the value the raw number.
+    """
+    vals = _values(c)
+    raw = {"size": c.dicer_call, "1u": c.pct_1u, "10a": c.pct_10a, "5a": c.pct_5a,
+           "strand": c.frac_top, "pingpong": c.pingpong_z, "phasing": c.phase_pvalue}
+    out = []
+    for k in _CHECKS[kingdom]:
+        if k == "multimap":
+            lv, v = _mm_level(c.multimap_frac), c.multimap_frac
+        else:
+            lv, v = _level(*vals[k]), raw[k]
+        out.append([k, lv, v])
+    return out
 
 
 def explain(c, kingdom="animal"):
-    S = STRINGS
-    specs = report_data.class_specs(kingdom)
-    vals = _values(c)
-    defining = specs.get(c.cls, {}).get("defining", set())
-    mm = c.multimap_frac
-    checks = []
-    for k in _CHECKS[kingdom]:
-        if k == "multimap":
-            v, status, coloured = mm, _mm_level(mm), True
-        else:
-            v = vals[k][0]
-            status, coloured = _level(*vals[k]), k in defining
-        detail = S.get(f"check.{k}.detail.{kingdom}", S[f"check.{k}.detail"])
-        checks.append({"key": k, "status": status, "title": S[f"check.{k}.title"],
-                       "detail": detail.format(v=_fmt(v)) if v is not None else S["check.na"],
-                       "coloured": coloured})
-    note = "" if defining else S.get(f"check.note.{c.cls}", S["check.note.none"])
-    unresolved = ambiguous_reason(c) if c.cls == "ambiguous" else ""
-    if unresolved:
-        verdict = S["verdict.ambiguous"].format(reason=unresolved)
-    else:
-        verdict = S.get(f"verdict.{c.cls}", S["verdict.generic"])
-    if c.gates:
-        why_not = [{"cls": k, "reason": _why_not(c, k, specs.get(k))}
-                   for k, ok in c.gates.items() if not ok and k != c.cls]
-        if not why_not:
-            why_not = [{"cls": "", "reason": S["whynot.none"]}]
-    else:
-        why_not = [{"cls": "", "reason": S["whynot.unknown"]}]
-    cautions = []
-    if not c.has_evidence:
-        cautions.append(S["caution.noevidence"])
-    # ambiguous always carries review; its reason is given above instead
-    if c.review and c.cls != "ambiguous":
-        cautions.append(S["caution.review"])
-    if mm is not None and mm >= DISPLAY_MULTIMAP_HIGH:
-        cautions.append(S["caution.multimap"])
-    return {"verdict": verdict, "checks": checks, "why_not": why_not, "note": note,
-            "cautions": cautions, "unresolved": unresolved}
+    """Verdict key, strip and (ambiguous only) the reason the class was withheld."""
+    return {"verdict": verdict_key(c), "strip": strip(c, kingdom),
+            "unresolved": ambiguous_reason(c) if c.cls == "ambiguous" else ""}
 
 
 def summary_sentence(counts, floor):

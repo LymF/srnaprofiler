@@ -9,7 +9,6 @@ import report_data
 import report_html
 import report_signals
 import report_text
-import version
 from utils import log
 
 
@@ -68,7 +67,6 @@ def run_report(args):
         log(f"report: detail capped at the top {args.max_detail} of {len(sel.shown)} "
             f"clusters (raise --max-detail to include more)", "WARN")
 
-    # Task 3 reads version.__version__ for the report meta
     summary = report_data.library_summary(clusters, frags)
     signals = report_signals.signals_for(args.bam, sel.detail, threads=args.threads)
     os.makedirs(args.outdir, exist_ok=True)

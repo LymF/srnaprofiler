@@ -60,6 +60,7 @@ class Cluster:
     gates: dict = field(default_factory=dict)
     has_evidence: bool = False
     read_span: int = None
+    pct_5a: float = None
 
 
 def _row_to_cluster(row, has_evidence):
@@ -80,6 +81,7 @@ def _row_to_cluster(row, has_evidence):
         gates={k[5:]: v == "1" for k, v in row.items()
                if k.startswith("gate_") and _num(v) is not None},
         has_evidence=has_evidence, read_span=_int(row.get("read_span")),
+        pct_5a=_num(row.get("pct_5a")),
     )
 
 
@@ -173,3 +175,38 @@ def library_summary(clusters, fragments_path):
     return {"library_reads": statistics.median(libs) if libs else None,
             "cluster_reads": sum(c.reads for c in clusters if c.reads is not None),
             "unique_share": uniq, "fragments": n_frag, "fragment_reads": frag_reads}
+
+
+def _percentiles(values):
+    """0-100 int percentile rank per value; ties share the mean rank. One value: 100."""
+    n = len(values)
+    if n == 1:
+        return [100]
+    order = sorted(values)
+    first, last = {}, {}
+    for i, v in enumerate(order):
+        first.setdefault(v, i)
+        last[v] = i
+    return [round(100 * (first[v] + last[v]) / 2 / (n - 1)) for v in values]
+
+
+def library_context(clusters):
+    """{name: {"reads_pct", "conf_pct"}}: where a cluster sits among the shown ones.
+
+    reads_pct ranks reads over all clusters; conf_pct ranks confidence within the
+    cluster's class, None for ambiguous rows, a missing confidence or a class of one.
+    """
+    ok = [c for c in clusters if c.reads is not None]
+    out = {c.name: {"reads_pct": None, "conf_pct": None} for c in clusters}
+    if ok:
+        for c, p in zip(ok, _percentiles([c.reads for c in ok])):
+            out[c.name]["reads_pct"] = p
+    by_cls = {}
+    for c in clusters:
+        if c.cls != "ambiguous" and c.confidence is not None:
+            by_cls.setdefault(c.cls, []).append(c)
+    for grp in by_cls.values():
+        if len(grp) > 1:
+            for c, p in zip(grp, _percentiles([c.confidence for c in grp])):
+                out[c.name]["conf_pct"] = p
+    return out
