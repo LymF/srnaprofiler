@@ -60,6 +60,15 @@ MODULE_TOOLS = {
          "note": "optional: needed for --engine mirdeep-p2"},
         _tool("miRScore", "optional: validation is skipped without it"),
     ],
+    "report": [
+        _pkg("pysam"),
+        _pkg("pyyaml", "yaml"),
+        _pkg("numpy"),
+        _tool("RNAfold", "optional: without it the miRNA hairpin figure has no "
+                         "secondary structure (ViennaRNA, or its Python binding)"),
+        _tool("RNAplot", "optional: draws the 2D structure when the Python "
+                         "binding of ViennaRNA is not installed"),
+    ],
     "plots": [
         _tool("Rscript"),
         # Rscript on PATH says nothing about the libraries the scripts import.

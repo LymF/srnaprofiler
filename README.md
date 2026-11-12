@@ -152,7 +152,7 @@ readers who are new to small RNAs. It is an opt-in subcommand you run after `cla
 srnaprofiler report --clusters run.clusters.tsv --bam sample.sorted.bam -o out -p run
 ```
 
-It writes `out/run.report.html`. It only reads the `classify` outputs and the BAM.
+It writes `out/run.report.html`. The miRNA hairpin figure needs ViennaRNA (`RNAfold`, plus `RNAplot` or its Python binding) for the secondary structure; it is in `environment.yml` and `setup --check` lists it under `report`. It only reads the `classify` outputs and the BAM.
 
 The file has three parts:
 
