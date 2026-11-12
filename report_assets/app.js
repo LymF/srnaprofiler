@@ -122,11 +122,16 @@
       h("div", "rpt-card__header", h("div", "rpt-card__title", title)),
       h("div", "rpt-card__body", body)]);
   }
+  // text cut by an ellipsis stays readable in full on hover
+  function titled(e, v) {
+    if (typeof v === "string" || typeof v === "number") { e.setAttribute("title", String(v)); }
+    return e;
+  }
   function stat(label, value, sub, mod) {
     return h("div", "rpt-stat-chip" + (mod ? " rpt-stat-chip--" + mod : ""), [
       h("div", "rpt-stat-chip__label", label),
-      h("div", "rpt-stat-chip__value", value),
-      sub ? h("div", "rpt-stat-chip__sub", sub) : null]);
+      titled(h("div", "rpt-stat-chip__value", value), value),
+      sub ? titled(h("div", "rpt-stat-chip__sub", sub), sub) : null]);
   }
   function heading(title, sub, cls) {
     return h("div", "rpt-section-header" + (cls ? " " + cls : ""), h("div", "", [
@@ -397,12 +402,17 @@
 
   // ---- cluster list ----
   var view = {cls: "all", sort: "conf", page: 0, floor: META.floor};
+  var listH2 = null;
+  var listFocus = null;  // data-ctl key of the control to refocus after a re-render
   function dots(v) {
     var box = h("span", "rpt-srna-dots");
     for (var i = 0; i < 5; i++) {
       var lv = LEVEL[parseInt(v.charAt(i), 10)] || "unavailable";
       var d = h("span", "dot " + lv);
-      d.setAttribute("title", (META.dot_names || [])[i] + ": " + T("status." + lv));
+      var lab = (META.dot_names || [])[i] + ": " + T("status." + lv);
+      d.setAttribute("title", lab);
+      d.setAttribute("role", "img");
+      d.setAttribute("aria-label", lab);
       box.appendChild(d);
     }
     return box;
@@ -442,7 +452,15 @@
   }
   function renderList() {
     var box = clear(document.getElementById("sec-clusters"));
-    add(box, heading(T("ui.list.title"), T("ui.list.sub")));
+    var refocus = null;
+    function keep(e, key) {
+      e.setAttribute("data-ctl", key);
+      if (listFocus === key) { refocus = e; }
+      return e;
+    }
+    var lhead = heading(T("ui.list.title"), T("ui.list.sub"));
+    listH2 = lhead.firstChild.firstChild;
+    add(box, lhead);
 
     var bar = h("div", "rpt-srna-filters");
     var classes = ["all"].concat(Object.keys(D.counts).sort());
@@ -450,7 +468,8 @@
       var b = button(c === "all" ? T("ui.all") : c + " (" + D.counts[c] + ")",
         "rpt-srna-chip" + (view.cls === c ? " on" : ""));
       b.setAttribute("aria-pressed", view.cls === c ? "true" : "false");
-      b.addEventListener("click", function () { view.cls = c; view.page = 0; renderList(); });
+      keep(b, "cls:" + c);
+      b.addEventListener("click", function () { view.cls = c; view.page = 0; listFocus = "cls:" + c; renderList(); });
       bar.appendChild(b);
     });
     box.appendChild(bar);
@@ -463,15 +482,21 @@
       if (view.sort === o[0]) { op.setAttribute("selected", "selected"); }
       sel.appendChild(op);
     });
-    sel.addEventListener("change", function () { view.sort = sel.value; view.page = 0; renderList(); });
+    sel.setAttribute("aria-label", T("ui.sort.aria"));
+    keep(sel, "sort");
+    sel.addEventListener("change", function () { view.sort = sel.value; view.page = 0; listFocus = "sort"; renderList(); });
     var inp = h("input", "rpt-srna-input");
     inp.setAttribute("type", "number");
     inp.setAttribute("min", "0");
+    inp.setAttribute("autocomplete", "off");
+    inp.setAttribute("aria-label", T("ui.floor.aria"));
+    keep(inp, "floor");
     inp.setAttribute("value", String(view.floor));
     inp.addEventListener("change", function () {
       var v = parseFloat(inp.value);
       view.floor = isNaN(v) ? META.floor : v;
       view.page = 0;
+      listFocus = "floor";
       renderList();
     });
     add(ctl, [sel, h("label", "rpt-srna-lbl", [T("ui.floor.label"), inp])]);
@@ -482,7 +507,9 @@
     var pages = Math.max(1, Math.ceil(idx.length / PAGE));
     if (view.page >= pages) { view.page = pages - 1; }
     var slice = idx.slice(view.page * PAGE, view.page * PAGE + PAGE);
-    box.appendChild(note(T("ui.shown", {n: num(idx.length), m: num(rows.length)})));
+    var shown = note(T("ui.shown", {n: num(idx.length), m: num(rows.length)}));
+    shown.setAttribute("aria-live", "polite");
+    box.appendChild(shown);
 
     var tb = h("tbody");
     if (!slice.length) {
@@ -532,8 +559,10 @@
     var next = button(T("ui.page.next"));
     if (view.page <= 0) { prev.setAttribute("disabled", "disabled"); }
     if (view.page >= pages - 1) { next.setAttribute("disabled", "disabled"); }
-    prev.addEventListener("click", function () { view.page -= 1; renderList(); });
-    next.addEventListener("click", function () { view.page += 1; renderList(); });
+    keep(prev, "prev");
+    keep(next, "next");
+    prev.addEventListener("click", function () { view.page -= 1; listFocus = "prev"; renderList(); });
+    next.addEventListener("click", function () { view.page += 1; listFocus = "next"; renderList(); });
     add(pg, [prev, h("span", "rpt-srna-note", T("ui.page.info",
       {p: view.page + 1, pages: pages, n: num(idx.length)})), next]);
     box.appendChild(pg);
@@ -544,6 +573,10 @@
       h("span", "rpt-srna-dots", h("span", "dot weak")), " " + T("status.weak") + " ",
       h("span", "rpt-srna-dots", h("span", "dot absent")), " " + T("status.absent") + " ",
       h("span", "rpt-srna-dots", h("span", "dot unavailable")), " " + T("status.unavailable")]));
+    // a disabled page button cannot take focus; the list heading keeps the place instead
+    if (refocus && refocus.hasAttribute && refocus.hasAttribute("disabled")) { refocus = null; }
+    if (refocus && refocus.focus) { refocus.focus(); }
+    listFocus = null;
   }
 
   // ==== figure helpers: SVG in real CSS pixels ====
@@ -587,7 +620,7 @@
   function text(x, y, s, o) {
     o = o || {};
     return sv("text", {x: f2(x), y: f2(y), "text-anchor": o.anchor || "start", fill: o.fill || INK2,
-      "font-weight": o.weight || null, "class": o.cls || null, transform: o.transform || null,
+      "font-weight": o.weight || null, "data-ink": o.fill ? "1" : null, "class": o.cls || null, transform: o.transform || null,
       "pointer-events": "none"}, s);
   }
   function hline(svg, x0, x1, y, color, cls) {
@@ -744,6 +777,9 @@
     plot.style.height = o.height + "px";
     var tbl = h("div", "rpt-srna-fig__table");
     tbl.setAttribute("hidden", "");
+    tbl.setAttribute("tabindex", "0");
+    tbl.setAttribute("role", "region");
+    tbl.setAttribute("aria-label", o.letter + " " + o.title + " " + T("ui.fig.table"));
     var leg = legend(o.legend || []);
     var svg = null, lastW = 0, tableOn = false;
     function render(force) {
@@ -1355,7 +1391,10 @@
     var box = clear(document.getElementById("sec-detail"));
     live = [];
     var back = button(T("ui.detail.back"));
-    back.addEventListener("click", function () { show("clusters"); });
+    back.addEventListener("click", function () {
+      show("clusters");
+      if (listH2) { listH2.setAttribute("tabindex", "-1"); listH2.focus({preventScroll: true}); }
+    });
     box.appendChild(back);
     var conf = h("span", "rpt-srna-conf", T("ui.detail.conflabel", {v: confText(r)}));
     conf.setAttribute("title", r.c === "ambiguous" ? T("ui.detail.conf.amb") :
@@ -1366,17 +1405,21 @@
       flag = h("span", "rpt-srna-flag", T("ui.review"));
       flag.setAttribute("title", T("ui.review.tip"));
     }
+    var h2 = h("h2", "", r.n);
+    h2.setAttribute("tabindex", "-1");
     add(box, [
-      h("div", "rpt-srna-head", [h("h2", "", r.n), tag(r.c), conf, flag]),
+      h("div", "rpt-srna-head", [h2, tag(r.c), conf, flag]),
       h("p", "rpt-srna-loc", T("ui.detail.sub", {where: where(r), reads: num(r.r)}) +
         (typeof r.z === "number" ? T("ui.detail.size", {z: r.z}) : ""))]);
     if (!d) {
       box.appendChild(emptyMsg(T("ui.row.nodetail")));
       show("detail");
+      h2.focus({preventScroll: true});
       return;
     }
     add(box, [h("p", "rpt-srna-say", T(d.v, {reason: r.u || ""})), strip(d, r)]);
     show("detail");
+    h2.focus({preventScroll: true});
     box.appendChild(figures(d, r));
     live.forEach(function (f) { f.render(); });
     watch();

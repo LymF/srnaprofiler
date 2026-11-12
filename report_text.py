@@ -190,6 +190,8 @@ STRINGS = {
     "ui.sort.reads": "Sort: reads",
     "ui.sort.name": "Sort: name",
     "ui.floor.label": "Minimum reads ",
+    "ui.sort.aria": "Sort clusters by",
+    "ui.floor.aria": "Minimum reads",
     "ui.floor.note": "This box can only narrow the table to the {n} clusters already in this file (at least {floor} reads). To see clusters with fewer reads, rerun the report with --min-reads set lower.",
     "ui.shown": "{n} shown (of {m} embedded)",
     "ui.list.none.filter": "No clusters match these filters.",

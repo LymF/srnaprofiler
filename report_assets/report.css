@@ -102,7 +102,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; scroll-behavior: smooth; }
+html { font-size: 16px; scroll-behavior: smooth; scroll-padding-top: 72px; }
 
 body {
   font-family: var(--rpt-font);
@@ -292,9 +292,9 @@ body {
   transition: background var(--rpt-dur) var(--rpt-ease);
 }
 
-.rpt-stat-chip:hover {
-  box-shadow: var(--rpt-shadow-sm);
-  transform:  translateY(-1px);
+.rpt-stat-chip:hover { box-shadow: var(--rpt-shadow-sm); }
+@media (hover: hover) and (pointer: fine) {
+  .rpt-stat-chip:hover { transform: translateY(-1px); }
 }
 .rpt-stat-chip:hover::before { background: var(--rpt-accent); }
 
@@ -346,7 +346,6 @@ body {
 
 .rpt-stat-chip--accent  .rpt-stat-chip__value { color: var(--rpt-accent); }
 .rpt-stat-chip--success .rpt-stat-chip__value { color: var(--rpt-success); }
-.rpt-stat-chip--warn    .rpt-stat-chip__value { color: var(--rpt-warning); }
 
 /* ============================================================
    Section headers
@@ -381,6 +380,7 @@ body {
   font-size:  var(--rpt-text-sm);
   color:      var(--rpt-text-3);
   margin-top: var(--rpt-space-1);
+  max-width: 62ch;
 }
 
 .rpt-section-actions {
@@ -2217,6 +2217,7 @@ body { font-size: 16px; line-height: 26px; }
 
 /* everything rests, nothing stays hidden */
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .rpt-srna-enter, #sec-detail.active { opacity: 1; transform: none; }
 }
@@ -2224,15 +2225,15 @@ body { font-size: 16px; line-height: 26px; }
 /* ---- shared pieces ---- */
 .rpt-srna-say { border-left: 4px solid var(--rpt-accent); background: var(--rpt-accent-subtle);
   padding: var(--rpt-space-3) var(--rpt-space-4); border-radius: 0 var(--rpt-radius-sm) var(--rpt-radius-sm) 0;
-  margin: var(--rpt-space-3) 0; max-width: 62em; }
+  margin: var(--rpt-space-3) 0; max-width: 62ch; }
 .rpt-srna-warn { border-left: 4px solid var(--rpt-warning); background: #fef3d7; color: #7a5208;
   padding: var(--rpt-space-3) var(--rpt-space-4); border-radius: 0 var(--rpt-radius-sm) var(--rpt-radius-sm) 0;
-  margin: var(--rpt-space-2) 0; font-size: 14px; }
+  margin: var(--rpt-space-2) 0; font-size: 14px; max-width: 62ch; }
 .rpt-srna-h { font-size: 16px; font-weight: 500; color: var(--rpt-primary); margin: var(--rpt-space-6) 0 var(--rpt-space-2); }
 .rpt-srna-grid { display: grid; gap: var(--rpt-space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
 .rpt-srna-note, .rpt-srna-sub { font-size: 13px; color: var(--rpt-text-2); }
-.rpt-srna-note { margin: var(--rpt-space-2) 0; }
-.rpt-srna-empty { color: var(--rpt-text-2); padding: var(--rpt-space-4); }
+.rpt-srna-note { margin: var(--rpt-space-2) 0; max-width: 62ch; }
+.rpt-srna-empty { color: var(--rpt-text-2); padding: var(--rpt-space-4); max-width: 62ch; }
 .rpt-srna-tag { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 99px;
   font-size: 13px; font-weight: 500; color: var(--rpt-text); background: var(--rpt-surface-2);
   border: 1px solid var(--rpt-border); }
@@ -2247,7 +2248,7 @@ body { font-size: 16px; line-height: 26px; }
 .s-pi { stroke: var(--rpt-srna-pi); } .s-si { stroke: var(--rpt-srna-si); } .s-mi { stroke: var(--rpt-srna-mi); }
 .s-ph { stroke: var(--rpt-srna-ph); } .s-hc { stroke: var(--rpt-srna-hc); } .s-am { stroke: var(--rpt-srna-am); }
 .s-ot { stroke: var(--rpt-srna-ot); }
-svg text { font-size: 13px; fill: var(--rpt-text-2); font-family: var(--rpt-font); }
+svg text:not([data-ink]) { font-size: 13px; fill: var(--rpt-text-2); font-family: var(--rpt-font); }
 svg text.t-strong { font-size: 16px; font-weight: 500; fill: var(--rpt-text); }
 svg text.tk-x, svg text.tk-y { font-variant-numeric: tabular-nums; }
 svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
@@ -2257,9 +2258,12 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
   margin-bottom: var(--rpt-space-3); }
 .rpt-srna-chip { border: 1px solid var(--rpt-border); background: var(--rpt-surface); border-radius: 99px;
   padding: 4px 12px; font: inherit; font-size: 14px; cursor: pointer; color: var(--rpt-text); }
+.rpt-srna-chip:hover { border-color: var(--rpt-border-dark); background: var(--rpt-surface-2); }
+.rpt-srna-chip.on:hover { background: var(--rpt-primary); border-color: var(--rpt-primary); }
 .rpt-srna-chip.on { background: var(--rpt-primary); color: #fff; border-color: var(--rpt-primary); }
 .rpt-srna-input { border: 1px solid var(--rpt-border-dark); border-radius: var(--rpt-radius-sm);
   padding: 4px 8px; font: inherit; font-size: 14px; background: var(--rpt-surface); }
+.rpt-srna-input:hover { border-color: var(--rpt-text-3); background: var(--rpt-surface-2); }
 .rpt-srna-lbl { font-size: 14px; color: var(--rpt-text-2); }
 .rpt-srna-scroll { overflow-x: auto; }
 .rpt-srna-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -2269,6 +2273,7 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-table td.num, .rpt-srna-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .rpt-srna-table tr.row { cursor: pointer; }
 .rpt-srna-table tr.row:focus { outline: none; }
+.rpt-srna-table tr.row:focus-visible { box-shadow: inset 0 0 0 2px var(--rpt-accent); }
 .rpt-srna-name { font-weight: 500; }
 .rpt-srna-bar { display: inline-block; width: 80px; height: 8px; background: var(--rpt-border);
   border-radius: 99px; overflow: hidden; vertical-align: middle; }
@@ -2282,13 +2287,15 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-seq { word-break: break-all; }
 .rpt-srna-footer { max-width: 1600px; margin: 0 auto; padding: var(--rpt-space-6);
   font-size: 13px; color: var(--rpt-text-2); }
+.rpt-srna-footer p { max-width: 62ch; }
+@media (max-width: 900px) { .rpt-srna-footer { padding-left: 16px; padding-right: 16px; } }
 
 /* ---- cluster page: header, verdict, strip ---- */
 .rpt-srna-head { display: flex; flex-wrap: wrap; gap: var(--rpt-space-3); align-items: center;
   margin: var(--rpt-space-4) 0 var(--rpt-space-2); }
 .rpt-srna-head h2 { font-size: 1.35rem; font-weight: 500; color: var(--rpt-primary); letter-spacing: -.01em;
   word-break: break-all; }
-.rpt-srna-loc { font-family: var(--rpt-font-mono); font-size: 14px; color: var(--rpt-text-2); }
+.rpt-srna-loc { overflow-wrap: anywhere; font-family: var(--rpt-font-mono); font-size: 14px; color: var(--rpt-text-2); }
 .rpt-srna-conf { font-family: var(--rpt-font-mono); font-size: 14px; color: var(--rpt-text); }
 .rpt-srna-flag { font-size: 13px; font-weight: 500; color: #7a5208; background: #fef3d7;
   border: 1px solid #f3d38c; border-radius: 99px; padding: 2px 10px; }
