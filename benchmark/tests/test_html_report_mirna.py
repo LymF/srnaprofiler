@@ -352,3 +352,106 @@ def test_figure_data_shapes(tmp_path):
     # a window that cannot be placed keeps the sequence, drops the reads
     d = rm.figure_data(load_one(tmp_path, end=END + 100), (None, None, False), hp)
     assert d["nowin"] == 1 and "rd" not in d
+
+
+# ---- 2D layout ----
+
+PS = """%!PS
+/coor [
+[92.50000000 92.50000000]
+[92.50000000 77.50000000]
+[92.50000000 62.50000000]
+[80.40541840 22.58762932]
+] def
+/arcs [
+[]
+] def
+"""
+
+
+def test_parse_coor():
+    assert rm.parse_coor(PS) == [(92.5, 92.5), (92.5, 77.5), (92.5, 62.5), (80.40541840, 22.58762932)]
+    assert rm.parse_coor("no coordinates") == [] and rm.parse_coor(None) == []
+
+
+def test_quantise_orients_five_prime_top_left_and_scales():
+    # a straight 5-base line drawn upward-right in tool coordinates (y up), 20 units apart
+    xy = rm.quantise_xy([(0, 0), (20, 0), (40, 0), (60, 0), (80, 0)])
+    assert len(xy) == 10 and all(isinstance(v, int) for v in xy)
+    xs, ys = xy[0::2], xy[1::2]
+    assert min(xs) == 0 and min(ys) == 0 and (xs[0], ys[0]) == (0, 0)
+    assert max(xs) - min(xs) == 4 * rm.UNIT or max(ys) - min(ys) == 4 * rm.UNIT
+    # a hairpin whose 5' end is at the bottom right is rotated so it ends up near the top-left
+    pts = [(100, 0), (100, 10), (100, 20), (95, 30), (90, 30), (85, 20), (85, 10), (85, 0)]
+    q = rm.quantise_xy(pts)
+    x0, y0 = q[0], q[1]
+    assert x0 + y0 == min(a + b for a, b in zip(q[0::2], q[1::2])) or x0 + y0 <= 20
+    assert rm.quantise_xy([(0, 0)]) == [] and rm.quantise_xy([(1, 1), (1, 1)]) == []
+
+
+class _P:
+    def __init__(self, x, y):
+        self.X, self.Y = x, y
+
+
+def test_layout_uses_the_module_and_drops_its_extra_point(monkeypatch):
+    class Mod:
+        @staticmethod
+        def naview_xy_coordinates(db):
+            return [_P(i * 15.0, 0.0) for i in range(len(db) + 1)]
+    monkeypatch.setattr(rm, "_import_rna", lambda: Mod)
+    xy = rm.layout("((..))")
+    assert len(xy) == 12
+    # naview failing falls back to the simple layout
+    class Mod2:
+        @staticmethod
+        def naview_xy_coordinates(db):
+            raise RuntimeError("x")
+
+        @staticmethod
+        def simple_xy_coordinates(db):
+            return [_P(i * 15.0, 0.0) for i in range(len(db) + 1)]
+    monkeypatch.setattr(rm, "_import_rna", lambda: Mod2)
+    assert len(rm.layout("((..))")) == 12
+
+
+def test_layout_falls_back_to_rnaplot_and_parses_its_postscript(tmp_path, monkeypatch):
+    exe = tmp_path / "RNAplot"
+    body = "\n".join(f"[{i * 15}.0 0.0]" for i in range(6))
+    exe.write_text(f"#!/bin/sh\ncat > /dev/null\nprintf '/coor [\\n{body}\\n] def\\n' > rna.ps\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(rm, "_import_rna", lambda: None)
+    monkeypatch.setattr(rm.shutil, "which", lambda name: str(exe) if name == "RNAplot" else None)
+    assert len(rm.layout("((..))")) == 12
+    exe.write_text("#!/bin/sh\nexit 1\n")
+    assert rm.layout("((..))") == []
+
+
+def test_layout_without_a_tool_is_empty(monkeypatch):
+    monkeypatch.setattr(rm, "_import_rna", lambda: None)
+    monkeypatch.setattr(rm.shutil, "which", lambda name: None)
+    assert rm.layout("((..))") == [] and rm.layout(None) == []
+
+
+@pytest.mark.skipif(rm._import_rna() is None and not rm.shutil.which("RNAplot"),
+                    reason="ViennaRNA layout not installed")
+def test_real_layout():
+    db = "(((((.......)))))"
+    xy = rm.layout(db)
+    assert len(xy) == 2 * len(db)
+
+
+def test_xy_in_the_payload_is_small_and_checked(tmp_path):
+    import json
+    import random
+    r = load_one(tmp_path)
+    rng = random.Random(1)
+    xy = []
+    for i in range(110):                                     # about the extent of a 110-nt hairpin
+        xy += [rng.randint(0, 400), rng.randint(0, 700)]
+    db = "(" * 40 + "." * 30 + ")" * 40
+    d = rm.figure_data(r, (db, -30.0, False, xy), None)
+    assert d["xy"] == xy and len(json.dumps(d["xy"], separators=(",", ":"))) <= 4096
+    assert "xy" not in rm.figure_data(r, (db, -30.0, False, xy[:-2]), None)   # wrong length is dropped
+    assert "xy" not in rm.figure_data(r, (db, -30.0, False), None)
+    assert "xy" not in rm.figure_data(r, (None, None, True, xy), None)

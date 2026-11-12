@@ -232,6 +232,11 @@ detail page are drawn.
   left out and the figure says "Structure not available: RNAfold not installed." Nothing is cached
   on disk. The sequence is the one miRScore was given: the hairpin plus up to 25 nt of genomic
   flank on each side.
+- **2D structure.** At the top of the figure, the classic secondary-structure drawing of the hairpin
+  (ViennaRNA naview layout via the python module, else `RNAplot -t 1`, 5' end at the top-left),
+  with bonds, mature/loop/star tints, every 10th base numbered and the MFE. It scales to the card
+  width; letters appear only when the bases are at least 13 px apart. The per-base table view adds
+  the paired position. Without a layout tool the panel is omitted.
 - **Reads.** Read depth along the precursor (all collapsed reads), and under the sequence the BAM
   reads that lie fully inside the precursor and align without indels or clipping, on the
   precursor's strand (for a minus-strand precursor the reads are reverse-complemented and the

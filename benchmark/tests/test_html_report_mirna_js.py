@@ -164,3 +164,63 @@ def test_pages_without_a_hairpin_are_unchanged(tmp_path):
     assert "mi" not in d2["details"]["0"]
     r = run(tmp_path, json.dumps(d2), d2)
     assert not r["has"] and r["figs"] == list("ABCDEFGH")
+
+
+D2PROBE = """
+H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+var det = H.id("sec-detail");
+var fig = H.byClass(det, "rpt-srna-fig", "section").filter(function (f) { return f.getAttribute("data-fig") === "hairpin"; })[0];
+var svg = H.all(fig, "svg")[0];
+var res = {};
+var cl = function (c, t) { return H.byClass(svg, c, t); };
+res.circles = cl("mk-base", "circle").length;
+res.bonds = cl("mk-bond", "line").length;
+res.backbone = cl("mk-backbone", "polyline").length;
+res.letters = cl("mk-letter", "text").length;
+res.fills = cl("mk-base", "circle").map(function (c) { return c.getAttribute("fill"); });
+res.titles = H.all(svg, "title").length;
+res.texts = H.all(svg, "text").map(H.text);
+res.notes = H.byClass(fig, "rpt-srna-note", "p").map(H.text);
+H.click(H.buttons(fig, TBL)[0]);
+var t0 = H.all(H.byClass(fig, "rpt-srna-fig__table", "div")[0], "table")[0];
+res.head = H.all(t0, "th").map(H.text);
+res.row1 = H.all(H.all(t0, "tr")[1], "td").map(H.text);
+return res;
+"""
+
+
+def hairpin_xy(n):
+    # a plausible hairpin: two stems of 12 pairs with a loop, 15 apart, as a polyline in ints
+    xy = []
+    half = n // 2
+    for i in range(half):
+        xy += [0, i * 10]
+    for i in range(n - half):
+        xy += [20, (half - 1 - i) * 10]
+    return xy
+
+
+def test_2d_diagram_renders(tmp_path):
+    n = HI - LO
+    db = "(" * 40 + "." * (n - 80) + ")" * 40
+    d, text = build(tmp_path, None, fold=(db, -31.5, False, hairpin_xy(n)))
+    mi = d["details"]["0"]["mi"]
+    assert len(mi["xy"]) == 2 * n
+    r = run(tmp_path, text, d, probe=D2PROBE)
+    S = d["strings"]
+    assert r["circles"] == n and r["titles"] == n
+    assert r["bonds"] == 40 and r["backbone"] == 1
+    assert S["mi.d2.mfe"].format(mfe=-31.5) in r["texts"]
+    assert "5′" in r["texts"] and "3′" in r["texts"] and "10" in r["texts"]
+    seg = [f for f in r["fills"] if f != "#ffffff"]
+    assert {"#fbd0d0", "#fbe9c6", "#e4dcff"} <= set(seg)          # mature, loop, star tints
+    assert S["mi.d2.note"] in r["notes"]
+    assert r["head"].count(S["mi.th.pair"]) == 1
+    assert r["row1"][2] == "(" and r["row1"][3] == str(n)
+
+
+def test_2d_diagram_absent_without_coordinates(tmp_path):
+    d, text = build(tmp_path, None)                                   # fold of 3 fields, no xy
+    assert "xy" not in d["details"]["0"]["mi"]
+    r = run(tmp_path, text, d)
+    assert r["has"] and r["bands"] == 3

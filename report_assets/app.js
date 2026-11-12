@@ -1506,8 +1506,30 @@
     return sv("text", {x: f2(hpX(a)), y: f2(y), textLength: s.length * HP.cell, lengthAdjust: "spacing",
       "font-family": MONO, fill: fill, "data-ink": "1", "font-weight": weight || null, "pointer-events": "none"}, s);
   }
+  // partner index (0-based) of each base from the dot-bracket, -1 when unpaired
+  function miPairs(db) {
+    var p = [], st = [], i;
+    for (i = 0; i < db.length; i++) { p.push(-1); }
+    for (i = 0; i < db.length; i++) {
+      var c = db.charAt(i);
+      if (c === "(") { st.push(i); } else if (c === ")" && st.length) { var j = st.pop(); p[i] = j; p[j] = i; }
+    }
+    return p;
+  }
+  var D2 = {pad: 26, maxH: 420, maxScale: 2.4, minGap: 13};
+  function miD2Box(mi) {
+    if (!mi.db || !mi.xy || mi.xy.length !== 2 * mi.L) { return null; }
+    var w = 0, h = 0, i;
+    for (i = 0; i < mi.L; i++) { w = Math.max(w, mi.xy[2 * i]); h = Math.max(h, mi.xy[2 * i + 1]); }
+    return {w: Math.max(w, 1), h: Math.max(h, 1)};
+  }
   function miLayout(mi) {
     var L = {reads: !!(mi.rd && mi.rd.length)}, y = 6;
+    var box = miD2Box(mi);
+    if (box) {
+      L.d2 = {top: y, h: Math.min(D2.maxH, Math.ceil(box.h * D2.maxScale) + 2 * D2.pad), box: box};
+      y += L.d2.h + 12;
+    }
     if (L.reads) { L.covTitle = y + 10; L.covTop = y + 18; L.covBase = L.covTop + HP.cov; y = L.covBase + 12; }
     L.lab = y + 12;
     L.band = y + 18;
@@ -1522,8 +1544,67 @@
     L.H = y + 8;
     return L;
   }
+  // the classic 2D drawing: backbone, base-pair bonds, one circle per base. Scaled to the
+  // card width (W) and the panel height, aspect kept. Letters only where the bases are >= 13 px apart.
+  function miDrawD2(svg, W, mi, L) {
+    var n = mi.L, b = L.d2.box, xy = mi.xy, pr = miPairs(mi.db), i;
+    var sc = Math.min((W - 2 * D2.pad) / b.w, (L.d2.h - 2 * D2.pad) / b.h, D2.maxScale);
+    var ox = (W - b.w * sc) / 2, oy = L.d2.top + (L.d2.h - b.h * sc) / 2;
+    var px = [], py = [], gap = Infinity;
+    for (i = 0; i < n; i++) { px.push(ox + xy[2 * i] * sc); py.push(oy + xy[2 * i + 1] * sc); }
+    for (i = 1; i < n; i++) { gap = Math.min(gap, Math.hypot(px[i] - px[i - 1], py[i] - py[i - 1])); }
+    var rad = Math.max(1.5, Math.min(9, gap * 0.42)), letters = gap >= D2.minGap;
+    var pts = [];
+    for (i = 0; i < n; i++) { pts.push(f2(px[i]) + "," + f2(py[i])); }
+    svg.appendChild(sv("polyline", {points: pts.join(" "), fill: "none", stroke: AXIS, "stroke-width": 1,
+      "class": "mk-backbone"}));
+    var cx = 0, cy = 0;
+    for (i = 0; i < n; i++) {
+      cx += px[i] / n; cy += py[i] / n;
+      if (pr[i] > i) {
+        svg.appendChild(sv("line", {x1: f2(px[i]), y1: f2(py[i]), x2: f2(px[pr[i]]), y2: f2(py[pr[i]]),
+          stroke: INK2, "stroke-width": 1.2, "class": "mk-bond"}));
+      }
+    }
+    for (i = 0; i < n; i++) {
+      var k = miSeg(mi, i), base = mi.seq.charAt(i);
+      var tip = T("mi.d2.base", {pos: i + 1, base: base}) + (pr[i] >= 0 ? ", " + T("mi.d2.pair", {pos: pr[i] + 1}) : "") +
+        (k ? ", " + T(MIR_NAME[k]) : "");
+      svg.appendChild(sv("circle", {cx: f2(px[i]), cy: f2(py[i]), r: f2(rad), fill: k ? MIR_TINT[k] : SURF,
+        stroke: k ? MIR_FILL[k] : INK2, "stroke-width": 1, "class": "mk-base"}, sv("title", {}, tip)));
+      if (letters) {
+        var fs = Math.min(12, rad * 1.45);
+        svg.appendChild(sv("text", {x: f2(px[i]), y: f2(py[i] + fs * 0.36), "text-anchor": "middle", "font-size": f2(fs),
+          "font-family": MONO, fill: INK, "data-ink": "1", "pointer-events": "none", "class": "mk-letter"}, base));
+      }
+    }
+    // outward direction of base i, to put a label beside it
+    function out(i) {
+      var dx, dy;
+      if (pr[i] >= 0) { dx = px[i] - px[pr[i]]; dy = py[i] - py[pr[i]]; } else {
+        dx = px[i] - (px[Math.max(i - 1, 0)] + px[Math.min(i + 1, n - 1)]) / 2;
+        dy = py[i] - (py[Math.max(i - 1, 0)] + py[Math.min(i + 1, n - 1)]) / 2;
+        if (Math.hypot(dx, dy) < 1) { dx = px[i] - cx; dy = py[i] - cy; }
+      }
+      var m = Math.hypot(dx, dy) || 1;
+      return [dx / m, dy / m];
+    }
+    for (i = 9; i < n; i += 10) {
+      var d = out(i), o = rad + 8;
+      svg.appendChild(text(px[i] + d[0] * o, py[i] + d[1] * o + 3, String(i + 1), {anchor: "middle", cls: "tk-x"}));
+    }
+    var e5 = [px[0] - px[1], py[0] - py[1]], e3 = [px[n - 1] - px[n - 2], py[n - 1] - py[n - 2]];
+    [[e5, 0, "5′"], [e3, n - 1, "3′"]].forEach(function (q) {
+      var m = Math.hypot(q[0][0], q[0][1]) || 1, o = rad + 11;
+      svg.appendChild(text(px[q[1]] + q[0][0] / m * o, py[q[1]] + q[0][1] / m * o + 4, q[2], {anchor: "middle", fill: INK, weight: 500}));
+    });
+    if (mi.mfe !== undefined) {
+      svg.appendChild(text(W - 6, L.d2.top + 12, T("mi.d2.mfe", {mfe: mi.mfe}), {anchor: "end"}));
+    }
+  }
   function miDraw(svg, W, mi, L) {
     var n = mi.L, xEnd = hpX(n), i, k;
+    if (L.d2) { miDrawD2(svg, W, mi, L); }
     var cov = mi.cov || [], top = L.reads ? maxOf(cov) : 0;
     if (L.reads) {
       var tk = ticks(top, 3);
@@ -1599,10 +1680,11 @@
     }
   }
   function miTable(mi) {
-    var rows = [], n = mi.L, i;
+    var rows = [], n = mi.L, i, pr = mi.db ? miPairs(mi.db) : null;
     for (i = 0; i < n; i++) {
       var k = miSeg(mi, i);
       rows.push([String(i + 1), mi.seq.charAt(i), mi.db ? mi.db.charAt(i) : T("ui.na"),
+        pr ? (pr[i] >= 0 ? String(pr[i] + 1) : "") : T("ui.na"),
         k ? T(MIR_NAME[k]) : "", mi.cov ? exact(mi.cov[i]) : T("ui.na")]);
     }
     var more = [];
@@ -1613,7 +1695,7 @@
       var head = ["mi.th.start", "mi.th.end", "mi.th.seq", "mi.th.reads", "mi.th.type"].map(function (t) { return T(t); });
       more.push(dataTable(head, rr));
     }
-    return {exact: true, head: ["mi.th.pos", "mi.th.base", "mi.th.fold", "mi.th.seg", "mi.th.depth"].map(function (t) { return T(t); }),
+    return {exact: true, head: ["mi.th.pos", "mi.th.base", "mi.th.fold", "mi.th.pair", "mi.th.seg", "mi.th.depth"].map(function (t) { return T(t); }),
       rows: rows, more: more};
   }
   function miFigure(mi, r) {
@@ -1631,6 +1713,7 @@
     var notes = [note(strand)];
     if (mi.db) {
       if (mi.mfe !== undefined) { notes.push(note(T("mi.struct", {mfe: mi.mfe}))); }
+      if (L.d2) { notes.push(note(T("mi.d2.note"))); }
     } else {
       notes.push(note(T("mi.nostruct." + (mi.ns || "m"))));
     }

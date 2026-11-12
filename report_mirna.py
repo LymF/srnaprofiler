@@ -14,6 +14,8 @@ when they do not fit.
 """
 import csv
 import importlib
+import math
+import os
 import re
 import shutil
 import subprocess
@@ -243,10 +245,109 @@ def fold(seq):
         try:
             db, mfe = mod.fold(seq)
             if len(db) == len(seq):
-                return db, float(mfe)
+                return db, round(float(mfe), 2)
         except Exception:
             pass
     return None, None
+
+
+UNIT = 10           # median distance between neighbouring bases in the quantised layout
+_COOR = re.compile(r"/coor\s*\[(.*?)\]\s*def", re.S)
+_PAIR = re.compile(r"\[\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\]")
+
+
+def parse_coor(ps):
+    """[(x, y)] from the /coor array of an RNAplot PostScript file; [] when there is none."""
+    m = _COOR.search(ps or "")
+    if not m:
+        return []
+    return [(float(a), float(b)) for a, b in _PAIR.findall(m.group(1))]
+
+
+def _module_xy(mod, db):
+    for name in ("naview_xy_coordinates", "simple_xy_coordinates"):
+        fn = getattr(mod, name, None)
+        if fn is None:
+            continue
+        try:
+            pts = [(float(p.X), float(p.Y)) for p in fn(db)]
+        except Exception:
+            continue
+        if len(pts) >= len(db):      # the module appends one unused point
+            return pts[:len(db)]
+    return []
+
+
+def _exe_xy(db):
+    exe = shutil.which("RNAplot")
+    if not exe:
+        return []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            seq = "N" * len(db)
+            p = subprocess.run([exe, "-t", "1", "-o", "ps"], input=f"{seq}\n{db}\n",
+                               capture_output=True, text=True, timeout=120, cwd=tmp)
+            if p.returncode != 0:
+                return []
+            for fn in sorted(os.listdir(tmp)):
+                if fn.endswith((".ps", ".eps")):
+                    with open(os.path.join(tmp, fn)) as fh:
+                        pts = parse_coor(fh.read())
+                    if len(pts) == len(db):
+                        return pts
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return []
+
+
+def quantise_xy(pts):
+    """Flat [x0, y0, x1, y1, ...] of ints for screen use (y down) from tool coordinates (y up).
+
+    Scaled so that the median distance between neighbouring bases is UNIT, rotated by a
+    multiple of 90 degrees so that the 5' end is nearest the top-left corner, and shifted to
+    start at 0. The shape is not otherwise changed (no mirroring).
+    """
+    n = len(pts)
+    if n < 2:
+        return []
+    pts = [(x, -y) for x, y in pts]
+    ds = sorted(math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
+                for i in range(n - 1))
+    med = ds[len(ds) // 2]
+    if not med > 0:
+        return []
+    k = UNIT / med
+    pts = [(x * k, y * k) for x, y in pts]
+    best = None
+    for _ in range(4):
+        x0 = min(x for x, _y in pts)
+        y0 = min(y for _x, y in pts)
+        score = (pts[0][0] - x0) + (pts[0][1] - y0)
+        if best is None or score < best[0] - 1e-9:
+            best = (score, pts)
+        pts = [(-y, x) for x, y in pts]          # 90 degrees
+    pts = best[1]
+    x0 = min(x for x, _y in pts)
+    y0 = min(y for _x, y in pts)
+    out = []
+    for x, y in pts:
+        out += [int(round(x - x0)), int(round(y - y0))]
+    return out
+
+
+def layout(db):
+    """Quantised 2D coordinates of a dot-bracket (see quantise_xy), or [] when no tool works.
+
+    The ViennaRNA python module (naview, else the simple layout) first, then the RNAplot
+    executable with -t 1 (naview). No layout of our own.
+    """
+    if not db:
+        return []
+    mod = _import_rna()
+    pts = _module_xy(mod, db) if mod is not None else []
+    if not pts:
+        pts = _exe_xy(db)
+    return quantise_xy(pts) if pts else []
 
 
 def fold_tool_missing():
@@ -305,10 +406,11 @@ def hairpin_spec(row):
 def figure_data(row, folded, hp):
     """The `mi` entry of a detail page.
 
-    folded: (dot-bracket|None, mfe|None, tool_missing bool); hp: the reads dict of
+    folded: (dot-bracket|None, mfe|None, tool_missing bool[, xy]); hp: the reads dict of
     report_signals.HairpinReads.build() or None.
     Keys: n name, st strand, L precursor length, seq (RNA) or absent, m/s [a, b] segments,
-    lp [a, b] loop, db dot-bracket, mfe, ns why there is no structure (m missing, f failed),
+    lp [a, b] loop, db dot-bracket, mfe, xy flat ints x0,y0,x1,y1,... of the 2D diagram (absent
+    when no layout tool), ns why there is no structure (m missing, f failed),
     rd [[a, b, sequence (case = match), reads, kind m/s/""]], cov per-base depth, more/mr
     variants and reads not drawn, anti/ovh reads not shown, lo genomic window start,
     t numbers [[key, value]], pc criteria [[key, status, observed, rule]].
@@ -318,7 +420,7 @@ def figure_data(row, folded, hp):
          "t": numbers(row), "pc": criteria(row)}
     if not row.precursor_seq:
         return d
-    db, mfe, missing = folded if folded else (None, None, False)
+    db, mfe, missing, *rest = folded if folded else (None, None, False)
     d.update({"L": len(row.precursor_seq), "seq": row.precursor_seq})
     for k, key in (("m", "m"), ("s", "s"), ("lp", "loop")):
         if seg[key]:
@@ -327,6 +429,8 @@ def figure_data(row, folded, hp):
         d["db"] = db
         if mfe is not None:
             d["mfe"] = mfe
+        if rest and rest[0] and len(rest[0]) == 2 * len(db):
+            d["xy"] = rest[0]
     else:
         d["ns"] = "m" if missing else "f"
     win = window(row)

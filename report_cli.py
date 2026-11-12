@@ -51,7 +51,7 @@ def _mirna_figures(path, sel):
     mirna, specs = {}, {}
     for name, row in hit.items():
         db, mfe = report_mirna.fold(row.precursor_seq)
-        mirna[name] = (row, (db, mfe, missing))
+        mirna[name] = (row, (db, mfe, missing, report_mirna.layout(db)))
         spec = report_mirna.hairpin_spec(row)
         if spec:
             specs[name] = spec
