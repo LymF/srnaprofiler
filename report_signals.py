@@ -20,6 +20,7 @@ from signals import offset_spectrum
 _NT_POS = 26
 _PP_HI = 30
 _PHASE_MAX = 100
+READ_ROWS = 25  # read variants drawn per hairpin
 _SKIP = 0x4 | 0x100 | 0x800  # unmapped, secondary, supplementary (samio._keep)
 
 
@@ -27,21 +28,95 @@ def _r(x):
     return round(float(x), 3)
 
 
-def _accumulate(fh, chrom, start, end, *, xm_as_nh):
+class HairpinReads:
+    """Reads inside one miRNA precursor, collected while the cluster region is read.
+
+    spec: (lo, hi, strand, precursor RNA sequence, mature (a, b) | None, star | None); lo, hi
+    are the genomic half-open window of the precursor, a and b positions in the precursor
+    (strand-oriented: on "-" position 0 is the highest genomic coordinate). Only reads of the
+    precursor strand that lie fully inside the window and align without indels or clips are
+    kept, collapsed by (a, b, sequence) with 1/NH-weighted counts. The sequence is written in
+    the precursor's orientation as RNA, lower case where it matches the precursor and upper
+    case at a mismatch.
+    """
+
+    def __init__(self, spec):
+        self.lo, self.hi, self.strand, self.prec, self.m, self.s = spec
+        self.rows = Counter()
+        self.anti = self.ovh = 0.0
+
+    def add(self, rec, nh):
+        w = 1.0 / nh
+        if rec.is_reverse != (self.strand == "-"):
+            self.anti += w
+            return
+        if rec.reference_start < self.lo or rec.reference_end > self.hi:
+            self.ovh += w
+            return
+        if any(op not in (0, 7, 8) for op, _ in rec.cigartuples or ()):
+            self.ovh += w
+            return
+        seq = rec.query_sequence.upper()
+        if rec.is_reverse:
+            seq = revcomp(seq)
+        seq = seq.replace("T", "U")
+        a, b = (self.hi - rec.reference_end, self.hi - rec.reference_start) \
+            if self.strand == "-" else (rec.reference_start - self.lo, rec.reference_end - self.lo)
+        ref = self.prec[a:b]
+        self.rows[a, b, "".join(x.lower() if x == y else x for x, y in zip(seq, ref))] += w
+
+    def _kind(self, a, b):
+        for key, seg in (("m", self.m), ("s", self.s)):
+            if seg and min(b, seg[1]) - max(a, seg[0]) >= 0.5 * (b - a):
+                return key
+        return ""
+
+    def build(self, top=READ_ROWS):
+        """{"rd": top rows [a, b, sequence, reads, kind], "cov": per-base depth, "more": distinct
+        sequences not in rd, "mr": their reads, "anti", "ovh": reads left out}."""
+        L = len(self.prec)
+        diff = [0.0] * (L + 1)
+        for (a, b, _), w in self.rows.items():
+            diff[a] += w
+            diff[b] -= w
+        cov, run = [], 0.0
+        for i in range(L):
+            run += diff[i]
+            cov.append(_r(run))
+        # ties at 1e-9 so float summation order cannot reorder them
+        order = sorted(self.rows.items(), key=lambda kv: (-round(kv[1], 9), kv[0]))
+        return {"rd": [[a, b, q, _r(w), self._kind(a, b)] for (a, b, q), w in order[:top]],
+                "cov": cov, "more": max(0, len(order) - top),
+                "mr": _r(sum(w for _, w in order[top:])),
+                "anti": _r(self.anti), "ovh": _r(self.ovh)}
+
+
+def _accumulate(fh, chrom, start, end, *, xm_as_nh, hp=None):
     """One pass over the region: (records kept, key Counter, sequence Counter).
 
     keys: (strand, pos, length, nh, 5' base) -> record count.
     seqs: (is_reverse, stored sequence) -> 1/NH-weighted reads.
+    hp: a HairpinReads fed in the same pass; the region read is then the union of the
+    cluster window and the precursor window, and the counters still see only the reads
+    that overlap the cluster window.
     """
     keys, seqs = Counter(), Counter()
     n = 0
-    for rec in fh.fetch(chrom, start, end):
+    if hp is None:
+        lo, hi = start, end
+    else:
+        lo, hi = min(start, hp.lo), max(end, hp.hi)
+    for rec in fh.fetch(chrom, lo, hi):
         if rec.flag & _SKIP:
             continue
         seq = rec.query_sequence
         if not seq:
             continue
         nh = samio._nh(rec, xm_as_nh)
+        if hp is not None:
+            hp.add(rec, nh)
+            if rec.reference_start >= end or rec.reference_end <= start:
+                continue
         rev = rec.is_reverse
         if rev:
             keys["-", rec.reference_start, len(seq), nh, revcomp(seq[-1])] += 1
@@ -178,14 +253,15 @@ _CHUNK = 50  # clusters per worker task
 def _chunk_signals(bam_path, items, xm_as_nh):
     """(signals by name, failed count, first error) for plain-tuple clusters.
 
-    items: (name, chrom, start, end, dicer_call). Opens its own AlignmentFile,
-    so it can run in a worker process.
+    items: (name, chrom, start, end, dicer_call[, hairpin spec]). Opens its own
+    AlignmentFile, so it can run in a worker process. A cluster with a hairpin spec gets
+    "hp" (HairpinReads.build) in its entry, read in the same pass as its figure data.
     """
     out = {}
     failed, first = 0, None
     with pysam.AlignmentFile(bam_path, "rb") as fh:
         refs = set(fh.references)
-        for name, chrom, start, end, dom in items:
+        for name, chrom, start, end, dom, *rest in items:
             if start is None or end is None:
                 failed += 1
                 first = first or f"{name}: no coordinates"
@@ -195,8 +271,11 @@ def _chunk_signals(bam_path, items, xm_as_nh):
                 out[name] = _empty(start, end)
                 continue
             try:
-                n, keys, seqs = _accumulate(fh, chrom, start, end, xm_as_nh=xm_as_nh)
+                hp = HairpinReads(rest[0]) if rest and rest[0] else None
+                n, keys, seqs = _accumulate(fh, chrom, start, end, xm_as_nh=xm_as_nh, hp=hp)
                 out[name] = _build(n, keys, seqs, start, end, dominant=dom)
+                if hp is not None:
+                    out[name]["hp"] = hp.build()
             except Exception as e:
                 failed += 1
                 first = first or f"{type(e).__name__}: {e}"
@@ -204,16 +283,18 @@ def _chunk_signals(bam_path, items, xm_as_nh):
     return out, failed, first
 
 
-def signals_for(bam_path, clusters, xm_as_nh=None, threads=1):
+def signals_for(bam_path, clusters, xm_as_nh=None, threads=1, hairpins=None):
     """One figure-data entry per cluster name; a failing region is zero-filled.
 
     threads > 1 splits the clusters into chunks run in worker processes (each
     opens its own BAM handle); the result is the same dict as threads=1.
+    hairpins: {cluster name: hairpin spec} for the miRNA clusters (see HairpinReads).
     """
     if xm_as_nh is None:
         xm_as_nh = samio.prefers_xm_as_nh(bam_path)
-    items = [(c.name, c.chrom, c.start, c.end, getattr(c, "dicer_call", None))
-             for c in clusters]
+    hairpins = hairpins or {}
+    items = [(c.name, c.chrom, c.start, c.end, getattr(c, "dicer_call", None),
+              hairpins.get(c.name)) for c in clusters]
     chunks = [items[i:i + _CHUNK] for i in range(0, len(items), _CHUNK)]
     if threads > 1 and len(chunks) > 1:
         from concurrent.futures import ProcessPoolExecutor
