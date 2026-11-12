@@ -407,6 +407,14 @@
     }
     return box;
   }
+  function evScore(v) {
+    var s = 0;
+    for (var i = 0; i < 5; i++) {
+      var k = parseInt(v.charAt(i), 10);
+      s += (k === 2 || k === 5 || k === 6) ? 10 : (k === 1 || k === 4) ? 1 : 0;
+    }
+    return s;
+  }
   function filtered() {
     var fl = Math.max(view.floor, META.floor);
     var out = [];
@@ -423,6 +431,10 @@
           (rows[b].r || 0) - (rows[a].r || 0);
       },
       reads: function (a, b) { return (rows[b].r || 0) - (rows[a].r || 0); },
+      // number of supporting evidence checks (present/moderate/high), weak ones break ties
+      evidence: function (a, b) {
+        return evScore(rows[b].v) - evScore(rows[a].v) || (rows[b].r || 0) - (rows[a].r || 0);
+      },
       name: function (a, b) { return rows[a].n < rows[b].n ? -1 : rows[a].n > rows[b].n ? 1 : 0; }
     }[view.sort];
     out.sort(cmp);
@@ -445,7 +457,7 @@
 
     var ctl = h("div", "rpt-srna-filters");
     var sel = h("select", "rpt-srna-input");
-    [["conf", T("ui.sort.conf")], ["reads", T("ui.sort.reads")], ["name", T("ui.sort.name")]].forEach(function (o) {
+    [["conf", T("ui.sort.conf")], ["evidence", T("ui.sort.evidence")], ["reads", T("ui.sort.reads")], ["name", T("ui.sort.name")]].forEach(function (o) {
       var op = h("option", "", o[1]);
       op.setAttribute("value", o[0]);
       if (view.sort === o[0]) { op.setAttribute("selected", "selected"); }

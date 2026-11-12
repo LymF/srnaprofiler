@@ -148,12 +148,32 @@ class Selection:
     mode: str = "rules"
 
 
+def _detail_set(shown, max_detail):
+    """Detail pages for the top `max_detail` rows, but every class keeps a share.
+
+    A plain top-N by confidence leaves low-confidence classes (siRNA, phasiRNA) with
+    no page at all. Half the budget is split evenly across the classes present
+    (each class's best rows first); the rest follows the global order."""
+    if len(shown) <= max_detail:
+        return list(shown)
+    by_cls = {}
+    for c in shown:
+        by_cls.setdefault(c.cls, []).append(c)
+    quota = max_detail // (2 * len(by_cls))
+    chosen = {id(c) for rows in by_cls.values() for c in rows[:quota]}
+    for c in shown:
+        if len(chosen) >= max_detail:
+            break
+        chosen.add(id(c))
+    return [c for c in shown if id(c) in chosen]
+
+
 def select(clusters, floor, max_detail=3000):
     shown = [c for c in clusters if c.reads is not None and c.reads >= floor]
     # ambiguous rows carry the nearest class's confidence: list them after resolved ones
     shown.sort(key=lambda c: (c.cls == "ambiguous",
                               -(c.confidence if c.confidence is not None else -1.0), -c.reads))
-    return Selection(shown=shown, detail=shown[:max_detail], n_total=len(clusters),
+    return Selection(shown=shown, detail=_detail_set(shown, max_detail), n_total=len(clusters),
                      n_hidden=len(clusters) - len(shown), floor=floor,
                      capped=len(shown) > max_detail, kingdom=detect_kingdom(clusters),
                      mode=detect_mode(clusters))

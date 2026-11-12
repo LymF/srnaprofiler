@@ -73,6 +73,16 @@ def test_select_cap():
     assert s.capped and len(s.detail) == 3000 and len(s.shown) == 3001
 
 
+def test_select_cap_keeps_every_class():
+    hi = [_cl("p%d" % i, 1000, .9) for i in range(100)]
+    lo = [_cl("s%d" % i, 1000, .1) for i in range(10)]
+    for c in lo:
+        c.cls = "siRNA"
+    s = rd.select(hi + lo, 0, max_detail=40)
+    assert len(s.detail) == 40
+    assert {c.name for c in lo} <= {c.name for c in s.detail}
+
+
 def test_floor_above_all():
     s = rd.select([_cl("a", 10, .5), _cl("b", 20, .5)], 1000)
     assert s.shown == [] and s.n_hidden == s.n_total == 2

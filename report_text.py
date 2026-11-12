@@ -186,6 +186,7 @@ STRINGS = {
     "ui.list.sub": "Resolved clusters first, by confidence; ambiguous ones after them. Click a row to see why.",
     "ui.all": "All",
     "ui.sort.conf": "Sort: confidence",
+    "ui.sort.evidence": "Sort: evidence",
     "ui.sort.reads": "Sort: reads",
     "ui.sort.name": "Sort: name",
     "ui.floor.label": "Minimum reads ",
