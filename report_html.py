@@ -2,6 +2,9 @@
 
 Payload (JSON in <script id="report-data">), read by the front end:
   library, counts, warnings, strings (STRINGS table), rows, details, meta.
+  library.qc (absent with --no-library-qc or without reads): the library quality strip from
+    report_qc.build: c 27 weighted read counts (<16, 16..40, >40), u unmapped records,
+    fl [[check key, value, status 1 ok / 0 check]], tr {b before, a after, ad adapter-trimmed}.
   rows[i]: n name, h chrom, s start, e end, r reads, c class, f confidence (null when
     ambiguous), z dominant length, v dot levels (one digit per dot, see _LEVEL),
     rv 1 if the classifier flagged the locus for review (else absent),
@@ -189,6 +192,8 @@ def _payload(sel, summary, signals, title):
             details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name], kingdom)
     lib = {k: _n(summary.get(k), 4) for k in
            ("library_reads", "cluster_reads", "unique_share", "fragments", "fragment_reads")}
+    if summary.get("qc"):
+        lib["qc"] = summary["qc"]
     S = rt.STRINGS
     return {
         "library": lib, "counts": counts, "warnings": rt.warnings(sel, summary),

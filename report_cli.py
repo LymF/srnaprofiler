@@ -7,6 +7,7 @@ import pysam
 
 import report_data
 import report_html
+import report_qc
 import report_signals
 import report_text
 from utils import log
@@ -61,6 +62,10 @@ def run_report(args):
     frags = _fragments_path(args)
     if frags:
         _need(frags, "fragments TSV")
+    if getattr(args, "fastp", None):
+        _need(args.fastp, "fastp JSON")
+    if getattr(args, "qc_summary", None):
+        _need(args.qc_summary, "QC summary")
 
     clusters = report_data.load_clusters(args.clusters)
     sel = report_data.select(clusters, args.min_reads, args.max_detail)
@@ -76,6 +81,11 @@ def run_report(args):
             f"and slow to open in a browser", "WARN")
 
     summary = report_data.library_summary(clusters, frags)
+    if not getattr(args, "no_library_qc", False):
+        lengths = report_signals.library_lengths(args.bam, threads=args.threads)
+        fastp, qcs = report_qc.trim_paths(args.clusters, getattr(args, "fastp", None),
+                                          getattr(args, "qc_summary", None))
+        summary["qc"] = report_qc.build(lengths, report_qc.load_trim(fastp, qcs))
     signals = report_signals.signals_for(args.bam, sel.detail, threads=args.threads)
     os.makedirs(args.outdir, exist_ok=True)
     out = os.path.join(args.outdir, f"{args.prefix}.report.html")

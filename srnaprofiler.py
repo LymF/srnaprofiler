@@ -501,6 +501,15 @@ themselves are defined there. Every module takes --help.
                          "on macOS/Windows (spawn) start-up cost can outweigh the gain")
     rp.add_argument("--fragments", default=None,
                     help="classify .fragments.tsv (default: the one beside --clusters)")
+    rp.add_argument("--fastp", default=None,
+                    help="fastp .json for the trimming numbers in the library quality strip "
+                         "(default: <prefix>.fastp.json beside --clusters, if present)")
+    rp.add_argument("--qc-summary", dest="qc_summary", default=None,
+                    help="`qc` .qc_summary.txt, the fallback for reads before/after trimming "
+                         "(default: <prefix>.qc_summary.txt beside --clusters, if present)")
+    rp.add_argument("--no-library-qc", dest="no_library_qc", action="store_true",
+                    help="Skip the extra BAM pass that builds the library quality strip "
+                         "(whole-library read-length histogram and flags)")
     rp.add_argument("--title", default=None, help="Report title")
     rp.set_defaults(func=run_report)
 

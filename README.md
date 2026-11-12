@@ -157,9 +157,10 @@ It writes `out/run.report.html`. It only reads the `classify` outputs and the BA
 The file has three parts:
 
 - **About tab**: the tool name, tagline, version, GitHub link and install commands.
-- **Overview and cluster list**: the library summary, then a sortable, filterable list of clusters.
-- **Cluster page**: the evidence behind the class and why the other classes were rejected, with
-  these figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
+- **Overview and cluster list**: the library summary, the library quality strip (below), then a
+  sortable, filterable list of clusters.
+- **Cluster page**: the measured values, a "Why this class" checklist (below), then these
+  figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
   nucleotide logo, top sequences and library context. Sense is drawn up and antisense down. Every
   figure except the top-sequences one has a table view and a "Download SVG" button.
 
@@ -169,6 +170,9 @@ The file has three parts:
 | `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (resolved clusters by confidence first, ambiguous ones after them); the rest stay in the list. Each page is about 7 KB, so about 7 MB per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
 | `--threads` | 1 | worker processes for the figure data. Pays off only for large inputs and on Linux (fork) |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
+| `--fastp` | `<prefix>.fastp.json` beside `--clusters` | fastp JSON for reads before/after trimming and the adapter-trimmed share in the library quality strip |
+| `--qc-summary` | `<prefix>.qc_summary.txt` beside `--clusters` | `qc` summary, the fallback for reads before/after trimming |
+| `--no-library-qc` | off | skip the extra BAM pass that builds the library quality strip |
 | `--title` | built-in | page title |
 
 The BAM must be indexed (`samtools index`); without the index `report` stops with an error.
@@ -180,6 +184,57 @@ The class definitions are read from the shipped `rules.yaml` / `rules.plant.yaml
 custom `--config` may define classes differently. The evidence dots and strip use display-only
 cutoffs, stated in the page footer; they are not the classifier's thresholds. Run `classify` with
 a version that writes the `e_*` columns, or the dots show "not available".
+
+### Why this class
+
+Each cluster page lists, before the figures, one row per check the class rules apply: the check,
+the value observed in the cluster, the rule, and the result as an icon plus text (Met, Not met,
+Not available, Not tested). The rows come from the shipped `rules.yaml` / `rules.plant.yaml`,
+so they follow what the classifier does:
+
+- **Size window** (for example piRNA 24-31 nt, siRNA 20-22 nt): the dominant size (`dicer_call`)
+  must fall inside it. This is a hard limit; outside every window the cluster is ambiguous.
+- **Defining evidence** (for example 5' U or ping-pong for piRNA, strand balance for siRNA,
+  phasing for phasiRNA, 5' A for hcsiRNA). The classifier weighs these in a score and has no cutoff
+  on them, so a row is *Met* when its effect strength (the `e_*` column, a 95% Wilson lower bound
+  against the signature's null) is above 0, that is, above chance. The observed percentage or
+  statistic from the table is shown next to the strength. `phasiRNA24` also needs the phasing
+  test at p of 0.01 or less, as the rules require. Without the `e_*` columns (a `classify` run
+  from before they were written) these rows read *Not available* and only the raw value shows.
+- **Cluster criteria** (piRNA: reads span at least 1000 bp and denser than chance, p 0.01):
+  read from the cluster's evidence trail. The table does not carry the read span or the density
+  p-value, so the observed length is the locus window (equal to the read span when
+  `trim_to_reads` is on) and the density row shows no value.
+- An **ambiguous** cluster lists the checks of its nearest class, so you can see which failed;
+  criteria are *Not tested* when the size already failed, as in the classifier. An ambiguous
+  call from `--classifier ml` has no nearest class and no checklist. For an ML call the rows are
+  the class's basic checks and the evidence rows are for reference.
+- **miRNA** clusters get one line instead: the class comes from the miRDeep2 hairpin search.
+
+The rows reflect the shipped rules files; a run with a custom `--config` may differ.
+
+### Library quality
+
+The Overview tab ends with a library quality strip, in the style of miRTrace. A whole-library
+read-length histogram (16 to 40 nt, plus one bin for shorter and one for longer reads) is built
+from the BAM in one extra pass (by contig, parallel with `--threads`). Reads are the primary
+mapped alignments, weighted by 1/NH like the cluster counts, so the total is on the scale of the
+library size behind RPM. Unmapped reads are not in the histogram, so shares are of mapped reads;
+the number of unmapped records is read from the BAM index and shown when it is not zero. Three flags,
+each with its number and a text status:
+
+| flag | status Check when |
+|---|---|
+| share of reads of 20 to 25 nt | under 25% |
+| dominant length | outside 18 to 35 nt, the sizes the classifier keeps |
+| share of reads shorter than 18 nt | more than 25% |
+
+The 25% floor on the 20 to 25 nt share is the cutoff the strip is built on; the other two cutoffs
+are display-only choices of this report, not miRTrace values. If a `fastp` JSON
+(`<prefix>.fastp.json`) or a `qc` summary (`<prefix>.qc_summary.txt`) sits beside `--clusters`,
+or is given with `--fastp` / `--qc-summary`, the strip also shows reads before and after trimming
+and, from the fastp JSON, the share of reads with an adapter trimmed. Absent or unreadable files
+just leave that part out. `--no-library-qc` skips the extra BAM pass and the whole strip.
 
 ---
 

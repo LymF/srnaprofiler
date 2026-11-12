@@ -963,3 +963,93 @@ def test_checklist_sits_between_strip_and_figures(tmp_path):
     return H.id("sec-detail").children.map(function (c) { return H.cls(c); });""")
     i = r.index("rpt-srna-ck")
     assert r[i - 1] == "rpt-srna-strip" and r[i + 1] == "rpt-srna-figs"
+
+
+# ---- library quality strip ----
+
+def lq_summary(trim=None, **c):
+    import report_qc
+    counts = [0.0] * 27
+    for k, v in c.items():
+        counts[int(k[1:]) - 15] = v
+    return dict(SUMMARY, qc=report_qc.build({"counts": counts, "unmapped": 3}, trim))
+
+
+LQ_PROBE = """
+var ov = H.id("sec-overview");
+var fig = H.byClass(ov, "rpt-srna-fig", "section")[0];
+var strips = H.byClass(ov, "rpt-srna-strip");
+if (!fig) { return {fig: false, text: H.text(ov)}; }
+var svg = H.all(fig, "svg")[0];
+var res = {fig: true, text: H.text(ov), strip: strips.length,
+  flags: strips[0].children.map(function (c) { return c.children.map(H.text); }),
+  bars: H.byClass(svg, "mk-bar").length, hits: H.byClass(svg, "rpt-srna-hit").length,
+  btns: H.all(fig, "button").map(H.text), band: H.byClass(svg, "band").length,
+  svgs: H.all(ov, "svg").length};
+var tb = H.buttons(fig, TBL)[0];
+H.click(tb);
+res.table = H.all(H.all(fig, "tbody")[0], "tr").map(function (tr) { return H.all(tr, "td").map(H.text); });
+H.click(H.buttons(fig, DL)[0]);
+res.download = H.stats().downloads[0].name;
+return res;
+"""
+
+
+def lq_run(tmp_path, summary):
+    sel, text, d = page(tmp_path, [mk("c1", reads=900)], summary=summary)
+    S = d["strings"]
+    probe = ("var TBL = %s; var DL = %s;\n" % (json.dumps(S["ui.fig.table"]), json.dumps(S["ui.fig.svg"]))
+             + LQ_PROBE)
+    return d, run_js(tmp_path, text, probe)
+
+
+def test_library_quality_strip_renders(tmp_path):
+    d, r = lq_run(tmp_path, lq_summary(l22=60, l24=20, l17=20))
+    S = d["strings"]
+    assert r["fig"] and r["strip"] >= 1
+    assert S["ui.ov.lq"] in r["text"]
+    labels = [f[0] for f in r["flags"]]
+    assert labels == [S["lq.share.label"], S["lq.dominant.label"], S["lq.short.label"]]
+    assert r["flags"][0][1] == "80.0%" and S["lq.share.1"] == r["flags"][0][2]
+    assert r["flags"][1][1] == S["ui.unit.nt"].format(v=22) and r["flags"][1][2] == S["lq.dominant.1"]
+    assert r["flags"][2][1] == "20.0%" and r["flags"][2][2] == S["lq.short.1"]   # 20% <= 25%
+    assert r["bars"] == 3 and r["hits"] == 27 and r["band"] == 1
+    assert S["ui.fig.table"] in r["btns"] or S["ui.fig.chart"] in r["btns"]
+    assert len(r["table"]) == 27 and r["table"][0][0] == "<16" and r["table"][26][0] == ">40"
+    assert r["table"][7][:2] == ["22", "60"]
+    assert r["download"].endswith("_lengths.svg")
+    assert S["lq.band.label"].format(pct="80.0%") in r["text"]
+
+
+def test_library_quality_check_status_is_text(tmp_path):
+    d, r = lq_run(tmp_path, lq_summary(l38=90, l17=10))
+    S = d["strings"]
+    assert r["flags"][0][2] == S["lq.share.0"] and r["flags"][0][2].startswith("Check")
+    assert r["flags"][1][2] == S["lq.dominant.0"]
+
+
+def test_library_quality_trimming_cards(tmp_path):
+    d, r = lq_run(tmp_path, lq_summary({"b": 1000, "a": 900, "ad": 850}, l22=10))
+    S = d["strings"]
+    assert S["lq.tr.before"] in r["text"] and "1,000" in r["text"]
+    assert S["lq.tr.after.sub"].format(pct="90.0%") in r["text"]
+    assert S["lq.tr.adapter.sub"].format(pct="85.0%") in r["text"]
+    assert S["lq.unmapped"] in r["text"]
+
+
+def test_library_quality_absent_without_qc(tmp_path):
+    d, r = lq_run(tmp_path, SUMMARY)
+    assert r["fig"] is False and d["strings"]["ui.ov.lq"] not in r["text"]
+    d, r = lq_run(tmp_path, dict(SUMMARY, qc=None))
+    assert r["fig"] is False
+
+
+def test_library_quality_redraws_on_resize(tmp_path):
+    sel, text, d = page(tmp_path, [mk("c1", reads=900)], summary=lq_summary(l22=5))
+    r = run_js(tmp_path, text, """
+    var ov = H.id("sec-overview");
+    var fig = H.byClass(ov, "rpt-srna-fig", "section")[0];
+    var w0 = H.all(fig, "svg")[0].getAttribute("width");
+    H.resize(410);
+    return [w0, H.all(H.byClass(H.id("sec-overview"), "rpt-srna-fig", "section")[0], "svg")[0].getAttribute("width")];""")
+    assert r == ["720", "410"]

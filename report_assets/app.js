@@ -360,6 +360,81 @@
     });
   }
 
+  // ---- library quality: read-length flags, trimming numbers, whole-library length figure ----
+  function pct1(x) { return T("ui.unit.pct", {v: (Math.round(x * 1000) / 10).toFixed(1)}); }
+  function lqLabel(i, n) { return i === 0 ? "<16" : i === n - 1 ? ">40" : String(15 + i); }
+  function lqFlags(lq) {
+    var box = h("div", "rpt-srna-strip");
+    lq.fl.forEach(function (f) {
+      var v = f[0] === "dominant" ? T("ui.unit.nt", {v: f[1]}) : pct1(f[1]);
+      box.appendChild(h("div", "", [h("div", "lb", T("lq." + f[0] + ".label")), h("div", "vl", v),
+        h("div", "lv " + (f[2] ? "present" : "absent"), T("lq." + f[0] + "." + f[2]))]));
+    });
+    return box;
+  }
+  function lqStats(lq, total) {
+    var cards = [stat(T("lq.mapped"), num(total), T("lq.mapped.sub"))], t = lq.tr;
+    if (lq.u) { cards.push(stat(T("lq.unmapped"), num(lq.u), T("lq.unmapped.sub"))); }
+    if (t && t.b !== undefined) { cards.push(stat(T("lq.tr.before"), num(t.b))); }
+    if (t && t.a !== undefined) {
+      cards.push(stat(T("lq.tr.after"), num(t.a),
+        t.b ? T("lq.tr.after.sub", {pct: pct1(t.a / t.b)}) : ""));
+    }
+    if (t && t.ad !== undefined) {
+      cards.push(stat(T("lq.tr.adapter"), num(t.ad), t.b ? T("lq.tr.adapter.sub", {pct: pct1(t.ad / t.b)}) : ""));
+    }
+    return h("div", "rpt-stats-grid", cards);
+  }
+  function lqFigure(lq, total) {
+    var c = lq.c, n = c.length, top = 0, i;
+    for (i = 1; i < n; i++) { if (c[i] > c[top]) { top = i; } }
+    var inBand = 0;
+    for (i = 5; i <= 10; i++) { inBand += c[i]; }
+    function draw(svg, W, H) {
+      var x0 = LEFT, x1 = W - RIGHT, y0 = 34, y1 = H - 44, len = y1 - y0;
+      var tk = ticks(maxOf(c), 3), sc = len / tk.top;
+      var cols = slots(x0, x1, n), slot = (x1 - x0) / n, bw = Math.min(BAR_MAX, slot - GAP);
+      // the 20 to 25 nt band sits behind the bars and is named on the figure
+      svg.appendChild(sv("rect", {x: f2(cols[5][0]), y: y0, width: f2(cols[10][1] - cols[5][0]), height: len,
+        fill: GRID, "class": "band"}));
+      svg.appendChild(text((cols[5][0] + cols[10][1]) / 2, 14, T("lq.band.label", {pct: pct1(inBand / total)}),
+        {anchor: "middle", fill: INK, weight: 500, cls: "dl"}));
+      yGrid(svg, x0, x1, y1, len, -1, tk);
+      c.forEach(function (v, j) {
+        if (v * sc >= 0.5) {
+          svg.appendChild(tagMark(barPath(cols[j][0] + (slot - bw) / 2, y1, bw, v * sc, -1, "mk-bar", ACCENT), j));
+        }
+      });
+      zeroLine(svg, x0, x1, y1);
+      svg.appendChild(text(cols[top][0] + slot / 2, y1 - c[top] * sc - 6,
+        T("ui.unit.nt", {v: lqLabel(top, n)}), {anchor: "middle", fill: INK, weight: 500, cls: "dl"}));
+      var k = every(slot, 3), lab = [];
+      for (i = 0; i < n; i++) {
+        if (i % k === 0 || i === n - 1) { lab.push([cols[i][0] + slot / 2, lqLabel(i, n)]); }
+      }
+      xTicks(svg, lab, y1 + 18);
+      xTitle(svg, T("ui.axis.length"), W, H - 6);
+      yTitle(svg, T("ui.axis.reads"), (y0 + y1) / 2);
+      hits(svg, cols, y0, y1, function (j) {
+        return {head: T("ui.unit.nt", {v: lqLabel(j, n)}),
+          rows: [{key: ACCENT, value: exact(c[j]), label: T("ui.axis.reads")}, {label: pct1(c[j] / total)}]};
+      });
+    }
+    return figure({letter: "", title: T("ui.fig.lq"), n: T("ui.fig.n", {n: num(total)}), tip: T("ui.fig.lq.tip"),
+      legend: [{kind: "sw", color: GRID, label: T("lq.band")}], height: 300, draw: draw,
+      file: T("ui.brand") + "_lengths", live: ovLive, wide: true,
+      table: function () {
+        return {head: [T("ui.axis.length"), T("ui.axis.reads"), T("ui.axis.share")], exact: true,
+          rows: c.map(function (v, j) { return [lqLabel(j, n), exact(v), pct1(v / total)]; })};
+      }});
+  }
+  function libraryQuality(lq) {
+    var total = 0;
+    lq.c.forEach(function (v) { total += v; });
+    return [h("h3", "rpt-srna-h", T("ui.ov.lq")), note(T("ui.ov.lq.note")), lqFlags(lq), lqStats(lq, total),
+      lqFigure(lq, total)];
+  }
+
   function renderOverview() {
     var box = clear(document.getElementById("sec-overview"));
     var lib = D.library || {};
@@ -388,6 +463,7 @@
         stat(T("ui.lib.frag"), num(lib.fragments),
           lib.fragment_reads === null || lib.fragment_reads === undefined ? "" :
             T("ui.lib.frag.sub", {n: num(lib.fragment_reads)}))])]);
+    if (lib.qc) { add(box, libraryQuality(lib.qc)); }
   }
 
   // ---- cluster list ----
@@ -769,7 +845,8 @@
     tbl.setAttribute("hidden", "");
     tbl.setAttribute("tabindex", "0");
     tbl.setAttribute("role", "region");
-    tbl.setAttribute("aria-label", o.letter + " " + o.title + " " + T("ui.fig.table"));
+    var lab = (o.letter ? o.letter + " " : "") + o.title;
+    tbl.setAttribute("aria-label", lab + " " + T("ui.fig.table"));
     var leg = legend(o.legend || []);
     var svg = null, lastW = 0, tableOn = false;
     function render(force) {
@@ -783,7 +860,7 @@
       var ae = document.activeElement;
       var fk = svg && ae && ae.parentNode === svg && ae.getAttribute ? ae.getAttribute("data-h") : null;
       clear(plot);
-      svg = svgRoot(cw, o.height, o.letter + " " + o.title);
+      svg = svgRoot(cw, o.height, lab);
       drawCtx = {marks: {}, focus: {}, sets: 0};
       o.draw(svg, cw, o.height);
       var restore = drawCtx.focus;
@@ -816,14 +893,14 @@
       });
       add(tools, [tb, dl]);
     }
-    var title = h("h3", "rpt-srna-fig__title", [h("span", "rpt-srna-fig__letter", o.letter),
+    var title = h("h3", "rpt-srna-fig__title", [o.letter ? h("span", "rpt-srna-fig__letter", o.letter) : null,
       h("span", "", o.title), o.n ? h("span", "rpt-srna-fig__n", o.n) : null]);
     if (o.tip) { title.setAttribute("title", o.tip); }
     var el = h("section", "rpt-srna-fig" + (o.wide ? " rpt-srna-fig--wide" : ""), [
       h("div", "rpt-srna-fig__head", [title, tools]), leg,
       o.body || plot, o.body ? null : tbl]);
-    el.setAttribute("data-fig", o.letter);
-    if (!o.body) { live.push({plot: plot, render: render}); }
+    el.setAttribute("data-fig", o.letter || o.file);
+    if (!o.body) { (o.live || live).push({plot: plot, render: render}); }
     return el;
   }
   function legend(items) {

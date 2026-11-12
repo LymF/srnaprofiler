@@ -182,3 +182,64 @@ def test_version_single_source():
                        capture_output=True, text=True)
     assert r.returncode == 0 and version.__version__ in (r.stdout + r.stderr)
     assert "Traceback" not in r.stderr
+
+
+# ---- library quality strip flags ----
+
+def _data(tmp_path):
+    out = tmp_path / "out" / "x" / "report.report.html"
+    m = re.search(r'<script type="application/json" id="report-data">(.*?)</script>',
+                  out.read_text(), re.S)
+    return json.loads(m.group(1))
+
+
+def test_library_qc_parser_flags():
+    import srnaprofiler
+    p = srnaprofiler.build_parser()
+    d = p.parse_args(["report", "--clusters", "a", "--bam", "b", "-o", "o"])
+    assert (d.no_library_qc, d.fastp, d.qc_summary) == (False, None, None)
+    n = p.parse_args(["report", "--clusters", "a", "--bam", "b", "-o", "o", "--no-library-qc",
+                      "--fastp", "f.json", "--qc-summary", "q.txt"])
+    assert (n.no_library_qc, n.fastp, n.qc_summary) == (True, "f.json", "q.txt")
+
+
+def test_report_has_library_qc_by_default(tmp_path):
+    report_cli.run_report(args_for(tmp_path))
+    qc = _data(tmp_path)["library"]["qc"]
+    assert qc["c"][5] == 3 and sum(qc["c"]) == 3            # the three 20-nt test reads
+    assert qc["fl"][1][:2] == ["dominant", 20] and "tr" not in qc
+
+
+def test_no_library_qc_skips_the_pass(tmp_path, monkeypatch):
+    import report_signals
+
+    def boom(*a, **k):
+        raise AssertionError("BAM pass must not run")
+    monkeypatch.setattr(report_signals, "library_lengths", boom)
+    report_cli.run_report(args_for(tmp_path, no_library_qc=True))
+    assert "qc" not in _data(tmp_path)["library"]
+
+
+def test_trim_files_beside_clusters_and_explicit(tmp_path):
+    (tmp_path / "run.fastp.json").write_text(json.dumps(
+        {"summary": {"before_filtering": {"total_reads": 100}, "after_filtering": {"total_reads": 90}},
+         "adapter_cutting": {"adapter_trimmed_reads": 80}}))
+    report_cli.run_report(args_for(tmp_path))
+    assert _data(tmp_path)["library"]["qc"]["tr"] == {"b": 100, "a": 90, "ad": 80}
+    other = tmp_path / "other.txt"
+    other.write_text("  Reads before: 50\n  Reads after:  40 (80.0%)\n")
+    (tmp_path / "run.fastp.json").unlink()
+    report_cli.run_report(args_for(tmp_path, qc_summary=str(other)))
+    assert _data(tmp_path)["library"]["qc"]["tr"] == {"b": 50, "a": 40}
+
+
+def test_missing_explicit_trim_file_is_an_error(tmp_path):
+    with pytest.raises(SystemExit) as e:
+        report_cli.run_report(args_for(tmp_path, fastp=str(tmp_path / "nope.json")))
+    assert "nope.json" in str(e.value)
+
+
+def test_readme_documents_library_qc():
+    text = open(os.path.join(os.path.dirname(__file__), "..", "..", "README.md")).read()
+    for flag in ("--no-library-qc", "--fastp", "--qc-summary"):
+        assert flag in text
