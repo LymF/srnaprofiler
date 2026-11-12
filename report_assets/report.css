@@ -2334,6 +2334,9 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-hit.on { fill: rgba(21, 49, 75, .08); }
 .rpt-srna-hit:focus { outline: none; }
 .rpt-srna-hit:focus-visible { stroke: var(--rpt-accent); stroke-width: 2; }
+/* the hovered or focused column lifts: the other columns' marks recede */
+.rpt-srna-fig svg [data-i] { transition: opacity var(--m-in) var(--m-ease); }
+.rpt-srna-fig svg.lift [data-i]:not(.cur) { opacity: .35; }
 .rpt-srna-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
 .rpt-srna-tip { position: fixed; left: 0; top: 0; z-index: 2000; pointer-events: none; max-width: 300px;
   background: var(--rpt-surface); border: 1px solid var(--rpt-border-dark); border-radius: var(--rpt-radius-sm);

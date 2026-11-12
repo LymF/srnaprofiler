@@ -138,7 +138,7 @@ STRINGS = {
     "ui.ctx.top": "top {pct}%",
     "ui.ctx.sub": "{lb}: {v}",
     "ui.ctx.conf": "Confidence rank",
-    "ui.ctx.pct": "{pct}th percentile",
+    "ui.ctx.pct": "percentile {pct}",
     "ui.ctx.conf.na": "No rank within the class",
     "ui.review": "Flagged for review",
     "ui.review.tip": "The classifier marked this locus for a manual look.",
@@ -225,7 +225,8 @@ STRINGS = {
     "ui.detail.conf.ml": "The trained model's score for its top class. Not a probability.",
     "ui.detail.conf.mirna": "Set to 1 for miRNAs: the class comes from the miRDeep2 hairpin search.",
     "ui.detail.conf.amb": "Not shown: the stored value belongs to the nearest class, which was not assigned.",
-    "ui.footer": "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. 1U, 5'A, strand, ping-pong and phasing scores: present at {present} or more, weak at {weak} or more. A at position 10: present at {p10} or more, weak at {w10} or more. Size consistency: present at {psize} or more, weak at {wsize} or more. Multimapping: moderate at {mmod} or more, high at {mhigh} or more. They only decide how a bar is worded in this report.",
+    "ui.footer.animal": "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. 1U, strand, ping-pong and phasing scores: present at {present} or more, weak at {weak} or more. A at position 10: present at {p10} or more, weak at {w10} or more. Size consistency: present at {psize} or more, weak at {wsize} or more. Multimapping: moderate at {mmod} or more, high at {mhigh} or more. They only decide how a bar is worded in this report.",
+    "ui.footer.plant": "The coloured evidence dots use display-only cutoffs, not the classifier's thresholds. 1U, 5'A, strand and phasing scores: present at {present} or more, weak at {weak} or more. Size consistency: present at {psize} or more, weak at {wsize} or more. Multimapping: moderate at {mmod} or more, high at {mhigh} or more. They only decide how a bar is worded in this report.",
 }
 
 # Report check keys shown per kingdom; the first five are the list's evidence dots.

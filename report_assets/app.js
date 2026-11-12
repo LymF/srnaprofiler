@@ -188,6 +188,7 @@
         tabBtns[k].className = "rpt-nav__tab" + (k === "about" ? " rpt-nav__tab--about" : "") +
           (k === hi ? " active" : "");
         tabBtns[k].setAttribute("aria-selected", k === hi ? "true" : "false");
+        tabBtns[k].setAttribute("tabindex", k === hi ? "0" : "-1");
       }
     }
     placeIndicator();
@@ -197,12 +198,28 @@
   function buildTabs() {
     var box = clear(document.getElementById("tabs"));
     box.setAttribute("role", "tablist");
-    TABS.forEach(function (t) {
+    TABS.forEach(function (t, i) {
       var b = button(T(t[1]), "rpt-nav__tab");
       b.setAttribute("role", "tab");
+      b.setAttribute("id", "tab-" + t[0]);
+      b.setAttribute("aria-controls", "sec-" + t[0]);
       b.addEventListener("click", function () { show(t[0]); });
+      // arrows, Home and End move focus and selection along the tabs
+      b.addEventListener("keydown", function (ev) {
+        var n = TABS.length, j = {ArrowRight: i + 1, ArrowLeft: i - 1 + n, Home: 0, End: n - 1}[ev.key];
+        if (j === undefined) { return; }
+        if (ev.preventDefault) { ev.preventDefault(); }
+        var id = TABS[j % n][0];
+        show(id);
+        tabBtns[id].focus();
+      });
       tabBtns[t[0]] = b;
       box.appendChild(b);
+    });
+    SECTIONS.forEach(function (id) {
+      var sec = document.getElementById("sec-" + id);
+      sec.setAttribute("role", "tabpanel");
+      sec.setAttribute("aria-labelledby", "tab-" + (id === "detail" ? "clusters" : id));
     });
     box.appendChild(indicator);
     add(clear(document.getElementById("navmeta")), META.title || T("ui.brand"));
@@ -249,39 +266,59 @@
         h("pre", "rpt-about__pre", h("code", "", (META.install || []).join("\n")))])]));
   }
 
-  // ---- overview charts (viewBox, CSS-sized text) ----
+  // ---- overview charts, in real pixels like the cluster figures ----
+  var ovLive = [];
+  function sized(height, label, draw) {
+    var plot = h("div", "rpt-srna-fig__plot");
+    plot.style.height = height + "px";
+    var lastW = 0;
+    function render() {
+      var cw = Math.floor(plot.clientWidth || 0);
+      if (!cw) {
+        if (lastW) { return; }
+        cw = 330;
+      }
+      if (cw === lastW) { return; }
+      lastW = cw;
+      clear(plot);
+      var svg = svgRoot(cw, height, label);
+      svg.setAttribute("role", "img");
+      draw(svg, cw, height);
+      plot.appendChild(svg);
+    }
+    ovLive.push({plot: plot, render: render});
+    return plot;
+  }
   function donut(counts) {
     var keys = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
     var total = 0;
     keys.forEach(function (k) { total += counts[k]; });
     if (!total) { return emptyMsg(T("ui.donut.empty")); }
-    var svg = sv("svg", {viewBox: "0 0 330 170", width: "100%", role: "img"});
-    var g = sv("g", {transform: "translate(85,85)"});
-    svg.appendChild(g);
-    var a = -Math.PI / 2, R = 70, r = 44;
+    return sized(170, T("ui.card.classes"), function (svg) { donutDraw(svg, keys, counts, total); });
+  }
+  function donutDraw(svg, keys, counts, total) {
+    var a = -Math.PI / 2, R = 70, r = 44, cx = 85, cy = 85;
+    function pt(rad, ang) { return f2(cx + rad * Math.cos(ang)) + "," + f2(cy + rad * Math.sin(ang)); }
     keys.forEach(function (k) {
       var f = counts[k] / total * 2 * Math.PI;
       if (f >= 2 * Math.PI - 1e-9) {
-        g.appendChild(sv("circle", {r: (R + r) / 2, fill: "none", "stroke-width": R - r,
+        svg.appendChild(sv("circle", {cx: cx, cy: cy, r: (R + r) / 2, fill: "none", "stroke-width": R - r,
           "class": "f-" + ckey(k) + " s-" + ckey(k)}));
       } else {
         var big = f > Math.PI ? 1 : 0;
-        var d = "M" + (R * Math.cos(a)) + "," + (R * Math.sin(a)) +
-          "A" + R + "," + R + " 0 " + big + " 1 " + (R * Math.cos(a + f)) + "," + (R * Math.sin(a + f)) +
-          "L" + (r * Math.cos(a + f)) + "," + (r * Math.sin(a + f)) +
-          "A" + r + "," + r + " 0 " + big + " 0 " + (r * Math.cos(a)) + "," + (r * Math.sin(a)) + "Z";
-        g.appendChild(sv("path", {d: d, "class": "f-" + ckey(k)}));
+        var d = "M" + pt(R, a) + "A" + R + "," + R + " 0 " + big + " 1 " + pt(R, a + f) +
+          "L" + pt(r, a + f) + "A" + r + "," + r + " 0 " + big + " 0 " + pt(r, a) + "Z";
+        svg.appendChild(sv("path", {d: d, "class": "f-" + ckey(k)}));
       }
       a += f;
     });
-    g.appendChild(sv("text", {"text-anchor": "middle", y: 5, "class": "t-strong"}, num(total)));
+    svg.appendChild(sv("text", {x: cx, y: cy + 5, "text-anchor": "middle", "class": "t-strong"}, num(total)));
     keys.slice(0, 6).forEach(function (k, i) {
       svg.appendChild(sv("rect", {x: 186, y: 26 + i * 22, width: 12, height: 12, rx: 3,
         "class": "f-" + ckey(k)}));
       svg.appendChild(sv("text", {x: 204, y: 37 + i * 22},
         k + " " + (counts[k] / total * 100).toFixed(1) + "%"));
     });
-    return svg;
   }
   // stacked bars of the dominant size per class
   function sizeHistogram() {
@@ -299,12 +336,14 @@
       byClass[r.c][r.z - lo] += 1;
       tot[r.z - lo] += 1;
     });
-    var W = 330, H = 170, L = 34, B = 24, TOP = 8, mx = Math.max.apply(null, tot) || 1;
-    var svg = sv("svg", {viewBox: "0 0 " + W + " " + H, width: "100%", role: "img"});
+    return sized(170, T("ui.card.sizes"), function (svg, W, H) { histDraw(svg, W, H, lo, n, byClass, tot); });
+  }
+  function histDraw(svg, W, H, lo, n, byClass, tot) {
+    var L = 44, B = 24, TOP = 8, mx = Math.max.apply(null, tot) || 1, i;
     var slot = (W - L - 100) / n, bw = Math.min(BAR_MAX, slot - GAP), ph = H - B - TOP;
     svg.appendChild(sv("line", {x1: L, x2: W - 100, y1: H - B, y2: H - B, "class": "ax"}));
-    svg.appendChild(sv("text", {x: L - 4, y: TOP + 10, "text-anchor": "end", "class": "tk"}, num(mx)));
-    var every = Math.max(1, Math.ceil(n / 6)), keys = Object.keys(byClass).sort();
+    svg.appendChild(sv("text", {x: L - 6, y: TOP + 10, "text-anchor": "end", "class": "tk-y"}, num(mx)));
+    var every = Math.max(1, Math.ceil(26 / slot)), keys = Object.keys(byClass).sort();
     for (i = 0; i < n; i++) {
       var y = H - B;
       keys.forEach(function (k) {
@@ -317,14 +356,13 @@
       });
       if (i % every === 0) {
         svg.appendChild(sv("text", {x: L + i * slot + slot / 2, y: H - 6, "text-anchor": "middle",
-          "class": "tk"}, String(lo + i)));
+          "class": "tk-x"}, String(lo + i)));
       }
     }
     keys.slice(0, 6).forEach(function (k, j) {
       svg.appendChild(sv("rect", {x: W - 92, y: 10 + j * 20, width: 12, height: 12, rx: 3, "class": "f-" + ckey(k)}));
       svg.appendChild(sv("text", {x: W - 74, y: 21 + j * 20}, k));
     });
-    return svg;
   }
 
   function renderOverview() {
@@ -588,7 +626,7 @@
       fill: fill, "class": cls});
   }
   // stacked column: parts [{v, fill, letter}] from the baseline outwards, 2px surface gaps
-  function stack(svg, x, w, base, dir, parts, scale) {
+  function stack(svg, x, w, base, dir, parts, scale, key) {
     var cum = 0, last = -1, i;
     for (i = 0; i < parts.length; i++) { if (parts[i].v > 0) { last = i; } }
     for (i = 0; i <= last; i++) {
@@ -598,12 +636,12 @@
       cum = b;
       if (b - a < 0.5) { continue; }
       var cls = "mk-seg " + (dir < 0 ? "up" : "dn");
-      svg.appendChild(i === last ? barPath(x, base + dir * a, w, b - a, dir, cls, p.fill) :
-        segRect(x, base + dir * a, base + dir * b, w, cls, p.fill));
+      svg.appendChild(tagMark(i === last ? barPath(x, base + dir * a, w, b - a, dir, cls, p.fill) :
+        segRect(x, base + dir * a, base + dir * b, w, cls, p.fill), key));
       // letter only where it fits
       if (p.letter && b - a >= 16 && w >= 12) {
-        svg.appendChild(text(x + w / 2, base + dir * (a + b) / 2 + 4.5, p.letter,
-          {anchor: "middle", fill: p.ink, weight: 500, cls: "lt"}));
+        svg.appendChild(tagMark(text(x + w / 2, base + dir * (a + b) / 2 + 4.5, p.letter,
+          {anchor: "middle", fill: p.ink, weight: 500, cls: "lt"}), key));
       }
     }
     return cum;
@@ -617,13 +655,29 @@
     svg.appendChild(t);
   }
 
+  // Per-render state of the figure being drawn: marks by column key, focus restorers.
+  var drawCtx = {marks: {}, focus: {}, sets: 0};
+  // a bar, segment or letter belongs to column `key`; the hovered column lifts, the rest dim
+  function tagMark(e, key) {
+    if (key === undefined || key === null) { return e; }
+    key = String(key);
+    e.setAttribute("data-i", key);
+    (drawCtx.marks[key] = drawCtx.marks[key] || []).push(e);
+    return e;
+  }
   // Contiguous hit columns: each is a tooltip and focus target (pointer, focus, arrow keys).
-  function hits(svg, cols, y0, y1, tipOf) {
-    var els = [], on = -1;
+  // keyOf(i) names the marks of column i (default: i).
+  function hits(svg, cols, y0, y1, tipOf, keyOf) {
+    var els = [], on = -1, cur = [], marks = drawCtx.marks, setNo = drawCtx.sets++;
+    keyOf = keyOf || function (i) { return String(i); };
     function mark(i) {
       if (on >= 0 && els[on]) { els[on].classList.remove("on"); }
+      cur.forEach(function (m) { m.classList.remove("cur"); });
       on = i;
+      cur = i >= 0 ? marks[keyOf(i)] || [] : [];
       if (i >= 0) { els[i].classList.add("on"); }
+      cur.forEach(function (m) { m.classList.add("cur"); });
+      svg.classList.toggle("lift", cur.length > 0);
     }
     function focusAt(j) {
       j = Math.max(0, Math.min(els.length - 1, j));
@@ -632,10 +686,16 @@
     }
     cols.forEach(function (c, i) {
       var e = sv("rect", {x: f2(c[0]), y: f2(y0), width: f2(Math.max(0.5, c[1] - c[0])), height: f2(y1 - y0),
-        fill: "transparent", "class": "rpt-srna-hit", tabindex: i === 0 ? 0 : -1, role: "img"});
+        fill: "transparent", "class": "rpt-srna-hit", tabindex: i === 0 ? 0 : -1, role: "img",
+        "data-h": setNo + ":" + i});
+      drawCtx.focus[setNo + ":" + i] = function () { focusAt(i); };
       e.addEventListener("pointermove", function (ev) { mark(i); showTip(tipOf(i), ev.clientX, ev.clientY); });
       e.addEventListener("pointerdown", function (ev) { mark(i); showTip(tipOf(i), ev.clientX, ev.clientY); });
-      e.addEventListener("pointerleave", function () { mark(-1); hideTip(); });
+      // a lifted finger keeps the tooltip; the next touch elsewhere replaces it
+      e.addEventListener("pointerleave", function (ev) {
+        if (ev && ev.pointerType === "touch") { return; }
+        mark(-1); hideTip();
+      });
       e.addEventListener("focus", function () {
         var t = tipOf(i), bb = e.getBoundingClientRect();
         e.setAttribute("aria-label", tipText(t));
@@ -646,7 +706,7 @@
       e.addEventListener("keydown", function (ev) {
         var step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1, PageDown: 10, PageUp: -10}[ev.key];
         if (ev.key === "Home") { step = -i; } else if (ev.key === "End") { step = els.length - 1 - i; }
-        if (ev.key === "Escape") { hideTip(); return; }
+        if (ev.key === "Escape") { mark(-1); hideTip(); return; }
         if (step === undefined) { return; }
         if (ev.preventDefault) { ev.preventDefault(); }
         focusAt(i + step);
@@ -682,10 +742,16 @@
       }
       if (cw === lastW && !force) { return; }
       lastW = cw;
+      var ae = document.activeElement;
+      var fk = svg && ae && ae.parentNode === svg && ae.getAttribute ? ae.getAttribute("data-h") : null;
       clear(plot);
       svg = svgRoot(cw, o.height, o.letter + " " + o.title);
+      drawCtx = {marks: {}, focus: {}, sets: 0};
       o.draw(svg, cw, o.height);
+      var restore = drawCtx.focus;
       plot.appendChild(svg);
+      // a redraw under keyboard focus keeps the focused column
+      if (fk && restore[fk]) { restore[fk](); }
     }
     var tools = h("div", "rpt-srna-fig__tools");
     if (o.table) {
@@ -747,8 +813,24 @@
     });
     return h("table", "rpt-srna-table", [h("thead", "", tr), tb]);
   }
+  // the exported figure carries no hit layer and no hover state
+  function exportCopy(svg) {
+    var c = svg.cloneNode(true);
+    function strip(el) {
+      for (var i = el.children.length - 1; i >= 0; i--) {
+        var k = el.children[i];
+        if (!k.classList) { continue; }
+        if (k.classList.contains("rpt-srna-hit")) { el.removeChild(k); continue; }
+        k.classList.remove("cur");
+        strip(k);
+      }
+    }
+    c.classList.remove("lift");
+    strip(c);
+    return c;
+  }
   function download(svg, name) {
-    var s = new window.XMLSerializer().serializeToString(svg);
+    var s = new window.XMLSerializer().serializeToString(exportCopy(svg));
     var url = window.URL.createObjectURL(new window.Blob([s], {type: "image/svg+xml"}));
     var a = h("a");
     a.setAttribute("href", url);
@@ -758,21 +840,23 @@
     document.body.removeChild(a);
     window.setTimeout(function () { window.URL.revokeObjectURL(url); }, 1000);
   }
+  // one observer for the overview charts and the open cluster page
   function watch() {
     if (observer) { observer.disconnect(); }
     observer = null;
+    var all = ovLive.concat(live);
     if (window.ResizeObserver) {
       observer = new window.ResizeObserver(function (entries) {
         entries.forEach(function (en) {
-          live.forEach(function (f) { if (f.plot === en.target) { f.render(); } });
+          all.forEach(function (f) { if (f.plot === en.target) { f.render(); } });
         });
       });
-      live.forEach(function (f) { observer.observe(f.plot); });
+      all.forEach(function (f) { observer.observe(f.plot); });
     }
   }
   window.addEventListener("resize", function () {
     placeIndicator();
-    if (!window.ResizeObserver) { live.forEach(function (f) { f.render(); }); }
+    if (!window.ResizeObserver) { ovLive.concat(live).forEach(function (f) { f.render(); }); }
   });
 
   function strandLabel(s) { return T(s === "+" ? "ui.strand.sense" : "ui.strand.antisense"); }
@@ -826,7 +910,7 @@
           var parts = ["U", "G", "C", "A"].map(function (b) {
             return {v: dd.sizes[b][s][j], fill: BASE_FILL[b], letter: b, ink: BASE_INK[b]};
           });
-          stack(svg, bx, bw, mid, s === "+" ? -1 : 1, parts, sc);
+          stack(svg, bx, bw, mid, s === "+" ? -1 : 1, parts, sc, j);
         });
       }
       zeroLine(svg, x0, x1, mid);
@@ -993,7 +1077,7 @@
       dd.pp.forEach(function (v, i) {
         if (v > 0 && (peak < 0 || v > dd.pp[peak])) { peak = i; }
         if (v * sc >= 0.5) {
-          svg.appendChild(barPath(cols[i][0] + (slot - bw) / 2, y1, bw, v * sc, -1, "mk-bar", fillOf(i)));
+          svg.appendChild(tagMark(barPath(cols[i][0] + (slot - bw) / 2, y1, bw, v * sc, -1, "mk-bar", fillOf(i)), i));
         }
       });
       zeroLine(svg, x0, x1, y1);
@@ -1023,10 +1107,7 @@
 
   // F: base logo of the dominant size, one panel per strand, largest base on top
   function figLogo(sig, dd, r) {
-    var dom = sig.dom, di = typeof dom === "number" ? dom - dd.lo : -1, nS = {};
-    STRANDS.forEach(function (s) {
-      nS[s] = di >= 0 && di < dd.nL ? sum(BASES.map(function (b) { return dd.sizes[b][s][di]; })) : 0;
-    });
+    var dom = sig.dom;
     function frac(s, i) {
       var p = (sig.lg[s] || [])[i] || [0, 0, 0, 0];
       return BASES.map(function (b, k) { return (p[k] || 0) / 99; });
@@ -1040,8 +1121,7 @@
       var bw = Math.min(BAR_MAX, slot - GAP), tk = {top: 1, step: 0.5, list: [0, 0.5, 1]};
       STRANDS.forEach(function (s, k) {
         var p = P[k], len = p.y1 - p.y0;
-        svg.appendChild(text(x0, p.sub, strandLabel(s) + "  " + T("ui.fig.n", {n: num(nS[s])}),
-          {fill: INK, weight: 500, cls: "sub"}));
+        svg.appendChild(text(x0, p.sub, strandLabel(s), {fill: INK, weight: 500, cls: "sub"}));
         [0.5, 1].forEach(function (t) {
           var y = p.y1 - t * len;
           hline(svg, x0, x1, y, GRID, "grid");
@@ -1055,7 +1135,7 @@
             var f = frac(s, i);
             var parts = BASES.map(function (b, j) { return {v: f[j], fill: BASE_FILL[b], letter: b, ink: BASE_INK[b]}; });
             parts.sort(function (a, c) { return a.v - c.v; });
-            stack(svg, cols[i][0] + (slot - bw) / 2, bw, p.y1, -1, parts, len / tk.top);
+            stack(svg, cols[i][0] + (slot - bw) / 2, bw, p.y1, -1, parts, len / tk.top, i);
           }
         }
         var kk = every(slot, 2), lab = [];
@@ -1155,8 +1235,8 @@
         } else {
           Hh.c.forEach(function (v, i) {
             if (v > 0) {
-              svg.appendChild(barPath(cols[i][0] + (slot - bw) / 2, p.y1, bw, Math.max(1, v / tk.top * len), -1,
-                "mk-bar", i === pn[1] ? ACCENT : OTHER_BAR));
+              svg.appendChild(tagMark(barPath(cols[i][0] + (slot - bw) / 2, p.y1, bw, Math.max(1, v / tk.top * len), -1,
+                "mk-bar", i === pn[1] ? ACCENT : OTHER_BAR), k + ":" + i));
             }
           });
         }
@@ -1172,7 +1252,7 @@
           var rw = [{key: i === pn[1] ? ACCENT : OTHER_BAR, value: num(Hh.c[i]), label: T("ui.axis.clusters")}];
           if (i === pn[1]) { rw.push({label: T("ui.tip.this")}); }
           return {head: pn[2](i), rows: rw};
-        });
+        }, function (i) { return k + ":" + i; });
       });
       P.forEach(function (p) { yTitle(svg, T("ui.axis.clusters"), (p.y0 + p.y1) / 2); });
     }
@@ -1295,6 +1375,8 @@
   renderOverview();
   renderList();
   show("overview");
+  ovLive.forEach(function (f) { f.render(); });
+  watch();
   // the indicator slides only after the first placement (and once the fonts settle the widths)
   if (document.fonts && document.fonts.ready) { document.fonts.ready.then(placeIndicator); }
   window.setTimeout(function () { indicator.classList.remove("still"); }, 400);

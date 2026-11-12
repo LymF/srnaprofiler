@@ -551,14 +551,14 @@ def text_box(e):
     return x0, y - 10, x0 + w, y + 3
 
 
-def check_geometry(svg, W):
+def check_geometry(svg, W, arcs=False):
     root = ET.fromstring(svg)
     H = float(root.get("height"))
     assert float(root.get("width")) == W and root.get("viewBox") == f"0 0 {W} {H:g}"
     assert int(root.get("font-size")) >= 13
     for e in root.iter():
         assert e.get("font-size") is None or float(e.get("font-size")) >= 13
-        b = bbox(e)
+        b = None if arcs and e.tag.endswith("path") else bbox(e)   # arc flags are not points
         if b is not None:
             assert -0.01 <= b[0] and b[2] <= W + 0.01 and -0.01 <= b[1] and b[3] <= H + 0.01, (e.tag, b)
         if e.tag.endswith("text") and e.get("transform") is None:
@@ -621,7 +621,221 @@ def test_redraw_on_resize(tmp_path):
     H.resize(410);
     var after = H.all(det, "svg").map(function (s) { return s.getAttribute("width"); });
     return [before, n, after];""")
-    assert set(r[0]) == {"720"} and r[1] == 7 and set(r[2]) == {"410"}
+    assert set(r[0]) == {"720"} and r[1] == 9 and set(r[2]) == {"410"}   # 7 figures + 2 overview
+
+
+# ---- fix round 1: numbers that could silently be wrong, lift, export, tabs ----
+
+def fig_svg(tmp_path, clusters, make, letter, width=720):
+    d, f = figs_of(tmp_path, clusters=clusters, make=make, width=width)
+    return d, ET.fromstring(f[letter]["svg"])
+
+
+def plot_x(i, n_minus_1, W=720):
+    return LEFT + i / n_minus_1 * (W - RIGHT - LEFT)
+
+
+LEFT, RIGHT = 64, 14
+
+
+def test_phasing_offset_and_period_positions(tmp_path):
+    def make():
+        sig = full_sig()
+        for s in "+-":
+            sig["phasing"][s] = [0.0] * 100
+            sig["phasing"][s][20] = 100.0             # a peak at offset 21
+        return sig
+    cl = [mk("p1", cls="phasiRNA", gates={"phasiRNA": True}, dicer_call=21)]
+    d, root = fig_svg(tmp_path, cl, make, "B")
+    line = [e for e in root.iter() if "mk-line" in (e.get("class") or "")][0]
+    pts = [tuple(map(float, p.split(","))) for p in re.findall(r"[ML]([\d.]+,[\d.]+)", line.get("d"))]
+    assert len(pts) == 100
+    peak = min(pts, key=lambda p: p[1])
+    assert abs(peak[0] - plot_x(20, 99)) < 0.02        # offset 21 is index 20
+    xs = sorted({round(float(e.get("x1")), 2) for e in root.iter() if e.get("class") == "period"})
+    assert xs == [round(plot_x(k - 1, 99), 2) for k in (21, 42, 63, 84)]
+
+
+def test_pingpong_red_bar_is_ten_and_plant_is_grey(tmp_path):
+    def make():
+        sig = full_sig()
+        sig["pingpong"] = [50.0] * 30
+        return sig
+    _, root = fig_svg(tmp_path, [mk("c1", reads=900)], make, "D")
+    bars = {e.get("data-i"): e.get("fill") for e in root.iter() if "mk-bar" in (e.get("class") or "")}
+    assert len(bars) == 30
+    assert [k for k, v in bars.items() if v == "#e41a1c"] == ["9"]
+    assert {v for k, v in bars.items() if k != "9"} == {"#999999"}
+    plant = [mk("h1", cls="hcsiRNA", gates={"hcsiRNA": True})]
+    _, root = fig_svg(tmp_path, plant, make, "D")
+    fills = {e.get("fill") for e in root.iter() if "mk-bar" in (e.get("class") or "")}
+    assert fills == {"#999999"}
+
+
+def test_logo_puts_the_largest_base_on_top(tmp_path):
+    def make():
+        sig = full_sig()
+        for s in "+-":
+            sig["logo"][s] = list(sig["logo"][s])
+            sig["logo"][s][0] = {"A": 0.1, "C": 0.6, "G": 0.25, "U": 0.05}
+        return sig
+    _, root = fig_svg(tmp_path, [mk("c1", reads=900)], make, "F")
+    segs = [e for e in root.iter() if "mk-seg" in (e.get("class") or "") and e.get("data-i") == "0"]
+    top = sorted(segs, key=lambda e: bbox(e)[1])[:4]  # the sense panel's column, top down
+    assert [e.get("fill") for e in top] == ["#3B54A2", "#F9A31B", "#108041", "#EA2627"]
+
+
+def test_coverage_coordinates_are_one_based(tmp_path):
+    _, text, d = page(tmp_path, [mk("c1", reads=900)])
+    r = run_js(tmp_path, text, """
+    H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+    var out = {};
+    H.byClass(H.id("sec-detail"), "rpt-srna-fig", "section").forEach(function (f) {
+      var k = f.getAttribute("data-fig");
+      if (k !== "C" && k !== "E") { return; }
+      H.fire(H.byClass(f, "rpt-srna-hit", "rect")[0], "pointermove", {clientX: 5, clientY: 5});
+      var head = H.text(H.byClass(H.id("tip"), "hd")[0]);
+      H.click(H.all(f, "button")[0]);
+      out[k] = [head, H.text(H.all(H.all(H.byClass(f, "rpt-srna-fig__table")[0], "tbody")[0], "td")[0])];
+    });
+    return out;""")
+    s0, b = d["details"]["0"]["sig"]["cv"]["s"], d["details"]["0"]["sig"]["cv"]["b"]
+    want = d["strings"]["ui.tip.pos"].format(start=f"{s0 + 1:,}", end=f"{s0 + b:,}")
+    assert r["C"] == [want, want] and r["E"] == [want, want]
+
+
+def test_hovered_column_lifts_and_clears(tmp_path):
+    _, text, d = page(tmp_path, [mk("c1", reads=900)])
+    r = run_js(tmp_path, text, """
+    H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+    var figs = {};
+    H.byClass(H.id("sec-detail"), "rpt-srna-fig", "section").forEach(function (f) {
+      figs[f.getAttribute("data-fig")] = f; });
+    function state(f) {
+      var svg = H.all(f, "svg")[0];
+      var marks = H.all(svg).filter(function (e) { return e.getAttribute && e.getAttribute("data-i") !== null; });
+      return [svg.classList.contains("lift"),
+        marks.filter(function (e) { return e.classList.contains("cur"); }).map(function (e) {
+          return e.getAttribute("data-i"); }).filter(function (v, i, a) { return a.indexOf(v) === i; })];
+    }
+    var out = {};
+    "ADFH".split("").forEach(function (k) {
+      var hs = H.byClass(figs[k], "rpt-srna-hit", "rect"), o = {};
+      var i = k === "D" ? 9 : 2;
+      H.fire(hs[i], "pointermove", {clientX: 9, clientY: 9});
+      o.on = state(figs[k]);
+      H.fire(hs[i], "pointerleave", {pointerType: "mouse"});
+      o.off = state(figs[k]);
+      hs[i].focus();
+      o.focus = state(figs[k]);
+      H.key(hs[i], "Escape");
+      o.esc = state(figs[k]);
+      H.fire(hs[i], "pointermove", {clientX: 9, clientY: 9});
+      H.fire(hs[i], "pointerleave", {pointerType: "touch"});
+      o.touch = !H.id("tip").hasAttribute("hidden");
+      out[k] = o;
+    });
+    var c = H.byClass(figs.C, "rpt-srna-hit", "rect");
+    H.fire(c[3], "pointermove", {clientX: 9, clientY: 9});
+    out.C = [state(figs.C)[0], H.cls(c[3])];
+    return out;""")
+    for k, i in (("A", "2"), ("D", "9"), ("F", "2"), ("H", "0:2")):
+        o = r[k]
+        if k == "H" and not o["on"][0]:
+            continue                                   # an empty histogram bin has no bar
+        assert o["on"] == [True, [i]], k
+        assert o["off"] == [False, []] and o["esc"] == [False, []], k
+        assert o["focus"] == [True, [i]], k
+        assert o["touch"], k                           # a lifted finger keeps the tooltip
+    assert r["C"] == [False, "rpt-srna-hit on"]          # area figures: the wash only
+
+
+def test_svg_export_has_no_hit_layer(tmp_path):
+    _, text, d = page(tmp_path, [mk("c1", reads=900)])
+    r = run_js(tmp_path, text, """
+    H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+    var f = H.byClass(H.id("sec-detail"), "rpt-srna-fig", "section")[0];
+    var hs = H.byClass(f, "rpt-srna-hit", "rect");
+    H.fire(hs[2], "pointermove", {clientX: 9, clientY: 9});
+    H.click(H.all(f, "button")[1]);
+    return [H.stats().lastBlob, hs.length, H.byClass(f, "rpt-srna-hit", "rect").length,
+      H.all(f, "svg")[0].classList.contains("lift")];""")
+    blob = r[0]
+    for bad in ("rpt-srna-hit", "tabindex", "data-h", 'role="img"', "lift", " cur", '"cur'):
+        assert bad not in blob, bad
+    assert "mk-seg" in blob and r[1] == r[2] == 18 and r[3]   # the page keeps its layer
+
+
+def test_tablist_keyboard(tmp_path):
+    _, text, d = page(tmp_path, [mk()])
+    r = run_js(tmp_path, text, """
+    var b = H.all(H.id("tabs"), "button"), out = [];
+    function st() {
+      return [H.active()[0], H.activeEl() ? H.activeEl().getAttribute("id") : null,
+        b.map(function (x) { return x.getAttribute("tabindex"); }).join("")];
+    }
+    out.push(b.map(function (x) { return [x.getAttribute("id"), x.getAttribute("aria-controls")]; }));
+    out.push(["about", "overview", "clusters", "detail"].map(function (s) {
+      var e = H.id("sec-" + s); return [e.getAttribute("role"), e.getAttribute("aria-labelledby")]; }));
+    out.push(st());
+    var ev = H.key(b[1], "ArrowRight"); out.push(st().concat([!!ev.prevented]));
+    H.key(b[2], "ArrowRight"); out.push(st());
+    H.key(b[0], "ArrowLeft"); out.push(st());
+    H.key(b[2], "Home"); out.push(st());
+    H.key(b[0], "End"); out.push(st());
+    return out;""")
+    assert r[0] == [["tab-about", "sec-about"], ["tab-overview", "sec-overview"],
+                    ["tab-clusters", "sec-clusters"]]
+    assert r[1] == [["tabpanel", "tab-about"], ["tabpanel", "tab-overview"],
+                    ["tabpanel", "tab-clusters"], ["tabpanel", "tab-clusters"]]
+    assert r[2][0] == "overview" and r[2][2] == "-10-1"
+    assert r[3] == ["clusters", "tab-clusters", "-1-10", True]
+    assert r[4][:2] == ["about", "tab-about"]          # wraps
+    assert r[5][:2] == ["clusters", "tab-clusters"]
+    assert r[6][:2] == ["about", "tab-about"] and r[7][:2] == ["clusters", "tab-clusters"]
+
+
+def test_ambiguous_strip_is_neutral_but_shows_values(tmp_path):
+    cl = [mk("a0", cls="ambiguous", gates={"piRNA": False, "miRNA": False},
+             evidence="nearest=piRNA; size=0.6")]
+    _, text, d = page(tmp_path, cl)
+    r = run_js(tmp_path, text, """
+    H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+    var st = H.byClass(H.id("sec-detail"), "rpt-srna-strip")[0];
+    return st.children.map(function (c) {
+      var lv = H.byClass(c, "lv")[0];
+      return [H.text(c.children[1]), lv ? H.cls(lv) : null];
+    });""")
+    S = d["strings"]
+    checks = [x for x in r if x[1] is not None]
+    assert len(checks) == 7
+    assert {x[1] for x in checks} == {"lv context"}     # nothing defines "ambiguous"
+    vals = [x[0] for x in checks]
+    assert vals[:4] == [S["ui.unit.nt"].format(v=26), "80%", "50%", S["ui.unit.plus"].format(v=80)]
+    assert S["ui.na"] not in vals
+
+
+def test_focus_survives_a_redraw(tmp_path):
+    _, text, d = page(tmp_path, [mk("c1", reads=900)])
+    r = run_js(tmp_path, text, """
+    H.click(H.byClass(H.id("sec-clusters"), "row", "tr")[0]);
+    var f = H.byClass(H.id("sec-detail"), "rpt-srna-fig", "section")[0];
+    H.byClass(f, "rpt-srna-hit", "rect")[3].focus();
+    H.resize(500);
+    var a = H.activeEl(), svg = H.all(f, "svg")[0];
+    return [a.getAttribute("data-h"), a.getAttribute("tabindex"), a.parent === svg, svg.getAttribute("width")];""")
+    assert r == ["0:3", "0", True, "500"]
+
+
+def test_overview_charts_in_real_pixels(tmp_path):
+    _, text, d = page(tmp_path, [mk(f"c{i}", reads=400 + i, cls=("piRNA" if i % 2 else "siRNA"))
+                                 for i in range(6)])
+    for w in (720, 330):
+        r = run_js(tmp_path, text, """
+        return H.all(H.id("sec-overview"), "svg").map(function (s) { return H.serialize(s); });""", width=w)
+        assert len(r) == 2
+        for svg in r:
+            check_geometry(svg, w, arcs=True)
 
 
 def test_inner_html_is_refused_by_the_stub(tmp_path):

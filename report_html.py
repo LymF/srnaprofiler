@@ -219,8 +219,12 @@ def _font_faces():
     return "\n".join(out) + "\n"
 
 
-def _footer():
-    return html.escape(rt.STRINGS["ui.footer"].format(
+# display-only cutoffs, worded for the checks each kingdom shows
+_FOOTER = {"animal": "ui.footer.animal", "plant": "ui.footer.plant"}
+
+
+def _footer(kingdom="animal"):
+    return html.escape(rt.STRINGS[_FOOTER.get(kingdom, "ui.footer.animal")].format(
         present=f"{rt.DISPLAY_PRESENT:g}", weak=f"{rt.DISPLAY_WEAK:g}",
         p10=f"{rt.DISPLAY_10A_PRESENT:g}", w10=f"{rt.DISPLAY_10A_WEAK:g}",
         psize=f"{rt.DISPLAY_SIZE_PRESENT:g}", wsize=f"{rt.DISPLAY_SIZE_WEAK:g}",
@@ -233,7 +237,8 @@ def build_report(sel, summary, signals, title, out_path):
     # "<" cannot close the script element; JSON still decodes it back
     data = data.replace("<", "\\u003c")
     parts = {"CSS": _font_faces() + _read("report.css"),"JS": _read("app.js"), "DATA": data,
-             "TITLE": html.escape(title or rt.STRINGS["ui.title.default"]), "FOOTER": _footer()}
+             "TITLE": html.escape(title or rt.STRINGS["ui.title.default"]),
+             "FOOTER": _footer(sel.kingdom)}
     # one pass: substituted text is never rescanned for tokens
     out = re.sub(r"%%(CSS|JS|DATA|TITLE|FOOTER)%%", lambda m: parts[m.group(1)],
                  _read("template.html"))

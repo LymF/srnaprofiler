@@ -63,6 +63,17 @@
       if (k === "value") { this.value = String(v); }
     },
     removeAttribute: function (k) { delete this.attrs[k]; },
+    cloneNode: function (deep) {
+      var c = new El(this.tagName, this.ns), self = this;
+      Object.keys(this.attrs).forEach(function (k) { c.attrs[k] = self.attrs[k]; });
+      c.className = this.className; c._text = this._text;
+      if (deep) {
+        this.children.forEach(function (k) {
+          c.appendChild(k instanceof Txt ? new Txt(k.data) : k.cloneNode(true));
+        });
+      }
+      return c;
+    },
     getAttribute: function (k) { return k in this.attrs ? this.attrs[k] : null; },
     hasAttribute: function (k) { return k in this.attrs; },
     addEventListener: function (t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); },

@@ -163,7 +163,7 @@ def test_app_has_no_hardcoded_english_phrases():
 
 def test_footer_and_title_come_from_strings(tmp_path):
     _, html, _ = build(tmp_path, [mk()], title="")
-    assert "display-only" in rt.STRINGS["ui.footer"]
+    assert all("display-only" in rt.STRINGS[f"ui.footer.{k}"] for k in ("animal", "plant"))
     assert rt.STRINGS["ui.title.default"] in html
 
 
@@ -503,3 +503,19 @@ def test_placeholders_match_their_calls():
             assert got is not None and need <= got, (key, need, got)
         else:
             assert not got, (key, got)
+
+
+def test_footer_is_worded_by_kingdom(tmp_path):
+    _, html, _ = build(tmp_path, [mk()])
+    foot = re.search(r'<footer class="rpt-srna-footer">(.*?)</footer>', html, re.S).group(1)
+    assert "ping-pong" in foot and "position 10" in foot and "5&#x27;A" not in foot
+    p = mk(cls="hcsiRNA", gates={"hcsiRNA": True, "siRNA": False})
+    _, html, _ = build(tmp_path, [p])
+    foot = re.search(r'<footer class="rpt-srna-footer">(.*?)</footer>', html, re.S).group(1)
+    assert "ping-pong" not in foot and "position 10" not in foot
+    for want in ("Size consistency", "1U", "5&#x27;A", "strand", "phasing", "Multimapping"):
+        assert want in foot, want
+
+
+def test_percentile_string_has_no_ordinal():
+    assert not re.search(r"\d?\}(st|nd|rd|th)\b", rt.STRINGS["ui.ctx.pct"])
