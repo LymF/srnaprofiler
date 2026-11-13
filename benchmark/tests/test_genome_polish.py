@@ -180,7 +180,7 @@ def test_b4_legend_groups_keep_heading_with_entries_and_has_mark_entries(tmp_pat
     r = run(tmp_path, d, body)
     for k in ("ui.gm.legend.overlap", "ui.gm.legend.band", "ui.gm.legend.cont"):
         assert S[k] in r["txt"], k
-    assert S["mi.title"] in r["txt"]
+    assert S["ui.gm.prec"] in r["txt"] and S["mi.title"] not in r["txt"]
     assert r["grp"] and any(S["ui.gm.legend.te"] in g["first"] for g in r["grp"])
     # the unit that holds a heading also holds its first entry: it never wraps away from it
     assert all(g["unitKids"] >= 2 for g in r["grp"])

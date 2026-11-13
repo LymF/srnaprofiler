@@ -45,7 +45,9 @@ Payload (JSON in <script id="report-data">), read by the front end:
       pc plant criteria [[key, status 1/0/2, observed, rule]]. Exact, not quantised.
     gm (only with report --annotation): the genomic-context data of the locus, compact JSON,
       empty values dropped: w [start, end) window on the contig (the locus plus --flank each
-      side, clipped to the contig), L [start, end] the locus, ly [kinds of the layers given],
+      side, clipped to the contig), L [start, end] the locus, ly [kinds of the layers given that
+      have at least one contig in the BAM], nm [kinds of the layers given with NO contig in the
+      BAM (chr1 vs 1), dropped when empty: the track says so instead of "nothing annotated"],
       and per track the rows sorted by start (0-based half-open, hl 1 when the row overlaps
       the locus):
         g genes, [label, strand, s, e, hl, blocks] one row per gene (its longest transcript),

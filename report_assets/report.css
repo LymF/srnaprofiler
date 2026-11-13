@@ -2401,6 +2401,7 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
   border-left: 8px solid var(--rpt-surface); position: relative; filter: drop-shadow(1px 0 0 var(--rpt-text-2)) drop-shadow(-1px 0 0 var(--rpt-text-2)); }
 svg text.rpt-gm-empty, svg text.rpt-gm-more, svg text.rpt-gm-ts { fill: var(--rpt-text-2); }
 svg text.rpt-gm-empty { font-style: italic; }
+.rpt-gm-below { color: var(--rpt-text-2); }
 svg .rpt-gm-lb { paint-order: stroke; }
 svg text.rpt-gm-lb-in { font-weight: 500; paint-order: normal; }
 svg .rpt-gm-feat { transition: opacity var(--m-in) var(--m-ease); }

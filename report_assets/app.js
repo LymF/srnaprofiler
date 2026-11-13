@@ -183,7 +183,7 @@
   }
   function hideTip() { tipEl.setAttribute("hidden", ""); }
   function tipText(t) {
-    return [t.head].concat(t.rows.map(function (rw) {
+    return (t.head ? [t.head] : []).concat(t.rows.map(function (rw) {
       return (rw.value === undefined ? "" : rw.value + " ") + rw.label;
     })).join("; ");
   }
@@ -1517,6 +1517,8 @@
   }
   // ---- view helpers (genomic 0-based [start, end) pairs; pure) ----
   var GM_MIN = 40;
+  // true when the view spans fewer than two coverage bins: the bars are then coarser than the view
+  function gmBelowBin(view, bsz) { return bsz > 1 && view[1] - view[0] < 2 * bsz; }
   function gmMinSpan(win) { return Math.min(GM_MIN, Math.max(0, win[1] - win[0])); }
   // a view of `span` bp starting near `vs`, shifted to lie inside the window
   function gmFit(vs, span, win) {
@@ -1674,7 +1676,8 @@
       gmStranded(rw.strand) ? {value: T("ui.gm.tip.strand"), label: gmStrandText(rw.strand)} : {label: T("ui.gm.tip.nostrand")},
       {value: T("ui.gm.tip.pos"), label: gmCoords(rw.s, rw.e)}];
     if (rw.hl) { out.push({label: T("ui.gm.tip.overlap")}); }
-    return {head: rw.label || "", rows: out};
+    // a feature without a name is headed by its type, then by its track
+    return {head: rw.label || rw.type || T(GM_TITLE[rw.kind]), rows: out};
   }
   function gmChev(x, y, dir, sz, color, cls) {
     return sv("polyline", {points: f2(x - dir * sz / 2) + "," + f2(y - sz) + " " + f2(x + dir * sz / 2) + "," + f2(y) + " " +
@@ -1808,7 +1811,7 @@
   }
 
   function figGenome(d, r) {
-    var gm = d.gm, ws = gm.w[0], we = gm.w[1], loc = gm.L || [ws, we], ly = gm.ly || [], mo = gm.mo || {};
+    var gm = d.gm, ws = gm.w[0], we = gm.w[1], loc = gm.L || [ws, we], ly = gm.ly || [], nm = gm.nm || [], mo = gm.mo || {};
     var cv = gm.cv || {nb: 0, k: [], s: ws, b: 1}, cov = gmCoverage(cv), nb = cv.nb || 0, bsz = cv.b || 1;
     var mi = d.mi && !d.mi.nowin && typeof d.mi.lo === "number" && d.mi.L > 0 ? d.mi : null;
     var orfOn = !!(gm.o || META.orf_min_aa);   // EXPERIMENTAL: the track exists only with ORFs or --predict-orfs
@@ -1838,7 +1841,9 @@
       plan.push({id: "ends", y: y, h: 8 + 2 * EH + 8}); y += plan[2].h;
       tracks.forEach(function (t) {
         var given = t.kind === "o" || ly.indexOf(GM_LAYER[t.kind]) >= 0;
-        if (!given && !t.rows.length) { t.state = "nolayer"; } else if (!t.rows.length) { t.state = "empty"; }
+        if (!t.rows.length) {
+          t.state = nm.indexOf(GM_LAYER[t.kind]) >= 0 ? "nocontig" : !given ? "nolayer" : "empty";
+        }
         var full = gmPlace(t.kind, t.rows, xaFull, x0, x1, ws, we), dropped = 0;
         t.place = viewIs(win) ? full : gmPlace(t.kind, t.rows, xa, x0, x1, vs, ve);
         t.place.items.forEach(function (it, i) {
@@ -1954,12 +1959,15 @@
         if (mi.lo + mi.L > vs && mi.lo < ve) {
           pg.appendChild(sv("line", {x1: f2(px0), x2: f2(px1), y1: py, y2: py, stroke: GM_PREC, "stroke-width": 3, "stroke-linecap": "round"}));
           [px0, px1].forEach(function (x) { pg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: py - 4, y2: py + 4, stroke: GM_PREC, "stroke-width": 2})); });
-          var pt = text(px1 + 8, py + 4.5, T("mi.title"), {fill: INK, cls: "rpt-gm-lb"});
-          if (px1 + 8 + T("mi.title").length * GM_CHAR > x1) { pt.setAttribute("x", f2(px0 - 8)); pt.setAttribute("text-anchor", "end"); }
+          var pt = text(px1 + 8, py + 4.5, T("ui.gm.prec"), {fill: INK, cls: "rpt-gm-lb"});
+          if (px1 + 8 + T("ui.gm.prec").length * GM_CHAR > x1) {
+            if (px0 - 8 - T("ui.gm.prec").length * GM_CHAR >= x0) { pt.setAttribute("x", f2(px0 - 8)); pt.setAttribute("text-anchor", "end"); }
+            else { pt.setAttribute("x", f2(x0 + 10)); gmHalo(pt); }   // too wide for either side: over the line, haloed
+          }
           pg.appendChild(pt);
           svg.appendChild(pg);
           gmFeatHits(svg, [{x: px0, y: py - 8, w: px1 - px0, h: 16, track: "mi",
-            tip: {head: T("mi.title"), rows: [{value: T("ui.gm.tip.pos"), label: gmCoords(mi.lo, mi.lo + mi.L)}]}}]);
+            tip: {head: T("ui.gm.prec"), rows: [{value: T("ui.gm.tip.pos"), label: gmCoords(mi.lo, mi.lo + mi.L)}]}}]);
         }
       }
       // ---- 5' ends ----
@@ -1997,7 +2005,8 @@
         if (t.kind === "o") { svg.appendChild(text(8, t.y + 37, T("ui.gm.orf.note"), {cls: "rpt-gm-ts rpt-gm-orfnote"})); }
         if (t.state) {
           svg.appendChild(gmHalo(text(x0 + 10, t.y + 21, t.kind === "o" ? T("ui.gm.orf.empty", {n: num(META.orf_min_aa || 0)}) :
-            t.state === "empty" ? T("ui.gm.empty") : T("ui.gm.nolayer", {kind: GM_LAYER[t.kind]}), {cls: "rpt-gm-empty"})));
+            t.state === "empty" ? T("ui.gm.empty") : t.state === "nocontig" ? T("ui.gm.nocontig") :
+              T("ui.gm.nolayer", {kind: GM_LAYER[t.kind]}), {cls: "rpt-gm-empty"})));
         }
         t.place.items.forEach(function (it) {
           if (it.lane < 0 || !seen(it.row)) { return; }
@@ -2029,7 +2038,7 @@
     // the marks of the drawing that have no colour of their own
     legendItems.push({kind: "none", label: T("ui.gm.legend.marks"), head: 1}, {kind: "ol", label: T("ui.gm.legend.overlap")},
       {kind: "band", label: T("ui.gm.legend.band")});
-    if (mi) { legendItems.push({kind: "prec", label: T("mi.title")}); }
+    if (mi) { legendItems.push({kind: "prec", label: T("ui.gm.prec")}); }
     legendItems.push({kind: "tri", label: T("ui.gm.legend.cont")});
     // ---- controls: zoom, pan, locus, reset (buttons), wheel, drag and keys (on the plot) ----
     var frame = 0, drag = null;
@@ -2061,7 +2070,10 @@
       setDisabled(ui.left, view[0] <= ws);
       setDisabled(ui.right, view[1] >= we);
       setDisabled(ui.loc, viewIs(locView));
-      if (ctl && ctl.n) { clear(ctl.n); add(ctl.n, rangeText()); }
+      if (ctl && ctl.n) {
+        clear(ctl.n); add(ctl.n, rangeText());
+        if (gmBelowBin(view, bsz)) { add(ctl.n, h("span", "rpt-gm-below", " \u00b7 " + T("ui.gm.below", {n: num(bsz)}))); }
+      }
     }
     function redraw() { frame = 0; if (ctl) { ctl.render(true); } }
     // the state and the range text change at once; the SVG is redrawn once per animation frame
@@ -2144,7 +2156,7 @@
 
     return figure({id: "I", title: T("ui.gm.title"), n: rangeText(), tools: [h("span", "rpt-gm-ctl", [h("span", "rpt-gm-grp", [ui.zin, ui.zout]), h("span", "rpt-gm-grp", [ui.left, ui.right]),
         h("span", "rpt-gm-grp", [ui.loc, ui.reset])])],
-      legend: legendItems, height: 420, wide: true, width: 560, draw: draw, file: fileName(r, "I"), setup: setup, flush: flush,
+      legend: legendItems, height: 420, wide: true, width: 560, draw: draw, file: fileName(r, "context"), setup: setup, flush: flush,
       stop: function () { if (frame && window.cancelAnimationFrame) { window.cancelAnimationFrame(frame); } frame = 0; },
       table: function () {
         var out = [];

@@ -19,7 +19,8 @@ from utils import log
 
 
 _LARGE_DETAIL = 5000  # above this, warn about file size
-_GM_WARN_BYTES = 20 * 1024 * 1024   # warn when the genome view adds more than this
+_SIZE_WARN_BYTES = 50 * 1024 * 1024  # warn when the finished report is larger than this (50 MiB)
+_MAX_FLANK = 100000                 # bases each side of the locus in the genome view
 _GM_BINS = 200                      # coverage bins per window in the genome view
 
 
@@ -42,8 +43,8 @@ def _genome(args, sel, layers):
         return None
     lengths = samio.reference_lengths(args.bam)
     gm = report_genome.build_windows(sel.detail, layers, args.flank, lengths)
-    wins = {name: (c.chrom, g["w"][0], g["w"][1])
-            for c in sel.detail for name, g in [(c.name, gm[c.name])]}
+    wins = {c.name: (c.chrom, gm[c.name]["w"][0], gm[c.name]["w"][1])
+            for c in sel.detail if c.name in gm}
     cv = report_signals.window_tracks_for(args.bam, wins, threads=args.threads,
                                           max_bins=_GM_BINS)
     for name, g in gm.items():
@@ -129,8 +130,17 @@ def run_report(args):
         _fail(f"--min-reads must be a finite number, 0 or more (got {args.min_reads})")
     if args.threads < 1:
         _fail(f"--threads must be 1 or more (got {args.threads})")
-    if getattr(args, "flank", 2000) < 0:
-        _fail(f"--flank must be 0 or more (got {args.flank})")
+    flank = getattr(args, "flank", 2000)
+    if flank < 0 or flank > _MAX_FLANK:
+        _fail(f"--flank must be between 0 and {_MAX_FLANK} (got {flank})")
+    if not getattr(args, "annotation", None) and not getattr(args, "predict_orfs", False):
+        if flank != 2000:
+            log("report: --flank is ignored without --annotation", "WARN")
+    if not getattr(args, "predict_orfs", False):
+        if getattr(args, "genome", None):
+            log("report: --genome is ignored without --predict-orfs", "WARN")
+        if getattr(args, "orf_min_aa", 100) != 100:
+            log("report: --orf-min-aa is ignored without --predict-orfs", "WARN")
     if getattr(args, "predict_orfs", False):   # EXPERIMENTAL
         if not getattr(args, "annotation", None):
             _fail("--predict-orfs needs at least one --annotation (the ORFs sit in the "
@@ -187,9 +197,10 @@ def run_report(args):
                                          else None))
     if genome:
         added = sum(len(report_html.gm_json(g)) for g in genome.values())
-        log(f"report: genome view for {len(genome)} windows, adds {added / 1e6:.2f} MB "
+        log(f"report: genome view for {len(genome)} windows, adds {added / 1024 ** 2:.2f} MiB "
             f"({added // len(genome)} bytes per locus)", "INFO")
-        if added > _GM_WARN_BYTES:
-            log(f"report: the genome view adds {added / 1e6:.1f} MB (over 20 MB); lower "
-                f"--max-detail or --flank to shrink the file", "WARN")
+    total = os.path.getsize(out)
+    if total > _SIZE_WARN_BYTES:
+        log(f"report: the file is {total / 1024 ** 2:.0f} MiB (over {_SIZE_WARN_BYTES // 1024 ** 2} "
+            f"MiB) and may be slow to open; lower --max-detail to shrink it", "WARN")
     log(f"report written: {out}", "INFO")

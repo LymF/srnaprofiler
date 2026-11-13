@@ -142,8 +142,12 @@ def _gene_entries(feats, ws, we, locus):
 def window_features(chrom, ws, we, locus, layers):
     """Features of every layer overlapping [ws, we), as compact track rows."""
     out = {"g": [], "t": [], "r": [], "p": [], "mo": {}}
-    kinds = {la.kind for la in layers}
+    kinds = {la.kind for la in layers if la.index}
     out["ly"] = [k for k in LAYER_KINDS if k in kinds]
+    # a layer was given but none of its contigs is in the BAM: not "nothing annotated here"
+    nm = [k for k in LAYER_KINDS if k not in kinds and any(la.kind == k for la in layers)]
+    if nm:
+        out["nm"] = nm
     lo, hl_ = locus
     gene_layers = [la for la in layers if la.kind == "gene"]
     feats = _fetch(gene_layers, chrom, ws, we)
@@ -170,7 +174,11 @@ def build_windows(clusters, layers, flank, contig_lengths):
     """{cluster name: window, locus and features} for each cluster passed."""
     res = {}
     warned = set()
+    n_na = 0
     for c in clusters:
+        if c.start is None or c.end is None:
+            n_na += 1
+            continue
         n = contig_lengths.get(c.chrom)
         if n is None:
             n = c.end
@@ -181,4 +189,7 @@ def build_windows(clusters, layers, flank, contig_lengths):
         ws, we = window_for(c.start, c.end, flank, n)
         res[c.name] = {"w": [ws, we], "L": [c.start, c.end],
                        **window_features(c.chrom, ws, we, (c.start, c.end), layers)}
+    if n_na:
+        log(f"report: {n_na} clusters have no start/end (NA) and get no genomic-context "
+            f"figure", "WARN")
     return res
