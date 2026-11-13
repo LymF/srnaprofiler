@@ -468,10 +468,10 @@ def test_strings_have_no_orphans():
         # the STRINGS table itself does not count as a use
         py += re.sub(r"STRINGS = \{.*?\n\}", "", src, flags=re.S)
     dynamic = ("verdict.", "status.", "check.", "amb.crit.", "ui.dot.", "ui.help.sizes.",
-                   "ck.thr.", "ck.obs.", "ck.st.", "lq.", "mi.nostruct.", "mi.num.", "mi.crit.",
-                   "ui.gm.")   # ui.gm.*: read by the genome-view JS (later tasks)
-    orphans = [k for k in rt.STRINGS
-               if f'"{k}"' not in code and f'"{k}"' not in py and not k.startswith(dynamic)]
+                   "ck.thr.", "ck.obs.", "ck.st.", "lq.", "mi.nostruct.", "mi.num.", "mi.crit.")
+    import test_genome_report   # ui.gm.* keys no code reads yet are listed there
+    orphans = [k for k in rt.STRINGS if k not in test_genome_report.GM_UNUSED
+               and f'"{k}"' not in code and f'"{k}"' not in py and not k.startswith(dynamic)]
     assert orphans == []
 
 

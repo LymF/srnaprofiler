@@ -44,14 +44,19 @@ Payload (JSON in <script id="report-data">), read by the front end:
       reads not shown, lo genomic start of the precursor window, nowin 1 when the window could not be placed, t numbers [[key, value]],
       pc plant criteria [[key, status 1/0/2, observed, rule]]. Exact, not quantised.
     gm (only with report --annotation): the genomic-context data of the locus, compact JSON,
-      empty lists dropped: w [start, end) window on the contig (the locus plus --flank each
-      side, clipped to the contig), L [start, end] the locus, g gene models, t transposons,
-      r structural RNA, p PHAS loci, mo [track keys that hit the per-track cap, with
-      the total], ly [kinds of the layers given], see report_genome.build_windows for the
-      row layouts, cv window coverage from report_signals.window_tracks (s window start,
-      b bin size, nb bins, k size classes, "+"/"-" {class: [max, ints 0..99]}, e 5' ends
-      {"+","-"}), 200 bins at most. Without --annotation there is no gm, and no meta.gm or
-      meta.flank either (the payload is the same as before the option existed).
+      empty values dropped: w [start, end) window on the contig (the locus plus --flank each
+      side, clipped to the contig), L [start, end] the locus, ly [kinds of the layers given],
+      and per track the rows sorted by start (0-based half-open, hl 1 when the row overlaps
+      the locus):
+        g genes, [label, strand, s, e, hl, blocks] one row per gene (its longest transcript),
+          blocks [t, s, e] with t E exon, C CDS or U UTR;
+        t transposons, [label, family, strand, s, e, hl];
+        r structural RNA and p PHAS loci, [label, ftype, strand, s, e, hl];
+      mo {track: n rows not shown}, present only when some track was capped (60 rows each),
+      cv window coverage from report_signals.window_tracks (s window start, b bin size,
+      nb bins, k size classes, "+"/"-" {class: [max, ints 0..99]}, e 5' ends {"+","-"}),
+      200 bins at most. Without --annotation there is no gm, and no meta.gm or meta.flank
+      either (the payload is the same as before the option existed).
   meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
     conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary,
@@ -197,8 +202,13 @@ def _row(i, c, has_detail, ex, kingdom):
 
 
 def _gm(g):
-    """Compact genome-view dict: empty lists and dicts dropped (cv is always kept)."""
-    return {k: v for k, v in g.items() if k == "cv" or k in ("w", "L") or v}
+    """Compact genome-view dict: empty values dropped, mo keeps only capped tracks (cv, w, L stay)."""
+    out = {k: v for k, v in g.items() if k == "cv" or k in ("w", "L") or v}
+    if "mo" in out:
+        out["mo"] = {k: n for k, n in out["mo"].items() if n}
+        if not out["mo"]:
+            del out["mo"]
+    return out
 
 
 def gm_json(g):
