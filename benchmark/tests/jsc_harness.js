@@ -35,7 +35,11 @@
     // project rule: no markup from strings
     get innerHTML() { throw new Error("innerHTML is not allowed"); },
     set innerHTML(v) { throw new Error("innerHTML is not allowed"); },
-    get clientWidth() { return WIDTH; },
+    // a hidden element (or one inside a hidden parent, like the plot in table mode) has no layout width
+    get clientWidth() {
+      for (var e = this; e; e = e.parent) { if ("hidden" in e.attrs) { return 0; } }
+      return WIDTH;
+    },
     get offsetWidth() { return this.tagName === "button" ? 96 : 200; },
     get offsetHeight() { return 60; },
     get offsetLeft() { return this.parent ? this.parent.children.indexOf(this) * 96 : 0; },

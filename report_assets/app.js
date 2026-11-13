@@ -889,8 +889,8 @@
     function render(force) {
       var cw = Math.floor(plot.clientWidth || 0);
       if (!cw) {
-        if (lastW) { return; }
-        cw = 640;
+        // a hidden plot (table mode) has no width: a forced redraw uses the last one, so the SVG always matches the data
+        if (lastW) { if (!force) { return; } cw = lastW; } else { cw = 640; }
       }
       if (cw === lastW && !force) { return; }
       lastW = cw;
@@ -947,7 +947,7 @@
       h("div", "rpt-srna-fig__head", [title, tools]), leg,
       o.body || plot, o.body ? null : tbl]);
     el.setAttribute("data-fig", o.letter || o.id || o.file);
-    if (!o.body) { (o.live || live).push({plot: plot, render: render}); }
+    if (!o.body) { (o.live || live).push({plot: plot, render: render, stop: o.stop}); }
     // hands the genome figure what it needs to redraw itself: the plot box, the range text and the redraw
     if (o.setup) {
       o.setup({plot: plot, n: nEl, render: render, label: lab,
@@ -2005,7 +2005,10 @@
         if (ev.preventDefault) { ev.preventDefault(); }
         var dy = Math.max(-300, Math.min(300, ev.deltaY || 0));
         if (!dy) { return; }
-        setView(gmZoom(view, win, Math.pow(2, -dy / 100), fracAt(ev)));
+        var f = Math.pow(2, -dy / 100), fr = fracAt(ev), nv = gmZoom(view, win, f, fr), sp = view[1] - view[0];
+        // the span is rounded to whole bp: a tiny wheel step still moves it by one, unless a limit stops it
+        if (viewIs(nv)) { nv = gmZoom(view, win, f > 1 ? sp / (sp - 1) : sp / (sp + 1), fr); }
+        setView(nv);
       }, {passive: false});
       plot.addEventListener("pointerdown", function (ev) {
         if (ev.button) { return; }
@@ -2013,6 +2016,7 @@
       });
       plot.addEventListener("pointermove", function (ev) {
         if (!drag) { return; }
+        if (ev.buttons === 0) { drag = null; return; }     // released outside the plot: no pointerup reached us
         var dx = ev.clientX - drag.x;
         if (!drag.on) {
           if (Math.abs(dx) < 4) { return; }
@@ -2042,6 +2046,7 @@
 
     return figure({letter: "I", title: T("ui.gm.title"), n: rangeText(), tools: [h("span", "rpt-gm-ctl", [ui.zin, ui.zout, ui.left, ui.right, ui.loc, ui.reset])],
       legend: legendItems, height: 420, wide: true, width: 560, draw: draw, file: fileName(r, "I"), setup: setup, flush: flush,
+      stop: function () { if (frame && window.cancelAnimationFrame) { window.cancelAnimationFrame(frame); } frame = 0; },
       table: function () {
         var out = [];
         tracks.forEach(function (t) {
@@ -2434,6 +2439,7 @@
   function openCluster(i) {
     var r = rows[i], d = D.details[String(i)];
     var box = clear(document.getElementById("sec-detail"));
+    live.forEach(function (f) { if (f.stop) { f.stop(); } });
     live = [];
     var back = button(T("ui.detail.back"));
     back.addEventListener("click", function () {

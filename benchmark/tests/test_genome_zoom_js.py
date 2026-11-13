@@ -470,3 +470,76 @@ def test_zoom_buttons_labels_are_not_in_the_unused_allowlist():
     src = open(os.path.join(os.path.dirname(__file__), "..", "..", "report_assets", "app.js"), encoding="utf-8").read()
     for k in ("zoom.in", "zoom.out", "zoom.reset", "pan.left", "pan.right"):
         assert re.search(r'"ui\.gm\.%s"' % re.escape(k), src), k
+
+
+# ---------------------------------------------------------------- fix round 1
+def test_download_in_table_mode_exports_the_current_view(tmp_path):
+    gm = gm_payload(g=[["GeneA", "+", 3000, 3120, 1, [["E", 3000, 3120]]], ["Gb", "-", 4100, 4300, 0, [["E", 4100, 4300]]]], t=[])
+    d = data_with(tmp_path, gm)
+    body = """
+    var tbtn = H.buttons(gmEl, %s)[0], dl = H.buttons(gmEl, %s)[0];
+    function count() { H.click(dl); return (H.stats().lastBlob.match(/rpt-gm-gene/g) || []).length; }
+    res.chart = count();
+    H.click(tbtn);                                  // table mode: the plot is hidden
+    res.hidden = plot.clientWidth;
+    H.click(btn("ui.gm.locus"));                    // controls still work; the frame may or may not have run
+    res.locusNoFrame = count();
+    H.click(btn("ui.gm.zoom.reset")); go();
+    res.reset = count();
+    H.click(btn("ui.gm.locus")); go();
+    res.locusFrame = count();
+    return res;
+    """ % (json.dumps(d["strings"]["ui.fig.table"]), json.dumps(d["strings"]["ui.fig.svg"]))
+    r = run(tmp_path, d, body)
+    assert r["hidden"] == 0 and r["chart"] == 2
+    assert r["locusNoFrame"] == 1 and r["reset"] == 2 and r["locusFrame"] == 1
+
+
+def test_a_move_without_a_pressed_button_does_not_pan(tmp_path):
+    d = data_with(tmp_path, gm_payload())
+    body = """
+    H.click(btn("ui.gm.zoom.in")); H.click(btn("ui.gm.zoom.in")); go();
+    var v0 = view();
+    H.fire(plot, "pointerdown", {clientX: px(0.5), clientY: 50, button: 0, buttons: 1, pointerId: 1});
+    // released outside the plot: no pointerup arrives; the next move has no button down
+    H.fire(plot, "pointermove", {clientX: px(0.2), clientY: 50, buttons: 0, pointerId: 1}); go();
+    res.v0 = v0; res.after = view();
+    H.fire(plot, "pointermove", {clientX: px(0.1), clientY: 50, buttons: 1, pointerId: 1}); go();
+    res.later = view();
+    return res;
+    """
+    r = run(tmp_path, d, body)
+    assert r["after"] == r["v0"] and r["later"] == r["v0"]      # the drag state ended with the first move
+
+
+def test_wheel_always_moves_the_span_by_at_least_one_bp(tmp_path):
+    d = data_with(tmp_path, gm_payload())
+    body = """
+    plot.focus();
+    for (var i = 0; i < 9; i++) { H.fire(plot, "wheel", {clientX: px(0), clientY: 40, deltaY: -100}); }
+    go(); res.min = view();
+    H.fire(plot, "wheel", {clientX: px(0), clientY: 40, deltaY: 1}); go(); res.out1 = view();
+    H.fire(plot, "wheel", {clientX: px(0), clientY: 40, deltaY: 2}); go(); res.out2 = view();
+    H.fire(plot, "wheel", {clientX: px(0), clientY: 40, deltaY: -1}); go(); res.in1 = view();
+    H.fire(plot, "wheel", {clientX: px(0), clientY: 40, deltaY: -1}); go(); res.in2 = view();
+    H.fire(plot, "wheel", {clientX: px(0), clientY: 40, deltaY: -1}); go(); res.atMin = view();
+    return res;
+    """
+    r = run(tmp_path, d, body)
+    sp = lambda v: v[1] - v[0]
+    assert sp(r["min"]) == 40 and sp(r["out1"]) == 41 and sp(r["out2"]) == 42
+    assert sp(r["in1"]) == 41 and sp(r["in2"]) == 40 and sp(r["atMin"]) == 40
+
+
+def test_a_pending_frame_is_cancelled_when_the_detail_page_is_rebuilt(tmp_path):
+    d = data_with(tmp_path, gm_payload())
+    body = """
+    H.click(btn("ui.gm.zoom.in"));
+    res.pending = H.pendingFrames();
+    H.click(H.buttons(det, S["ui.detail.back"])[0]);
+    H.click(H.byClass(lst, "row", "tr")[0]);
+    res.after = H.pendingFrames();
+    return res;
+    """
+    r = run(tmp_path, d, body)
+    assert r["pending"] == 1 and r["after"] == 0
