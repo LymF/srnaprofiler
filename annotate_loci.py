@@ -4,6 +4,7 @@ The output `<prefix>.te.gff3` is in genome coordinates and is meant to be passed
 back to classify as `--annotation te:<that file>`.
 """
 import csv
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,15 +21,17 @@ def _die(msg):
     sys.exit(1)
 
 
-def write_locus_fasta(clusters_tsv, genome, out_fa, flank=0):
-    """One record per locus, named chrom:start-end (0-based start, as in the TSV).
+def write_locus_fasta(clusters_tsv, genome, out_fa, map_path, flank=0):
+    """One record per locus, named L1, L2, ... plus a mapping file.
 
-    With flank > 0 the record is padded and named by the span actually
-    fetched, so the offsets in rm_out_to_gff stay exact.
+    RepeatMasker limits sequence ids to 50 characters, so `chrom:start-end`
+    names do not survive long scaffold names. map_path gets one tab-separated
+    row per record: id, chrom, start0 (0-based, of the fetched span), end.
+    With flank > 0 the span is padded and the map holds the span fetched.
     """
     n = 0
     with pysam.FastaFile(genome) as fa, open(clusters_tsv) as fh, \
-            open(out_fa, "w") as out:
+            open(out_fa, "w") as out, open(map_path, "w") as mp:
         rd = csv.DictReader(fh, delimiter="\t")
         for col in ("chrom", "start", "end"):
             if col not in (rd.fieldnames or []):
@@ -45,13 +48,26 @@ def write_locus_fasta(clusters_tsv, genome, out_fa, flank=0):
             s, e = max(0, s - flank), min(lengths[chrom], e + flank)
             if e <= s:
                 continue
-            out.write(f">{chrom}:{s}-{e}\n{fa.fetch(chrom, s, e)}\n")
             n += 1
+            out.write(f">L{n}\n{fa.fetch(chrom, s, e)}\n")
+            mp.write(f"L{n}\t{chrom}\t{s}\t{e}\n")
     return n
 
 
-def rm_out_to_gff(out_path, gff_path):
-    """RepeatMasker .out with chrom:start-end queries -> GFF3 in genome coordinates."""
+def read_loci_map(map_path):
+    """{id: (chrom, start0)} from the mapping file."""
+    out = {}
+    with open(map_path) as fh:
+        for line in fh:
+            cols = line.rstrip("\n").split("\t")
+            if len(cols) >= 3:
+                out[cols[0]] = (cols[1], int(cols[2]))
+    return out
+
+
+def rm_out_to_gff(out_path, map_path, gff_path):
+    """RepeatMasker .out with L<n> queries -> GFF3 in genome coordinates."""
+    loci = read_loci_map(map_path)
     n = 0
     with open(out_path) as fh, open(gff_path, "w") as out:
         out.write("##gff-version 3\n")
@@ -63,12 +79,10 @@ def rm_out_to_gff(out_path, gff_path):
                 begin, end = int(cols[5]), int(cols[6])
             except ValueError:
                 continue
-            chrom, _, span = cols[4].rpartition(":")
-            try:
-                start0 = int(span.split("-")[0])
-            except ValueError:
-                log(f"query name {cols[4]} is not chrom:start-end; skipped", "WARN")
+            if cols[4] not in loci:
+                log(f"query name {cols[4]} is not in the loci map; skipped", "WARN")
                 continue
+            chrom, start0 = loci[cols[4]]
             if begin < 1 or begin > end:
                 continue
             strand = "-" if cols[8] == "C" else "+"
@@ -94,28 +108,40 @@ def run_annotate_loci(args):
     outdir = Path(args.outdir)
     prefix = args.prefix
     fa = outdir / f"{prefix}.loci.fa"
+    mp = outdir / f"{prefix}.loci.map.tsv"
     rmdir = outdir / f"{prefix}.repeatmasker"
     gff = outdir / f"{prefix}.te.gff3"
-    for p in (fa, rmdir, gff):
-        if p.exists():
-            _die(f"{p} exists; refusing to overwrite it. Remove it or pick "
-                 f"another --prefix/--outdir")
+    if gff.exists():
+        _die(f"{gff} exists; refusing to overwrite it. Remove it or pick "
+             f"another --prefix/--outdir")
     outdir.mkdir(parents=True, exist_ok=True)
-    n = write_locus_fasta(args.clusters, args.genome, str(fa))
+    # Scratch this run creates is removed on failure so a rerun is possible;
+    # anything already there before the run is left alone.
+    created = [p for p in (fa, mp, rmdir) if not p.exists()]
+
+    def fail(msg):
+        for p in created:
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            elif p.exists():
+                p.unlink()
+        _die(msg)
+
+    n = write_locus_fasta(args.clusters, args.genome, str(fa), str(mp))
     if n == 0:
-        _die("no loci to annotate")
-    log(f"{n} loci written to {fa}")
-    rmdir.mkdir()
+        fail("no loci to annotate")
+    log(f"{n} loci written to {fa} (ids mapped back by {mp})")
+    rmdir.mkdir(exist_ok=True)
     cmd = ["RepeatMasker", "-pa", str(args.threads)]
     cmd += ["-species", args.species] if args.species else ["-lib", args.te_library]
     cmd += ["-dir", str(rmdir), str(fa)]
     try:
         _run_repeatmasker(cmd)
     except (subprocess.CalledProcessError, OSError) as exc:
-        _die(f"RepeatMasker failed: {exc}")
+        fail(f"RepeatMasker failed: {exc}")
     out = rmdir / (fa.name + ".out")
     if not out.exists():
-        _die(f"RepeatMasker produced no {out.name} in {rmdir} "
+        fail(f"RepeatMasker produced no {out.name} in {rmdir} "
              f"(no repeats found, or it failed)")
-    k = rm_out_to_gff(str(out), str(gff))
+    k = rm_out_to_gff(str(out), str(mp), str(gff))
     log(f"{k} repeat features -> {gff}; use it as --annotation te:{gff}")
