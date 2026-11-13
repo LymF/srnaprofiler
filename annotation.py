@@ -95,7 +95,8 @@ def _bed_lines(lines):
         if start < 0 or start > end:
             continue
         strand = _strand(cols[5]) if len(cols) > 5 else "."
-        yield cols[0], Feature(start, end, strand, "feature", "")
+        name = cols[3] if len(cols) > 3 and cols[3] != "." else ""
+        yield cols[0], Feature(start, end, strand, "feature", name)
 
 
 def _rm_lines(lines):
@@ -342,14 +343,30 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
     return {"contexts": contexts, "text": "|".join(entries)}
 
 
-def support_for(cls, contexts, table):
-    """'supports', 'conflicts' or 'neutral' for a class given a locus's contexts."""
+_CONTEXT_LAYER = {"te": "te", "ncrna": "ncrna", "phas": "phas", "gene_exon": "gene",
+                  "gene_intron": "gene", "intergenic": "gene"}
+
+
+def _needed_layers(spec):
+    """Layer kinds that could have supplied a class's `supports` evidence."""
+    return {_CONTEXT_LAYER[k] for k in (spec.get("supports") or ()) if k in _CONTEXT_LAYER}
+
+
+def support_for(cls, contexts, table, loaded=None):
+    """'supports', 'conflicts' or 'neutral' for a class given a locus's contexts.
+
+    A conflict claims the absence of the supporting feature, so it only counts
+    when every layer kind that could have supplied it was loaded (`loaded`
+    is a set of layer kinds; None means all of them).
+    """
     spec = table.get(cls)
     if not spec or not contexts:
         return "neutral"
     if contexts & set(spec.get("supports") or ()):
         return "supports"
     if contexts & set(spec.get("conflicts") or ()):
+        if loaded is not None and not _needed_layers(spec) <= set(loaded):
+            return "neutral"
         return "conflicts"
     return "neutral"
 
@@ -421,10 +438,16 @@ def apply_annotation(records, layers, cfg):
     nudge = cfg.get("nudge", 0.05)
     min_overlap = cfg.get("min_overlap", 0.5)
     table = cfg.get("classes") or {}
+    loaded = {la.kind for la in layers}
+    for cls, spec in table.items():
+        missing = sorted(_needed_layers(spec) - loaded)
+        if spec.get("conflicts") and missing:
+            log(f"annotation: {cls}: conflicts disabled, no {', '.join(missing)} "
+                f"layer loaded (an absent feature is not evidence)", "INFO")
     for r in records:
         res = summarize_locus(r.chrom, r.start, r.end, r.strand_call, layers, min_overlap)
         r.annotation = res["text"]
-        sup = support_for(r.cls, res["contexts"], table)
+        sup = support_for(r.cls, res["contexts"], table, loaded)
         r.annotation_support = sup
         counts[sup] += 1
         if r.cls in table and r.cls not in ("miRNA", "ambiguous"):

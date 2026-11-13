@@ -332,6 +332,10 @@ The report adds a per-class table of supports/conflicts/neutral over the loci it
 
 Annotation is incomplete, above all for TEs and for non-model species, so a missing feature is
 never evidence against a class. Only a feature that is there can support or conflict.
+A `conflicts` verdict claims the absence of the supporting feature (for example "exon with no
+TE"), so it is only given when every layer kind that could have supplied the class's `supports`
+evidence was loaded; with a gene layer only, piRNA and hcsiRNA loci on exons stay `neutral`
+(and a note is logged).
 
 **TE annotation without a whole-genome run.** `annotate-loci` runs RepeatMasker on the classified
 loci only, which is far cheaper than masking the genome:

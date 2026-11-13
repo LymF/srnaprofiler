@@ -107,3 +107,14 @@ def test_index_overlaps():
         Feature(i * 10, i * 10 + 5, "+", "s", "") for i in range(1, 500)]
     assert big[0] in IntervalIndex(big).overlaps(9000, 9001)
     assert IntervalIndex([]).overlaps(0, 5) == []
+
+
+def test_bed_fourth_column_is_name(tmp_path):
+    p = _w(tmp_path, "n.bed",
+           "chr1\t5\t15\tLTR/Gypsy\n"
+           "chr1\t20\t30\t.\t0\t-\n"
+           "chr1\t40\t50\n")
+    f = parse_annotation(p)["chr1"]
+    assert f[0].name == "LTR/Gypsy"
+    assert f[1].name == "" and f[1].strand == "-"
+    assert f[2] == Feature(40, 50, ".", "feature", "")
