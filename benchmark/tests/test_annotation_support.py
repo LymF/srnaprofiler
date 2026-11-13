@@ -134,7 +134,7 @@ def test_disabled_conflicts_logged_once(capsys):
 
 def test_mirna_te_conflict_needs_only_te_layer(capsys):
     r = _run("miRNA", TE, CFG, conf=0.7)
-    assert (r.annotation_support, r.confidence, r.review) == ("conflicts", 0.65, True)
+    assert (r.annotation_support, r.confidence, r.review) == ("conflicts", 0.7, False)  # miRNA is never nudged
     assert "miRNA" not in capsys.readouterr().err
 
 
