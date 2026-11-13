@@ -214,8 +214,10 @@ def _covered(feats, start, end):
 
 
 def _relation(locus_strand, feat_strand):
-    if locus_strand not in ("+", "-") or feat_strand not in ("+", "-"):
+    if locus_strand not in ("+", "-"):
         return "."
+    if feat_strand not in ("+", "-"):
+        return "both"
     return "sense" if locus_strand == feat_strand else "antisense"
 
 
@@ -233,10 +235,10 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
     length = end - start
     contexts = set()
     entries = []
-    have_gene = False
+    annotated = False  # contig present in some gene layer
     for layer in layers:
-        if layer.kind == "gene":
-            have_gene = True
+        if layer.kind == "gene" and chrom in layer.index:
+            annotated = True
         idx = layer.index.get(chrom)
         if idx is None or length <= 0:
             continue
@@ -259,6 +261,6 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
             if frac >= min_overlap:
                 contexts.add(layer.kind)
                 entries.append(_entry(layer.kind, feats, start, end, strand, frac))
-    if have_gene and not contexts:
+    if annotated and not contexts:
         contexts.add("intergenic")
     return {"contexts": contexts, "text": "|".join(entries)}
