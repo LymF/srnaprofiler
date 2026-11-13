@@ -6,7 +6,6 @@ import gzip
 import re
 from bisect import bisect_left
 from collections import namedtuple
-from itertools import accumulate
 
 from utils import log
 
@@ -124,29 +123,54 @@ def parse_annotation(path):
     return out
 
 
+LONG_FEATURE = 100_000  # bp; longer features are scanned linearly, not bisected
+
+
 class IntervalIndex:
-    """Overlap queries over one contig's features."""
+    """Overlap queries over one contig's features.
+
+    Features longer than LONG_FEATURE (chromosome-long records) live in a
+    separate list scanned on every query; the rest are bisected, and the
+    backward walk stops at start - (longest short feature).
+    """
 
     def __init__(self, features):
-        self._feats = sorted(features, key=lambda f: (f.start, f.end))
+        feats = sorted(features, key=lambda f: (f.start, f.end))
+        self._long = [f for f in feats if f.end - f.start > LONG_FEATURE]
+        self._feats = [f for f in feats if f.end - f.start <= LONG_FEATURE]
         self._starts = [f.start for f in self._feats]
-        self._maxend = list(accumulate((f.end for f in self._feats), max))
+        self._max_len = max((f.end - f.start for f in self._feats), default=0)
 
     def overlaps(self, start, end):
-        """Features overlapping [start, end)."""
+        """Features overlapping [start, end), ordered by (start, end)."""
         hi = bisect_left(self._starts, end)  # features with start < end
-        res = []
-        i = hi - 1
-        while i >= 0 and self._maxend[i] > start:
-            if self._feats[i].end > start:
-                res.append(self._feats[i])
-            i -= 1
-        res.reverse()
+        lo = bisect_left(self._starts, start - self._max_len)
+        res = [f for f in self._long if f.start < end and f.end > start]
+        res.extend(f for f in self._feats[lo:hi] if f.end > start)
+        if self._long:
+            res.sort(key=lambda f: (f.start, f.end))
         return res
 
 
 LAYER_KINDS = ("gene", "te", "ncrna", "phas")
-_SPAN_TYPES = {"gene", "mRNA", "transcript", "ncRNA_gene"}
+_EXON_TYPES = {"exon", "cds", "five_prime_utr", "three_prime_utr", "utr", "start_codon",
+               "stop_codon", "noncoding_exon", "pseudogenic_exon", "feature"}
+_SPAN_EXACT = {"gene", "pseudogene", "ncrna_gene", "transcript", "primary_transcript"}
+
+
+def _gene_class(ftype):
+    """'exon', 'span' or None (ignored) for a feature type in a gene layer.
+
+    A whitelist: stock files carry region/chromosome/match/transposable_element
+    rows that must never count as exons. BED rows (ftype "feature") are exon-like.
+    """
+    t = ftype.lower()
+    if t in _EXON_TYPES:
+        return "exon"
+    if (t in _SPAN_EXACT or t.endswith("_gene") or t.endswith("rna")
+            or "transcript" in t):
+        return "span"
+    return None
 
 
 class Layer:
@@ -179,8 +203,13 @@ def load_layers(specs, known_contigs):
         n_kept = 0
         skipped = 0
         unmatched = []
+        ignored = 0
         for contig, feats in parsed.items():
             if contig in known_contigs:
+                if kind == "gene":
+                    n_all = len(feats)
+                    feats = [f for f in feats if _gene_class(f.ftype)]
+                    ignored += n_all - len(feats)
                 index[contig] = IntervalIndex(feats)
                 n_kept += len(feats)
             else:
@@ -190,6 +219,9 @@ def load_layers(specs, known_contigs):
             log(f"annotation layer {kind} ({path}): skipped {skipped} "
                 f"features on {len(unmatched)} contigs not in the reference "
                 f"(e.g. {', '.join(unmatched[:3])})", "WARN")
+        if ignored:
+            log(f"annotation layer {kind} ({path}): ignored {ignored} features "
+                f"of non gene/exon types (region, chromosome, match, ...)", "DEBUG")
         layers.append(Layer(kind, path, index, n_kept))
     return layers
 
@@ -246,8 +278,8 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
         if not feats:
             continue
         if layer.kind == "gene":
-            exon_like = [f for f in feats if f.ftype not in _SPAN_TYPES]
-            span = [f for f in feats if f.ftype in _SPAN_TYPES]
+            exon_like = [f for f in feats if _gene_class(f.ftype) == "exon"]
+            span = [f for f in feats if _gene_class(f.ftype) == "span"]
             ef = _covered(exon_like, start, end) / length
             sf = _covered(span, start, end) / length
             if ef >= min_overlap:
