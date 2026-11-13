@@ -203,9 +203,9 @@ so they follow what the classifier does:
   test at p of 0.01 or less, as the rules require. Without the `e_*` columns (a `classify` run
   from before they were written) these rows read *Not available* and only the raw value shows.
 - **Cluster criteria** (piRNA: reads span at least 1000 bp and denser than chance, p 0.01):
-  read from the cluster's evidence trail. The table does not carry the read span or the density
-  p-value, so the observed length is the locus window (equal to the read span when
-  `trim_to_reads` is on) and the density row shows no value.
+  read from the cluster's evidence trail. The observed length is the `read_span` column and the
+  density row shows `density_pvalue`; a table from before these columns existed falls back to
+  the locus window (end minus start) and shows no density value.
 - An **ambiguous** cluster lists the checks of its nearest class, so you can see which failed;
   criteria are *Not tested* when the size already failed, as in the classifier. An ambiguous
   call from `--classifier ml` has no nearest class and no checklist. For an ML call the rows are

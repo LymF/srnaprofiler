@@ -61,6 +61,8 @@ class Cluster:
     has_evidence: bool = False
     pct_5a: float = None
     phase_number: float = None
+    read_span: float = None
+    density_pvalue: float = None
 
 
 def _row_to_cluster(row, has_evidence):
@@ -83,6 +85,8 @@ def _row_to_cluster(row, has_evidence):
         has_evidence=has_evidence,
         pct_5a=_num(row.get("pct_5a")),
         phase_number=_num(row.get("phase_number")),
+        read_span=_num(row.get("read_span")),
+        density_pvalue=_num(row.get("density_pvalue")),
     )
 
 

@@ -150,7 +150,14 @@ def checklist(c, kingdom="animal"):
                 st = UNTESTED
             else:
                 st = FAIL if k in failed else PASS
-            obs = S["ck.obs.span"].format(n=_g(c.end - c.start)) \
-                if k == "length" and c.start is not None and c.end is not None else S["ui.na"]
+            obs = S["ui.na"]
+            if k == "length":
+                span = c.read_span
+                if span is None and c.start is not None and c.end is not None:
+                    span = c.end - c.start
+                if span is not None:
+                    obs = S["ck.obs.span"].format(n=_g(span))
+            elif k == "density" and c.density_pvalue is not None:
+                obs = S["ck.obs.density"].format(p=f"{c.density_pvalue:.2g}")
             out.append([st, obs])
     return out

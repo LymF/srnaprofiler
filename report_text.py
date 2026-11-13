@@ -267,6 +267,7 @@ STRINGS = {
     "ck.obs.phasing": "p = {p}, {n} cycles",
     "ck.obs.strength": ", strength {e}",
     "ck.obs.span": "{n} bp",
+    "ck.obs.density": "p = {p}",
     "ui.ov.lq": "Library quality",
     "ui.ov.lq.note": "Read lengths of the mapped reads in the BAM, each read counted once (weighted by 1/NH). Shares are of mapped reads.",
     "ui.fig.lq": "Read length, whole library",

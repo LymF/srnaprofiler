@@ -178,3 +178,14 @@ def test_plant_payload_skeleton(tmp_path):
     cl = [mk("a", cls="hcsiRNA", dicer_call=24, start=0, end=300)]
     _, html, _ = build(tmp_path, cl)
     assert "hcsiRNA" in data_of(html)["meta"]["cl"]
+
+
+def test_length_and_density_rows_use_read_span_and_density_pvalue():
+    c = mk(cls="piRNA", dicer_call=27, start=0, end=5000, read_span=1234, density_pvalue=0.003,
+           e={"1u": 0.6, "pingpong": 0.0, "5a": 0.0, "fractop_bid": 0.0, "phase": 0.0})
+    ck = rc.checklist(c, "animal")
+    assert ck[3][1] == "1234 bp" and "0.003" in ck[4][1]
+    old = mk(cls="piRNA", dicer_call=27, start=0, end=5000,
+             e={"1u": 0.6, "pingpong": 0.0, "5a": 0.0, "fractop_bid": 0.0, "phase": 0.0})
+    ck = rc.checklist(old, "animal")
+    assert ck[3][1] == "5000 bp" and ck[4][1] == rt.STRINGS["ui.na"]

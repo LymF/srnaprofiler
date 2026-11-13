@@ -173,3 +173,11 @@ def test_library_context_percentiles():
     assert tie["x"] == tie["y"] == {"reads_pct": 50, "conf_pct": 50}
     assert rd.library_context([mkc("z", 5, .5)])["z"] == {"reads_pct": 100, "conf_pct": None}
     assert rd.library_context([]) == {}
+
+
+def test_read_span_and_density_columns(tmp_path):
+    cols = OLD + ["density_pvalue", "read_span"]
+    new = rd.load_clusters(_write(tmp_path / "n.tsv", [_row(density_pvalue=0.003, read_span=1234)], cols))[0]
+    assert new.read_span == 1234 and new.density_pvalue == 0.003
+    old = rd.load_clusters(_write(tmp_path / "o.tsv", [_row()]))[0]
+    assert old.read_span is None and old.density_pvalue is None
