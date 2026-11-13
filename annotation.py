@@ -218,6 +218,35 @@ def _gene_class(ftype):
     return None
 
 
+def _is_te_type(ftype):
+    return "transposable_element" in ftype.lower()
+
+
+def _drop_te_trees(feats):
+    """Drop transposable_element* rows of a gene layer AND their descendants.
+
+    Araport11 lists TEs as transposable_element_gene -> mRNA -> exon/CDS; the
+    children carry ordinary types, so they are found through the parent ids,
+    transitively and independent of file order.
+    """
+    dead = {f.fid for f in feats if _is_te_type(f.ftype) and f.fid}
+    if not dead:
+        return feats
+    kids = [f for f in feats if f.parent and not _is_te_type(f.ftype)]
+    gone = set()
+    changed = True
+    while changed:
+        changed = False
+        for i, f in enumerate(kids):
+            if i not in gone and f.parent in dead:
+                gone.add(i)
+                if f.fid and f.fid not in dead:
+                    dead.add(f.fid)
+                changed = True
+    drop_ids = {id(kids[i]) for i in gone}
+    return [f for f in feats if not _is_te_type(f.ftype) and id(f) not in drop_ids]
+
+
 class Layer:
     """One annotation layer: a kind label plus per-contig interval indexes."""
 
@@ -269,6 +298,7 @@ def load_layers(specs, known_contigs):
         for contig, feats in parsed.items():
             if kind == "gene":
                 n_all = len(feats)
+                feats = _drop_te_trees(feats)
                 feats = [f for f in feats if _gene_class(f.ftype)]
                 ignored += n_all - len(feats)
             index[contig] = IntervalIndex(feats)
@@ -326,16 +356,44 @@ def _best(feats, start, end):
 
 
 def _clean(text):
+    for ch in ("\t", "\r", "\n"):
+        text = text.replace(ch, " ")
     return text.replace("|", "_").replace(":", "_")
 
 
+def _is_gene_level(f):
+    t = f.ftype.lower()
+    return t in ("gene", "pseudogene") or t.endswith("_gene")
+
+
 def _gene_name(feats, b, start, end):
-    """Name of a gene-layer entry: the label of the gene-level feature it overlaps most
-    (a bare exon rarely has a Name), else the label of the chosen feature, else its type."""
-    genes = [f for f in feats if f.label and (f.ftype.lower() in ("gene", "pseudogene")
-                                              or f.ftype.lower().endswith("_gene"))]
-    if genes:
-        return _best(genes, start, end).label
+    """Name of a gene-layer entry: the label of the gene-level feature the chosen
+    feature belongs to (exon -> transcript -> gene through `parent`). Without a
+    usable parent chain (BED, GTF without parents) the gene-level feature with the
+    largest overlap decides (ties: smaller start, then label); then the chosen
+    feature's own label, name or type."""
+    by_id = {}
+    for f in feats:
+        if f.fid and _gene_class(f.ftype) == "span":
+            by_id.setdefault(f.fid, f)
+    top, cur, seen = None, b, set()
+    while cur is not None:
+        if _is_gene_level(cur):
+            top = cur
+            break
+        nxt = by_id.get(cur.parent) if cur.parent and cur.parent not in seen else None
+        seen.add(cur.parent)
+        if nxt is None:
+            top = cur if cur is not b else None   # chain ends at a transcript row
+            break
+        cur = nxt
+    if top is not None:
+        return top.label or b.label or b.name or b.ftype
+    if not b.parent or b.parent not in by_id:
+        genes = [f for f in feats if f.label and _is_gene_level(f)]
+        if genes:
+            return min(genes, key=lambda f: (-(min(f.end, end) - max(f.start, start)),
+                                             f.start, f.label)).label
     return b.label or b.name or b.ftype
 
 

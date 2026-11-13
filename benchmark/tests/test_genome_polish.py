@@ -58,8 +58,7 @@ def test_a1_class_function_and_other_layers_unaffected():
 def test_a2_gene_entry_uses_the_label_when_present(tmp_path):
     L = _layer(tmp_path, DM6)
     r = summarize_locus("2L", 150, 300, "+", [L], 0.5)
-    assert r["text"].startswith("gene:HA8:sense:") or r["text"].startswith("gene:HA8-RA:sense:") \
-        or r["text"].startswith("gene:FBtr1:sense:") or r["text"].startswith("gene:exon:sense:")
+    assert r["text"].startswith("gene:HA8:sense:1.00")
     G = Layer("gene", "x", {"c": IntervalIndex([Feature(0, 1000, "+", "gene", "gene", "g1", label="HA8")])}, 1)
     assert summarize_locus("c", 10, 30, "+", [G], 0.5)["text"] == "gene:HA8:sense:1.00:g1"
     G2 = Layer("gene", "x", {"c": IntervalIndex([Feature(0, 1000, "+", "gene", "gene", "g1")])}, 1)

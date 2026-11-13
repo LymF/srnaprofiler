@@ -325,9 +325,11 @@ A locus whose contexts match neither column is `neutral`. For `supports` the con
 no nudge and no review flag. A `conflicts` nudge can take the confidence below the class's usual
 floor (1/K), so a flagged locus may read lower than any unannotated call of that class could.
 In a gene file only gene, transcript and exon-like rows (exon, CDS, UTR, ...) count; region,
-chromosome and match rows are ignored, and so is any type containing `transposable_element`
-(the Ensembl dm6 GFF3 carries FlyBase TE insertions as `transposable_element_gene` and
-`transposable_element`; they belong to the `te` layer, not to the genes). A locus on an annotated contig that overlaps none of them is
+chromosome and match rows are ignored, and so is any type containing `transposable_element`,
+together with all the rows below it (the Ensembl dm6 GFF3 carries FlyBase TE insertions as
+`transposable_element_gene` and `transposable_element`; Araport11 lists TEs as
+`transposable_element_gene` > `mRNA` > `exon`/`CDS`: the TE gene rows and their children are all
+ignored by the gene layer, since TEs belong to the `te` layer, not to the genes). A locus on an annotated contig that overlaps none of them is
 `intergenic` (written as `gene:intergenic:.:1.00`). Text entries are
 `kind:name:relation:fraction` (for a gene the name is the gene's Name when the file gives one, for
 a TE the family or class), plus the feature ID as a fifth field when it has no `|` or `:`.
