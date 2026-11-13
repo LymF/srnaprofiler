@@ -2382,3 +2382,12 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-ck__st.s1 svg { color: var(--rpt-success); }
 .rpt-srna-ck__st.s0 svg { color: var(--rpt-danger); }
 .rpt-srna-ck__st.s2 svg, .rpt-srna-ck__st.s3 svg { color: var(--rpt-text-3); }
+
+/* ---- genomic context figure ---- */
+.rpt-srna-legend li.hd { color: var(--rpt-text); font-weight: 500; margin-left: 6px; }
+.rpt-srna-legend li.hd:first-child { margin-left: 0; }
+svg text.rpt-gm-empty, svg text.rpt-gm-more, svg text.rpt-gm-ts { fill: var(--rpt-text-2); }
+svg text.rpt-gm-empty { font-style: italic; }
+svg .rpt-gm-lb { paint-order: stroke; }
+svg .rpt-gm-feat { transition: opacity var(--m-in) var(--m-ease); }
+.rpt-gm-hit.on { fill: rgba(47, 134, 214, .12); stroke: var(--rpt-accent); stroke-width: 1; }

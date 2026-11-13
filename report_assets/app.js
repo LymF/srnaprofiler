@@ -900,7 +900,9 @@
       // a figure wider than its box (o.width) scrolls inside it
       svg = svgRoot(o.width ? Math.max(cw, o.width) : cw, o.height, lab);
       drawCtx = {marks: {}, focus: {}, sets: 0};
-      o.draw(svg, cw, o.height);
+      var drawn = o.draw(svg, cw, o.height);
+      // a draw that sizes itself (the genome tracks) returns the height it used
+      if (typeof drawn === "number") { plot.style.height = drawn + "px"; }
       var restore = drawCtx.focus;
       plot.appendChild(svg);
       // a redraw under keyboard focus keeps the focused column
@@ -914,7 +916,7 @@
         tableOn = !tableOn;
         if (tableOn && !tbl.firstChild) {
           var t = o.table();
-          add(tbl, [note(t.exact ? T("ui.fig.exact") : T("ui.fig.precision")), dataTable(t.head, t.rows)].concat(t.more || []));
+          add(tbl, [t.plain ? null : note(t.exact ? T("ui.fig.exact") : T("ui.fig.precision")), dataTable(t.head, t.rows, t.left)].concat(t.more || []));
         }
         if (tableOn) { plot.setAttribute("hidden", ""); tbl.removeAttribute("hidden"); } else {
           tbl.setAttribute("hidden", ""); plot.removeAttribute("hidden"); render(true);
@@ -954,15 +956,17 @@
         key.style.borderTopColor = it.color;
       }
       if (key) { key.setAttribute("aria-hidden", "true"); }
-      ul.appendChild(h("li", "", [key, it.label]));
+      ul.appendChild(h("li", it.head ? "hd" : "", [key, it.label]));
     });
     return ul;
   }
-  function dataTable(head, body) {
-    var tr = h("tr", "", head.map(function (t, j) { return h("th", j ? "num" : "", t); }));
+  // `left` columns (default 1) are text; the rest are numbers
+  function dataTable(head, body, left) {
+    var nl = left || 1;
+    var tr = h("tr", "", head.map(function (t, j) { return h("th", j >= nl ? "num" : "", t); }));
     var tb = h("tbody");
     body.forEach(function (r) {
-      tb.appendChild(h("tr", "", r.map(function (c, j) { return h("td", j ? "num" : "", c); })));
+      tb.appendChild(h("tr", "", r.map(function (c, j) { return h("td", j >= nl ? "num" : "", c); })));
     });
     return h("table", "rpt-srna-table", [h("thead", "", tr), tb]);
   }
@@ -1439,6 +1443,439 @@
     }
     return out;
   }
+  // ---- genomic context: coverage and annotation tracks on one coordinate axis ----
+  var GM_GUT = 112, GM_RIGHT = 16;
+  var GM_TRACKS = ["g", "t", "r", "p"];
+  var GM_LAYER = {g: "gene", t: "te", r: "ncrna", p: "phas"};
+  var GM_TITLE = {cv: "ui.gm.track.cv", ends: "ui.gm.track.ends", g: "ui.gm.track.g", t: "ui.gm.track.t",
+    r: "ui.gm.track.r", p: "ui.gm.track.p"};
+  var GM_KIND = {g: "ui.gm.kind.g"};
+  var GM_CAP = {g: 10, t: 14, r: 6, p: 6};
+  var GM_LANE = {g: 26, t: 12, r: 20, p: 20};
+  var GM_SIZE_FILL = {"18-20": "#94a3b8", "21": "#12a3a3", "22": "#e0921c", "23": "#1f9d6b",
+    "24": "#2c5f8d", "25-35": "#7c4dff"};
+  var GM_TE = ["LTR", "LINE", "SINE", "DNA", "RC"];
+  var GM_TE_FILL = {LTR: "#c46a2a", LINE: "#6b4d99", SINE: "#a8413a", DNA: "#2c5f8d", RC: "#137d6f", other: "#8493a3"};
+  var GM_FILL = {r: "#a0527c", p: "#1f9d6b"};
+  var GM_GENE = "#25527d", GM_GENE_LIGHT = "#8eaecb", GM_PREC = "#15314b", GM_BAND = "#eaf3fb";
+  var GM_CHAR = 8;
+
+  // the part of a family before "/", one of the five classes or "other"
+  function gmTeClass(family) {
+    var c = String(family || "").split("/")[0].toUpperCase();
+    return GM_TE.indexOf(c) >= 0 ? c : "other";
+  }
+  // a feature span cut to the window; l / r say which end was cut
+  function gmClip(s, e, ws, we) {
+    return {s: Math.max(s, ws), e: Math.min(e, we), l: s < ws, r: e > we};
+  }
+  // greedy lane packing: items [{a, b}] (any order); lane index per item, boxes in a lane
+  // keep `gap` apart. `cap` limits the lanes: items that fit in none get lane -1.
+  function gmLanes(items, gap, cap, first) {
+    var order = items.map(function (it, i) { return i; });
+    order.sort(function (p, q) {
+      var fp = first && first(items[p]) ? 0 : 1, fq = first && first(items[q]) ? 0 : 1;
+      return cap && fp !== fq ? fp - fq : items[p].a - items[q].a || items[p].b - items[q].b;
+    });
+    var ends = [], lane = items.map(function () { return -1; });
+    order.forEach(function (i) {
+      var k = 0;
+      while (k < ends.length && items[i].a < ends[k] + gap) { k++; }
+      if (cap && k >= cap) { return; }
+      ends[k] = items[i].b;
+      lane[i] = k;
+    });
+    return {lane: lane, n: ends.length};
+  }
+  // rows of one track as objects
+  function gmRows(kind, list) {
+    return (list || []).map(function (x) {
+      if (kind === "g") { return {kind: kind, label: x[0], strand: x[1], s: x[2], e: x[3], hl: !!x[4], blocks: x[5] || [], type: T(GM_KIND.g)}; }
+      if (kind === "t") { return {kind: kind, label: x[0], type: x[1], strand: x[2], s: x[3], e: x[4], hl: !!x[5], cls: gmTeClass(x[1])}; }
+      return {kind: kind, label: x[0], type: x[1], strand: x[2], s: x[3], e: x[4], hl: !!x[5]};
+    });
+  }
+  function gmStranded(s) { return s === "+" || s === "-"; }
+  // widest stretch of a gene between its exon boxes (pixels, clipped to the window): [x, width]
+  function gmGap(rw, a, b, xa, ws, we) {
+    var bx = [], best = [(a + b) / 2, 0], at = a;
+    rw.blocks.forEach(function (k) {
+      var c = gmClip(k[1], k[2], ws, we);
+      if (c.e > c.s) { bx.push([xa(c.s), Math.max(xa(c.e), xa(c.s) + 1.5)]); }
+    });
+    bx.sort(function (p, q) { return p[0] - q[0]; });
+    bx.concat([[b, b]]).forEach(function (k) {
+      if (k[0] - at > best[1]) { best = [(at + k[0]) / 2, k[0] - at]; }
+      at = Math.max(at, k[1]);
+    });
+    return best;
+  }
+  // pixel boxes, label places and lanes of one track (pure: xa maps a position to x)
+  function gmPlace(kind, rows, xa, x0, x1, ws, we) {
+    var items = rows.map(function (rw) {
+      var c = gmClip(rw.s, rw.e, ws, we), a = xa(c.s), b = xa(c.e), cx = (a + b) / 2;
+      if (b - a < 2) { a = cx - 1; b = cx + 1; }
+      var it = {row: rw, clip: c, a: a, b: b, label: null, ea: a, eb: b,
+        // the arrow only where at least a pixel of the feature is cut off
+        cl: c.l && (ws - rw.s) * (x1 - x0) / Math.max(1, we - ws) >= 1,
+        cr: c.r && (rw.e - we) * (x1 - x0) / Math.max(1, we - ws) >= 1};
+      var tw = (rw.label ? String(rw.label).length : 0) * GM_CHAR;
+      if (kind !== "t" && tw) {
+        if (b + 6 + tw <= x1) { it.label = {x: b + 6, anchor: "start", inside: false}; it.eb = b + 6 + tw; }
+        else if (a - 6 - tw >= x0) { it.label = {x: a - 6, anchor: "end", inside: false}; it.ea = a - 6 - tw; }
+        else if (kind === "g") {
+          var gp = gmGap(rw, a, b, xa, ws, we);
+          if (gp[1] >= tw + 14) { it.label = {x: gp[0], anchor: "middle", inside: true}; }
+        } else if (b - a >= tw + 16) { it.label = {x: (a + b) / 2, anchor: "middle", inside: true}; }
+      }
+      return it;
+    });
+    var cap = GM_CAP[kind];
+    var ext = items.map(function (it) { return {a: it.ea, b: it.eb, hl: it.row.hl}; });
+    var pk = gmLanes(ext, 8, 0), dropped = 0;
+    if (pk.n > cap) { pk = gmLanes(ext, 8, cap, function (e) { return e.hl; }); }
+    items.forEach(function (it, i) { it.lane = pk.lane[i]; if (it.lane < 0) { dropped++; } });
+    return {items: items, lanes: Math.min(pk.n, cap), dropped: dropped};
+  }
+  // coverage: every series [max, ints 0..99] to values in one unit; the stacks share one scale
+  function gmCoverage(cv) {
+    var nb = cv.nb || 0, vals = {"+": [], "-": []}, tot = {"+": [], "-": []}, shared = 0, i;
+    STRANDS.forEach(function (s) {
+      for (i = 0; i < nb; i++) { tot[s].push(0); }
+      (cv.k || []).forEach(function (k) {
+        var pr = cv[s] ? cv[s][k] : null, v = deq(pr, nb, 99);
+        if (pr && pr[0] > shared) { shared = pr[0]; }
+        vals[s].push(v);
+        for (i = 0; i < nb; i++) { tot[s][i] += v[i]; }
+      });
+    });
+    var ends = {"+": deq(cv.e && cv.e["+"], nb, 99), "-": deq(cv.e && cv.e["-"], nb, 99)};
+    var eShared = Math.max(cv.e && cv.e["+"] ? cv.e["+"][0] : 0, cv.e && cv.e["-"] ? cv.e["-"][0] : 0);
+    return {vals: vals, tot: tot, ends: ends, shared: shared, eShared: eShared,
+      top: Math.max(maxOf(tot["+"]), maxOf(tot["-"])), eTop: Math.max(maxOf(ends["+"]), maxOf(ends["-"]))};
+  }
+  // words onto lines of at most `max` characters (a longer word stays whole)
+  function gmWrap(s, max) {
+    var out = [], cur = "";
+    String(s || "").split(" ").forEach(function (w) {
+      if (!w) { return; }
+      if (cur && (cur + " " + w).length > max) { out.push(cur); cur = w; } else { cur = cur ? cur + " " + w : w; }
+    });
+    if (cur) { out.push(cur); }
+    return out;
+  }
+  function gmStrandText(s) { return gmStranded(s) ? (s === "+" ? "+" : "−") : T("ui.gm.tip.nostrand"); }
+  function gmCoords(s, e) { return T("ui.tip.pos", {start: num(s + 1), end: num(e)}); }
+  function gmTip(rw) {
+    var out = [{value: T("ui.gm.tip.type"), label: rw.type || ""},
+      gmStranded(rw.strand) ? {value: T("ui.gm.tip.strand"), label: gmStrandText(rw.strand)} : {label: T("ui.gm.tip.nostrand")},
+      {value: T("ui.gm.tip.pos"), label: gmCoords(rw.s, rw.e)}];
+    if (rw.hl) { out.push({label: T("ui.gm.tip.overlap")}); }
+    return {head: rw.label || "", rows: out};
+  }
+  function gmChev(x, y, dir, sz, color, cls) {
+    return sv("polyline", {points: f2(x - dir * sz / 2) + "," + f2(y - sz) + " " + f2(x + dir * sz / 2) + "," + f2(y) + " " +
+      f2(x - dir * sz / 2) + "," + f2(y + sz), fill: "none", stroke: color, "stroke-width": 1.2,
+      "stroke-linecap": "round", "stroke-linejoin": "round", "class": cls || "rpt-gm-chev", "pointer-events": "none"});
+  }
+  // a small triangle at a window edge says the feature goes on
+  function gmCont(x, y, dir, color) {
+    return sv("path", {d: "M" + f2(x) + "," + f2(y) + "L" + f2(x + dir * 7) + "," + f2(y - 5) + "L" + f2(x + dir * 7) + "," + f2(y + 5) + "Z",
+      fill: SURF, stroke: color, "stroke-width": 1.2, "stroke-linejoin": "round", "class": "rpt-gm-cont", "pointer-events": "none"});
+  }
+  function gmHalo(t) {
+    t.setAttribute("stroke", SURF);
+    t.setAttribute("stroke-width", "4");
+    t.setAttribute("paint-order", "stroke");
+    t.setAttribute("stroke-linejoin", "round");
+    return t;
+  }
+  function gmFeatLabel(it, cy) {
+    var l = it.label, t = text(l.x, cy + 4.5, it.row.label, {anchor: l.anchor, fill: INK, cls: "rpt-gm-lb"});
+    return gmHalo(t);
+  }
+  // one gene model: exon boxes (UTR and plain exons low, CDS tall), introns as a line with chevrons
+  function gmGene(it, cy, x0, x1, ws, we, xa) {
+    var rw = it.row, g = sv("g", {"class": "rpt-gm-feat rpt-gm-gene" + (rw.hl ? " hl" : ""), "data-track": "g",
+      "data-clip": (it.clip.l ? "l" : "") + (it.clip.r ? "r" : ""), opacity: rw.hl ? 1 : 0.82});
+    var coding = rw.blocks.some(function (b) { return b[0] === "C"; });
+    var H = {E: coding ? 8 : 12, U: 8, C: 16}, FILL = {E: coding ? GM_GENE_LIGHT : GM_GENE, U: GM_GENE_LIGHT, C: GM_GENE};
+    var ink = rw.hl ? INK : "none", boxes = [];
+    g.appendChild(sv("line", {x1: f2(it.a), x2: f2(it.b), y1: f2(cy), y2: f2(cy), stroke: GM_GENE, "stroke-width": 1,
+      "class": "rpt-gm-intron"}));
+    // exons and UTRs first, the CDS on top of them
+    rw.blocks.slice().sort(function (p, q) { return (p[0] === "C") - (q[0] === "C"); }).forEach(function (b) {
+      var c = gmClip(b[1], b[2], ws, we);
+      if (c.e <= c.s) { return; }
+      var a = xa(c.s), w = Math.max(1.5, xa(c.e) - a), h = H[b[0]] || H.E;
+      boxes.push([a, a + w]);
+      g.appendChild(sv("rect", {x: f2(a), y: f2(cy - h / 2), width: f2(w), height: h, rx: 1.5, fill: FILL[b[0]] || FILL.E,
+        stroke: ink, "stroke-width": rw.hl ? 1.2 : 0, "class": "rpt-gm-exon", "data-b": b[0]}));
+    });
+    if (!rw.blocks.length) {
+      g.appendChild(sv("rect", {x: f2(it.a), y: f2(cy - 5), width: f2(it.b - it.a), height: 10, rx: 1.5, fill: GM_GENE_LIGHT,
+        stroke: ink, "stroke-width": rw.hl ? 1.2 : 0, "class": "rpt-gm-exon"}));
+      boxes.push([it.a, it.b]);
+    }
+    if (gmStranded(rw.strand)) {
+      var dir = rw.strand === "+" ? 1 : -1;
+      for (var x = it.a + 8; x < it.b - 4; x += 16) {
+        if (!boxes.some(function (bx) { return x > bx[0] - 4 && x < bx[1] + 4; })) { g.appendChild(gmChev(x, cy, dir, 3.5, GM_GENE)); }
+      }
+    }
+    if (it.cl) { g.appendChild(gmCont(x0 + 1, cy, 1, GM_GENE)); }
+    if (it.cr) { g.appendChild(gmCont(x1 - 1, cy, -1, GM_GENE)); }
+    if (it.label) { g.appendChild(gmFeatLabel(it, cy)); }
+    return g;
+  }
+  // a transposon, structural RNA or PHAS locus: a thin rounded bar
+  function gmBar(it, cy, x0, x1, fill, bh) {
+    var rw = it.row, g = sv("g", {"class": "rpt-gm-feat rpt-gm-bar" + (rw.hl ? " hl" : ""), "data-track": rw.kind,
+      "data-clip": (it.clip.l ? "l" : "") + (it.clip.r ? "r" : ""), opacity: rw.hl ? 1 : 0.82});
+    var w = it.b - it.a;
+    g.appendChild(sv("rect", {x: f2(it.a), y: f2(cy - bh / 2), width: f2(w), height: bh, rx: Math.min(3, bh / 2, w / 2), fill: fill,
+      stroke: rw.hl ? INK : "none", "stroke-width": rw.hl ? 1.2 : 0}));
+    if (gmStranded(rw.strand) && w >= 18) {
+      var dir = rw.strand === "+" ? 1 : -1;
+      for (var x = it.a + 9; x < it.b - 5; x += 12) { g.appendChild(gmChev(x, cy, dir, 2.2, "#ffffff")); }
+    }
+    if (it.cl) { g.appendChild(gmCont(x0 + 1, cy, 1, fill)); }
+    if (it.cr) { g.appendChild(gmCont(x1 - 1, cy, -1, fill)); }
+    if (it.label) { g.appendChild(gmFeatLabel(it, cy)); }
+    return g;
+  }
+  // pointer and keyboard targets over the features (arrow keys walk them left to right)
+  function gmFeatHits(svg, list) {
+    var els = [], on = -1;
+    function mark(i) {
+      if (on >= 0 && els[on]) { els[on].classList.remove("on"); }
+      on = i;
+      if (i >= 0) { els[i].classList.add("on"); }
+    }
+    function focusAt(j) {
+      j = Math.max(0, Math.min(els.length - 1, j));
+      els.forEach(function (e, k) { e.setAttribute("tabindex", k === j ? "0" : "-1"); });
+      els[j].focus();
+    }
+    list.forEach(function (f, i) {
+      var w = Math.max(8, f.w), e = sv("rect", {x: f2(f.x - (w - f.w) / 2), y: f2(f.y), width: f2(w), height: f2(f.h),
+        fill: "transparent", "class": "rpt-srna-hit rpt-gm-hit", tabindex: i === 0 ? 0 : -1, role: "img", "data-track": f.track});
+      e.setAttribute("aria-label", tipText(f.tip));
+      e.addEventListener("pointermove", function (ev) { mark(i); showTip(f.tip, ev.clientX, ev.clientY); });
+      e.addEventListener("pointerdown", function (ev) { mark(i); showTip(f.tip, ev.clientX, ev.clientY); });
+      e.addEventListener("pointerleave", function (ev) {
+        if (ev && ev.pointerType === "touch") { return; }
+        mark(-1); hideTip();
+      });
+      e.addEventListener("focus", function () {
+        var bb = e.getBoundingClientRect();
+        mark(i); showTip(f.tip, bb.right, bb.top);
+      });
+      e.addEventListener("blur", function () { mark(-1); hideTip(); });
+      e.addEventListener("keydown", function (ev) {
+        var step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[ev.key];
+        if (ev.key === "Escape") { mark(-1); hideTip(); return; }
+        if (step === undefined) { return; }
+        if (ev.preventDefault) { ev.preventDefault(); }
+        focusAt(i + step);
+      });
+      els.push(e);
+      svg.appendChild(e);
+    });
+    return els;
+  }
+
+  function figGenome(d, r) {
+    var gm = d.gm, ws = gm.w[0], we = gm.w[1], loc = gm.L || [ws, we], ly = gm.ly || [], mo = gm.mo || {};
+    var cv = gm.cv || {nb: 0, k: [], s: ws, b: 1}, cov = gmCoverage(cv), nb = cv.nb || 0, bsz = cv.b || 1;
+    var mi = d.mi && !d.mi.nowin && typeof d.mi.lo === "number" && d.mi.L > 0 ? d.mi : null;
+    var tracks = GM_TRACKS.map(function (k) { return {kind: k, rows: gmRows(k, gm[k])}; });
+    var present = {};
+    tracks.forEach(function (t) { t.rows.forEach(function (rw) { if (rw.cls) { present[rw.cls] = true; } }); });
+    var teKeys = GM_TE.concat(["other"]).filter(function (k) { return present[k]; });
+    function teName(k) { return k === "other" ? T("ui.gm.te.other") : k; }
+    function colorOf(rw) { return rw.kind === "t" ? GM_TE_FILL[rw.cls] : GM_FILL[rw.kind]; }
+
+    function draw(svg, cw) {
+      var W = parseFloat(svg.getAttribute("width")), x0 = GM_GUT, x1 = W - GM_RIGHT, span = Math.max(1, we - ws);
+      function xa(p) { return x0 + (Math.min(Math.max(p, ws), we) - ws) / span * (x1 - x0); }
+      // ---- plan: heights first, so the locus band can sit behind everything ----
+      var y = 0, plan = [], RULER = 58, AXY = 28, HALF = 66, EH = 24, PREC = mi ? 20 : 0;
+      plan.push({id: "ruler", y: 0, h: RULER}); y = RULER;
+      plan.push({id: "cv", y: y, h: PREC + 8 + 2 * HALF + 8}); y += plan[1].h;
+      plan.push({id: "ends", y: y, h: 8 + 2 * EH + 8}); y += plan[2].h;
+      tracks.forEach(function (t) {
+        var given = ly.indexOf(GM_LAYER[t.kind]) >= 0;
+        if (!given && !t.rows.length) { t.state = "nolayer"; } else if (!t.rows.length) { t.state = "empty"; }
+        t.place = gmPlace(t.kind, t.rows, xa, x0, x1, ws, we);
+        var more = (mo[t.kind] || 0) + t.place.dropped;
+        t.more = more;
+        var lh = GM_LANE[t.kind], body = t.state ? 28 : t.place.lanes * lh + 12;
+        if (more) { body = Math.max(body, 46); }
+        t.y = y; t.h = body; t.lh = lh;
+        plan.push({id: t.kind, y: y, h: body}); y += body;
+      });
+      var H = y + 4;
+      // ---- locus band, vertical grid, separators ----
+      var lx0 = xa(loc[0]), lx1 = Math.max(xa(loc[1]), lx0 + 2);
+      svg.appendChild(sv("rect", {x: f2(lx0), y: AXY, width: f2(lx1 - lx0), height: H - AXY, fill: GM_BAND,
+        "class": "rpt-gm-band"}));
+      var room = Math.max(2, Math.floor((x1 - x0) / (num(we).length * 8 + 24)));
+      var st = niceStep(Math.max(1, we - ws), room), lab = [];
+      for (var p = Math.ceil((ws + 1) / st) * st; p <= we; p += st) { lab.push([xa(p - 1), num(p)]); }
+      lab.forEach(function (t) {
+        svg.appendChild(sv("line", {x1: f2(t[0]), x2: f2(t[0]), y1: AXY, y2: H - 4, stroke: GRID, "stroke-width": 1,
+          "shape-rendering": "crispEdges", "class": "rpt-gm-vgrid", opacity: 0.7}));
+      });
+      plan.slice(1).forEach(function (pl) { hline(svg, 0, W, pl.y, GRID, "rpt-gm-sep"); });
+      // ---- ruler ----
+      hline(svg, x0, x1, AXY, AXIS, "rpt-gm-axis");
+      lab.forEach(function (t) {
+        svg.appendChild(sv("line", {x1: f2(t[0]), x2: f2(t[0]), y1: AXY - 5, y2: AXY, stroke: AXIS, "stroke-width": 1,
+          "shape-rendering": "crispEdges"}));
+      });
+      xTicks(svg, lab, AXY - 11);
+      svg.appendChild(text(8, AXY - 11, r.h, {cls: "rpt-gm-chrom", fill: INK, weight: 500}));
+      [lx0, lx1].forEach(function (x) {
+        svg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: AXY, y2: H - 4, stroke: ACCENT, "stroke-width": 1,
+          "shape-rendering": "crispEdges", "class": "rpt-gm-edge", opacity: 0.85}));
+      });
+      svg.appendChild(sv("rect", {x: f2(lx0), y: AXY - 1, width: f2(lx1 - lx0), height: 4, fill: ACCENT, "class": "rpt-gm-locus"}));
+      var lw = T("ui.gm.locus").length * GM_CHAR, lt = text(lx1 + 6, AXY + 19, T("ui.gm.locus"), {fill: "#1a6cb8", cls: "rpt-gm-loclabel"});
+      if (lx1 + 6 + lw > x1) { lt.setAttribute("x", f2(lx0 - 6)); lt.setAttribute("text-anchor", "end"); }
+      svg.appendChild(lt);
+      function tlabel(pl, title, sub) {
+        svg.appendChild(text(8, pl.y + 21, title, {fill: INK, weight: 500, cls: "rpt-gm-tl"}));
+        // the unit wraps into the gutter so it never meets the tick labels
+        gmWrap(sub, 9).forEach(function (ln, i) { svg.appendChild(text(8, pl.y + 41 + i * 17, ln, {cls: "rpt-gm-ts"})); });
+      }
+      // ---- coverage ----
+      var pc = plan[1], base = pc.y + PREC + 8 + HALF, tk = ticks(cov.top, 2), sc = HALF / tk.top;
+      tlabel(pc, T(GM_TITLE.cv), T("ui.axis.depth"));
+      yGrid(svg, x0, x1, base, HALF, -1, tk);
+      yGrid(svg, x0, x1, base, HALF, 1, tk);
+      function colX(i) { return [xa(cv.s + i * bsz), xa(Math.min(cv.s + (i + 1) * bsz, we))]; }
+      STRANDS.forEach(function (s) {
+        var dir = s === "+" ? -1 : 1;
+        (cv.k || []).forEach(function (k, ki) {
+          var dpath = "";
+          for (var i = 0; i < nb; i++) {
+            var v = cov.vals[s][ki][i];
+            if (!(v > 0)) { continue; }
+            var below = 0;
+            for (var j = 0; j < ki; j++) { below += cov.vals[s][j][i]; }
+            var c = colX(i), gp = c[1] - c[0] >= 3 ? 0.5 : 0, ya = base + dir * below * sc, yb = base + dir * (below + v) * sc;
+            dpath += "M" + f2(c[0] + gp) + "," + f2(ya) + "L" + f2(c[0] + gp) + "," + f2(yb) + "L" + f2(c[1] - gp) + "," + f2(yb) +
+              "L" + f2(c[1] - gp) + "," + f2(ya) + "Z";
+          }
+          if (dpath) { svg.appendChild(sv("path", {d: dpath, fill: GM_SIZE_FILL[k] || OTHER_BAR, "class": "rpt-gm-cov", "data-k": k, "data-s": s})); }
+        });
+        if (!(maxOf(cov.tot[s]) > 0)) { emptyNote(svg, x0, x1, base + dir * HALF / 2, "ui.fig.nostrand"); }
+      });
+      zeroLine(svg, x0, x1, base);
+      if (nb) {
+        var cols = [];
+        for (var bi = 0; bi < nb; bi++) { cols.push(colX(bi)); }
+        hits(svg, cols, base - HALF, base + HALF, function (i) {
+          var rowsT = [];
+          STRANDS.forEach(function (s) {
+            rowsT.push({value: val(cov.tot[s][i]), label: strandLabel(s)});
+            (cv.k || []).forEach(function (k, ki) {
+              var v = cov.vals[s][ki][i];
+              if (v > 0) { rowsT.push({key: GM_SIZE_FILL[k], value: val(v), label: T("ui.unit.nt", {v: k})}); }
+            });
+          });
+          return {head: gmCoords(cv.s + i * bsz, Math.min(cv.s + (i + 1) * bsz, we)), rows: rowsT};
+        });
+      }
+      if (mi) {
+        var px0 = xa(mi.lo), px1 = Math.max(xa(mi.lo + mi.L), px0 + 3), py = pc.y + 11;
+        var pg = sv("g", {"class": "rpt-gm-prec"});
+        pg.appendChild(sv("line", {x1: f2(px0), x2: f2(px1), y1: py, y2: py, stroke: GM_PREC, "stroke-width": 3, "stroke-linecap": "round"}));
+        [px0, px1].forEach(function (x) { pg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: py - 4, y2: py + 4, stroke: GM_PREC, "stroke-width": 2})); });
+        var pt = text(px1 + 8, py + 4.5, T("mi.title"), {fill: INK, cls: "rpt-gm-lb"});
+        if (px1 + 8 + T("mi.title").length * GM_CHAR > x1) { pt.setAttribute("x", f2(px0 - 8)); pt.setAttribute("text-anchor", "end"); }
+        pg.appendChild(pt);
+        svg.appendChild(pg);
+        gmFeatHits(svg, [{x: px0, y: py - 8, w: px1 - px0, h: 16, track: "mi",
+          tip: {head: T("mi.title"), rows: [{value: T("ui.gm.tip.pos"), label: gmCoords(mi.lo, mi.lo + mi.L)}]}}]);
+      }
+      // ---- 5' ends ----
+      var pe = plan[2], eb = pe.y + 8 + EH, ek = ticks(cov.eTop, 1), esc = EH / ek.top;
+      tlabel(pe, T(GM_TITLE.ends));
+      yGrid(svg, x0, x1, eb, EH, -1, ek);
+      yGrid(svg, x0, x1, eb, EH, 1, ek);
+      STRANDS.forEach(function (s) {
+        var dir = s === "+" ? -1 : 1, dp = "";
+        for (var i = 0; i < nb; i++) {
+          var v = cov.ends[s][i];
+          if (!(v > 0)) { continue; }
+          var c = colX(i), gp = c[1] - c[0] >= 3 ? 0.5 : 0, yv = eb + dir * Math.max(1, v * esc);
+          dp += "M" + f2(c[0] + gp) + "," + f2(eb) + "L" + f2(c[0] + gp) + "," + f2(yv) + "L" + f2(c[1] - gp) + "," + f2(yv) +
+            "L" + f2(c[1] - gp) + "," + f2(eb) + "Z";
+        }
+        if (dp) { svg.appendChild(sv("path", {d: dp, fill: STRAND_FILL[s], "class": "rpt-gm-end", "data-s": s})); }
+      });
+      zeroLine(svg, x0, x1, eb);
+      if (nb) {
+        var ecols = [];
+        for (var ei = 0; ei < nb; ei++) { ecols.push(colX(ei)); }
+        hits(svg, ecols, eb - EH, eb + EH, function (i) {
+          return {head: gmCoords(cv.s + i * bsz, Math.min(cv.s + (i + 1) * bsz, we)), rows: STRANDS.map(function (s) {
+            return {key: STRAND_FILL[s], value: val(cov.ends[s][i]), label: strandLabel(s)};
+          })};
+        });
+      }
+      // ---- annotation tracks ----
+      var fh = [];
+      tracks.forEach(function (t) {
+        tlabel(t, T(GM_TITLE[t.kind]));
+        if (t.state) {
+          svg.appendChild(gmHalo(text(x0 + 10, t.y + 21, t.state === "empty" ? T("ui.gm.empty") : T("ui.gm.nolayer", {kind: GM_LAYER[t.kind]}),
+            {cls: "rpt-gm-empty"})));
+        }
+        t.place.items.forEach(function (it) {
+          if (it.lane < 0) { return; }
+          var cy = t.y + 6 + it.lane * t.lh + t.lh / 2, rw = it.row;
+          svg.appendChild(t.kind === "g" ? gmGene(it, cy, x0, x1, ws, we, xa) :
+            gmBar(it, cy, x0, x1, colorOf(rw), t.kind === "t" ? 8 : 12));
+          fh.push({x: it.a, y: cy - t.lh / 2 + 1, w: it.b - it.a, h: t.lh - 2, track: t.kind, tip: gmTip(rw)});
+        });
+        if (t.more) { svg.appendChild(text(8, t.y + 41, T("ui.gm.more", {n: num(t.more)}), {cls: "rpt-gm-more"})); }
+      });
+      fh.sort(function (a, b) { return a.x - b.x; });
+      if (fh.length) { gmFeatHits(svg, fh); }
+      // the sized SVG
+      svg.setAttribute("height", H);
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      svg.firstChild.setAttribute("height", H);
+      return H;
+    }
+
+    var legendItems = [{kind: "none", label: T("ui.fig.mirror")}];
+    legendItems = legendItems.concat([{kind: "none", label: T("ui.gm.legend.size"), head: 1}],
+      (cv.k || []).map(function (k) { return {kind: "sw", color: GM_SIZE_FILL[k] || OTHER_BAR, label: T("ui.unit.nt", {v: k})}; }),
+      [{kind: "none", label: T("ui.gm.track.ends"), head: 1}], strandLegend());
+    if (teKeys.length) {
+      legendItems = legendItems.concat([{kind: "none", label: T("ui.gm.legend.te"), head: 1}],
+        teKeys.map(function (k) { return {kind: "sw", color: GM_TE_FILL[k], label: teName(k)}; }));
+    }
+    return figure({letter: "I", title: T("ui.gm.title"),
+      n: T("ui.gm.range", {chrom: r.h, start: num(loc[0] + 1), end: num(loc[1]), n: num(loc[1] - loc[0])}),
+      legend: legendItems, height: 420, wide: true, width: 560, draw: draw, file: fileName(r, "I"),
+      table: function () {
+        var out = [];
+        tracks.forEach(function (t) {
+          t.rows.forEach(function (rw) {
+            out.push([T(GM_TITLE[t.kind]), rw.label || "", rw.type || "", gmStrandText(rw.strand), num(rw.s + 1), num(rw.e),
+              rw.hl ? "✓" : ""]);
+          });
+        });
+        return {head: [T("ui.gm.th.track"), T("ui.gm.th.name"), T("ui.gm.tip.type"), T("ui.th.strand"), T("ui.gm.th.start"),
+          T("ui.gm.th.end"), T("ui.gm.tip.overlap")], rows: out, plain: true, left: 4};
+      }});
+  }
+
   function fileName(r, letter) {
     var base = String(r.n).replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
     return (base || T("ui.brand")) + "_" + letter;
@@ -1446,11 +1883,15 @@
 
   function figures(d, r) {
     var sig = d.sig;
-    if (!sig) { return emptyMsg(T("ui.fig.na")); }
-    if (sig.err) { return emptyMsg(T("ui.fig.err")); }
-    if (sig.none) { return emptyMsg(T("ui.fig.noreads")); }
+    // the genomic context leads the page when the report was built with an annotation
+    var gmFig = d.gm ? figGenome(d, r) : null;
+    function lead(msg) { return gmFig ? h("div", "rpt-srna-figs", [gmFig, msg]) : msg; }
+    if (!sig) { return lead(emptyMsg(T("ui.fig.na"))); }
+    if (sig.err) { return lead(emptyMsg(T("ui.fig.err"))); }
+    if (sig.none) { return lead(emptyMsg(T("ui.fig.noreads"))); }
     var dd = decode(sig);
     return h("div", "rpt-srna-figs", [
+      gmFig,
       figSizes(sig, dd, r),
       figPhasing(sig, dd, r),
       trackFigure({letter: "C", key: "cv", bin: sig.cv.b, start: sig.cv.s, title: T("ui.fig.cov"),
