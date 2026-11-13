@@ -155,7 +155,9 @@ def _run_params(args):
 def run_classify(args):
     annotation_specs = getattr(args, "annotation", None) or []
     for spec in annotation_specs:      # fail on a bad label before any heavy work
-        parse_layer_spec(spec)
+        _, layer_path = parse_layer_spec(spec)
+        if not os.path.isfile(layer_path):
+            raise FileNotFoundError(f"annotation file not found: {layer_path}")
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
     config = load_config(args.config)

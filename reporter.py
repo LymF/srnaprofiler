@@ -53,7 +53,9 @@ def write_fragments_tsv(fragments, path):
 
 
 def _gff3_escape(text):
-    for ch, code in ((";", "%3B"), ("=", "%3D"), (",", "%2C"), ("&", "%26")):
+    # "%" first, so the codes below are not escaped a second time.
+    for ch, code in (("%", "%25"), ("\t", "%09"), ("\n", "%0A"), ("\r", "%0D"),
+                     (";", "%3B"), ("=", "%3D"), (",", "%2C"), ("&", "%26")):
         text = text.replace(ch, code)
     return text
 
