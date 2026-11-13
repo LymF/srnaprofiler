@@ -140,3 +140,60 @@ def test_detail_chip_class_never_takes_unknown_value(tmp_path):
     return H.byClass(H.id("sec-detail"), "rpt-srna-an", "span").map(function (e) { return e.className; });"""
     r = run_js(tmp_path, _j.dumps(d), probe_for(d, probe))
     assert r == []
+
+
+LIST_PROBE = """
+var lst = H.id("sec-clusters");
+function snap() {
+  var rows = H.byClass(lst, "row", "tr");
+  return {names: rows.map(function (t) { return H.text(H.all(H.all(t, "td")[0], "strong")[0]); }),
+          chips: H.byClass(lst, "rpt-srna-an", "span").map(function (e) { return e.className; }),
+          ths: H.all(lst, "th").map(H.text),
+          cells: rows.map(function (t) { return H.all(t, "td").length; }),
+          shown: H.text(lst)};
+}
+function ctl(k) { return H.all(lst, "select").filter(function (e) { return e.getAttribute("data-ctl") === k; })[0] || null; }
+var res = {first: snap(), hasAn: !!ctl("an")};
+if (ctl("an")) {
+  res.opts = H.all(ctl("an"), "option").map(function (o) { return [o.getAttribute("value"), H.text(o)]; });
+  H.setValue(ctl("an"), "conflicts");
+  res.conf = snap();
+  res.focus = H.activeEl() && H.activeEl().getAttribute("data-ctl");
+  H.click(H.all(lst, "button").filter(function (b) { return H.text(b).indexOf("piRNA") === 0; })[0]);
+  res.both = snap();
+  H.click(H.all(lst, "button").filter(function (b) { return H.text(b).indexOf("siRNA") === 0; })[0]);
+  res.sirna = snap();
+}
+return res;"""
+
+AN_ROWS = [("a", "piRNA", "supports"), ("b", "piRNA", "conflicts"), ("c", "siRNA", "conflicts"),
+           ("d", "siRNA", "neutral"), ("e", "piRNA", "none")]
+
+
+@pytest.mark.skipif(shutil.which("osascript") is None, reason="needs osascript")
+def test_list_annotation_column_and_filter(tmp_path):
+    from test_html_report_js import run_js, probe_for, page
+    cl = [mk(n, cls=c, annotation_support=s, reads=500 - i)
+          for i, (n, c, s) in enumerate(AN_ROWS)]
+    _, text, d = page(tmp_path, cl)
+    S = d["strings"]
+    r = run_js(tmp_path, text, probe_for(d, LIST_PROBE))
+    assert r["hasAn"] and S["ui.an.filter"] in r["first"]["shown"]
+    assert S["ui.an.filter"] in r["first"]["ths"]
+    assert [o[0] for o in r["opts"]] == ["all", "supports", "conflicts", "neutral"]
+    assert sorted(r["first"]["chips"]) == ["rpt-srna-an conflicts", "rpt-srna-an conflicts",
+                                           "rpt-srna-an neutral", "rpt-srna-an supports"]
+    assert set(r["first"]["cells"]) == {7}            # row without a verdict keeps an empty cell
+    assert sorted(r["conf"]["names"]) == ["b", "c"] and r["focus"] == "an"
+    assert r["both"]["names"] == ["b"] and r["sirna"]["names"] == ["c"]
+    assert set(r["conf"]["chips"]) == {"rpt-srna-an conflicts"}
+
+
+@pytest.mark.skipif(shutil.which("osascript") is None, reason="needs osascript")
+def test_plain_list_has_no_annotation_column_or_filter(tmp_path):
+    from test_html_report_js import run_js, probe_for, page
+    _, text, d = page(tmp_path, [mk("a"), mk("b", reads=400)])
+    r = run_js(tmp_path, text, probe_for(d, LIST_PROBE))
+    assert not r["hasAn"] and r["first"]["chips"] == [] and set(r["first"]["cells"]) == {6}
+    assert len(r["first"]["ths"]) == 6
+    assert "Annotation" not in r["first"]["shown"]

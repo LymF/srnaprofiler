@@ -150,6 +150,8 @@ STRINGS = {
     "ui.an.th.supports": "Supports",
     "ui.an.th.conflicts": "Conflicts",
     "ui.an.th.neutral": "Neutral",
+    "ui.an.filter": "Annotation",
+    "ui.an.all": "All",
     "ui.review": "Flagged for review",
     "ui.review.tip": "The classifier marked this locus for a manual look.",
     "ui.brand": "srnaprofiler",

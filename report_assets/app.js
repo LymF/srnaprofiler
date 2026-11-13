@@ -480,7 +480,7 @@
   }
 
   // ---- cluster list ----
-  var view = {cls: "all", sort: "conf", page: 0, floor: META.floor};
+  var view = {cls: "all", an: "all", sort: "conf", page: 0, floor: META.floor};
   var listH2 = null;
   var listFocus = null;  // data-ctl key of the control to refocus after a re-render
   function dots(v) {
@@ -510,6 +510,7 @@
     rows.forEach(function (r, i) {
       if (view.cls !== "all" && r.c !== view.cls) { return; }
       if (r.r !== null && r.r < fl) { return; }
+      if (META.an && view.an !== "all" && r.an !== view.an) { return; }
       out.push(i);
     });
     var cmp = {
@@ -578,7 +579,25 @@
       listFocus = "floor";
       renderList();
     });
-    add(ctl, [sel, h("label", "rpt-srna-lbl", [T("ui.floor.label"), inp])]);
+    var anSel = null;
+    if (META.an) {
+      anSel = h("select", "rpt-srna-input");
+      [["all", T("ui.an.all")], ["supports", T("ui.an.th.supports")],
+        ["conflicts", T("ui.an.th.conflicts")], ["neutral", T("ui.an.th.neutral")]].forEach(function (o) {
+        var op = h("option", "", o[1]);
+        op.setAttribute("value", o[0]);
+        if (view.an === o[0]) { op.setAttribute("selected", "selected"); }
+        anSel.appendChild(op);
+      });
+      anSel.setAttribute("aria-label", T("ui.an.filter"));
+      keep(anSel, "an");
+      anSel.addEventListener("change", function () {
+        view.an = AN_OK.indexOf(anSel.value) >= 0 ? anSel.value : "all";
+        view.page = 0; listFocus = "an"; renderList();
+      });
+    }
+    add(ctl, [sel, anSel ? h("label", "rpt-srna-lbl", [T("ui.an.filter") + " ", anSel]) : null,
+      h("label", "rpt-srna-lbl", [T("ui.floor.label"), inp])]);
     box.appendChild(ctl);
     box.appendChild(note(T("ui.floor.note", {n: num(rows.length), floor: META.floor})));
 
@@ -593,7 +612,7 @@
     var tb = h("tbody");
     if (!slice.length) {
       var td = h("td", "", emptyMsg(rows.length ? T("ui.list.none.filter") : T("ui.list.none.rows")));
-      td.setAttribute("colspan", "6");
+      td.setAttribute("colspan", META.an ? "7" : "6");
       tb.appendChild(h("tr", "", td));
     }
     slice.forEach(function (i) {
@@ -623,12 +642,17 @@
         h("td", "", tag(r.c)),
         h("td", "", [h("span", "rpt-srna-bar", fill), " " + confText(r)]),
         h("td", "", dots(r.v)),
+        META.an ? h("td", "", AN_OK.indexOf(r.an) >= 0 ? h("span", "rpt-srna-an " + r.an, r.an) : null) : null,
         h("td", "num", num(r.r)),
         h("td", "rpt-srna-sub", last)]);
       tb.appendChild(tr);
     });
-    var head = h("tr", "", [T("ui.th.cluster"), T("ui.th.class"), T("ui.th.conf"), T("ui.th.evidence"), T("ui.th.reads"), ""].map(function (t, j) {
-      return h("th", j === 4 ? "num" : "", t);
+    var heads = [T("ui.th.cluster"), T("ui.th.class"), T("ui.th.conf"), T("ui.th.evidence")];
+    if (META.an) { heads.push(T("ui.an.filter")); }
+    heads.push(T("ui.th.reads"), "");
+    var readsAt = heads.length - 2;
+    var head = h("tr", "", heads.map(function (t, j) {
+      return h("th", j === readsAt ? "num" : "", t);
     }));
     box.appendChild(h("div", "rpt-card rpt-srna-scroll",
       h("table", "rpt-srna-table", [h("thead", "", head), tb])));
