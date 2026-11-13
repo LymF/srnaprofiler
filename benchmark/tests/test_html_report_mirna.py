@@ -455,3 +455,21 @@ def test_xy_in_the_payload_is_small_and_checked(tmp_path):
     assert "xy" not in rm.figure_data(r, (db, -30.0, False, xy[:-2]), None)   # wrong length is dropped
     assert "xy" not in rm.figure_data(r, (db, -30.0, False), None)
     assert "xy" not in rm.figure_data(r, (None, None, True, xy), None)
+
+
+class _Rec:
+    def __init__(self, start, length, reverse):
+        self.reference_start, self.reference_end = start, start + length
+        self.is_reverse = reverse
+        self.cigartuples = [(0, length)]
+        self.query_sequence = "A" * length
+
+
+def test_reads_outside_the_precursor_window_are_not_counted():
+    hp = rs.HairpinReads((1000, 1100, "+", "A" * 100, None, None))
+    hp.add(_Rec(1500, 22, False), 1)      # sense, elsewhere in the cluster
+    hp.add(_Rec(1600, 22, True), 1)       # antisense, elsewhere in the cluster
+    assert hp.anti == 0 and hp.ovh == 0 and not hp.rows
+    hp.add(_Rec(1050, 22, True), 1)       # antisense inside the window still counts
+    hp.add(_Rec(990, 22, False), 1)       # sense overhanging the window start still counts
+    assert hp.anti == 1 and hp.ovh == 1

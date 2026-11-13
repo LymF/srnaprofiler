@@ -46,6 +46,8 @@ class HairpinReads:
         self.anti = self.ovh = 0.0
 
     def add(self, rec, nh):
+        if rec.reference_end <= self.lo or rec.reference_start >= self.hi:
+            return   # elsewhere in the cluster, not part of this precursor
         w = 1.0 / nh
         if rec.is_reverse != (self.strand == "-"):
             self.anti += w
