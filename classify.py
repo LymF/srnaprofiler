@@ -9,6 +9,7 @@ from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
 
+from annotation import apply_annotation, load_layers, parse_layer_spec
 from reporter import write_tsv, write_gff3, write_run_json, write_fragments_tsv
 from utils import log
 
@@ -142,7 +143,19 @@ def select_contigs(chroms, exclude):
     return kept, dropped
 
 
+def _run_params(args):
+    """run.json parameters: `annotation` is left out when unused, so runs
+    without layers keep the same file as before the option existed."""
+    params = {k: v for k, v in vars(args).items() if not callable(v)}
+    if params.get("annotation") is None:
+        params.pop("annotation", None)
+    return params
+
+
 def run_classify(args):
+    annotation_specs = getattr(args, "annotation", None) or []
+    for spec in annotation_specs:      # fail on a bad label before any heavy work
+        parse_layer_spec(spec)
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
     config = load_config(args.config)
@@ -196,6 +209,7 @@ def run_classify(args):
 
     chroms = mapped_chromosomes(bam_path)
     counts = dict(zip(chroms, reference_alignment_counts(bam_path)))
+    all_chroms = list(chroms)   # every BAM reference, before --organelle-contigs
     exclude = parse_contig_list(getattr(args, "organelle_contigs", None))
     if exclude:
         chroms, dropped = select_contigs(chroms, exclude)
@@ -238,7 +252,14 @@ def run_classify(args):
     for r in records:
         r.gates = scorer.gate_flags(r)
 
-    write_tsv(records, base + ".clusters.tsv", list(_enabled_classes(config)))
+    if annotation_specs:
+        layers = load_layers(annotation_specs, set(all_chroms))
+        counts_by_support = apply_annotation(records, layers, config.get("annotation", {}))
+        log("annotation support: " + ", ".join(
+            f"{k}={v}" for k, v in counts_by_support.items()), "INFO")
+
+    write_tsv(records, base + ".clusters.tsv", list(_enabled_classes(config)),
+              annotated=bool(annotation_specs))
     write_fragments_tsv(fragments, base + ".fragments.tsv")
     frag_mass = sum(f["reads"] for f in fragments)
     total_mass = frag_mass + sum(r.reads for r in records)
@@ -246,7 +267,7 @@ def run_classify(args):
     log(f"{len(fragments)} fragments below the locus floor "
         f"({frag_mass:.0f} reads, {pct:.2f}% of the assigned read mass) "
         f"-> {base}.fragments.tsv", "INFO")
-    write_gff3(records, base + ".clusters.gff3")
-    params = {k: v for k, v in vars(args).items() if not callable(v)}
+    write_gff3(records, base + ".clusters.gff3", annotated=bool(annotation_specs))
+    params = _run_params(args)
     write_run_json(params, base + ".run.json")
     log(f"Written: {base}.clusters.tsv / .gff3 / .run.json", "INFO")

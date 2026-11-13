@@ -23,14 +23,22 @@ def _cell(value):
     return str(value).replace("\t", " ").replace("\n", " ")
 
 
-def write_tsv(records, path, gate_classes=()):
-    """`gate_classes` appends one gate_<class> column (0/1) per class, read off r.gates."""
+def write_tsv(records, path, gate_classes=(), annotated=False):
+    """`gate_classes` appends one gate_<class> column (0/1) per class, read off r.gates.
+
+    `annotated` inserts annotation and annotation_support just before review;
+    off, the file is byte-identical to a run without annotation layers.
+    """
     gate_classes = list(gate_classes)
-    head = _COLS + [f"gate_{c}" for c in gate_classes]
+    cols = list(_COLS)
+    if annotated:
+        i = cols.index("review")
+        cols[i:i] = ["annotation", "annotation_support"]
+    head = cols + [f"gate_{c}" for c in gate_classes]
     with open(path, "w") as fh:
         fh.write("\t".join(head) + "\n")
         for r in records:
-            cells = [_cell(getattr(r, c)) for c in _COLS]
+            cells = [_cell(getattr(r, c)) for c in cols]
             cells += [str(int(bool(r.gates.get(c)))) for c in gate_classes]
             fh.write("\t".join(cells) + "\n")
 
@@ -44,7 +52,13 @@ def write_fragments_tsv(fragments, path):
                      f"{f['reads']:.2f}\t{f['read_span']}\t{f['reason']}\n")
 
 
-def write_gff3(records, path):
+def _gff3_escape(text):
+    for ch, code in ((";", "%3B"), ("=", "%3D"), (",", "%2C"), ("&", "%26")):
+        text = text.replace(ch, code)
+    return text
+
+
+def write_gff3(records, path, annotated=False):
     with open(path, "w") as fh:
         fh.write("##gff-version 3\n")
         for r in records:
@@ -52,6 +66,9 @@ def write_gff3(records, path):
             score_col = "." if r.score is None else str(r.score)
             attrs = (f"ID={r.name};score={'NA' if r.score is None else r.score};"
                      f"confidence={r.confidence};review={r.review}")
+            if annotated:
+                attrs += (f";annotation_support={r.annotation_support}"
+                          f";annotation={_gff3_escape(r.annotation)}")
             fh.write("\t".join([
                 r.chrom, "srnaprofiler", r.cls or "unclassified",
                 str(r.start + 1), str(r.end), score_col,

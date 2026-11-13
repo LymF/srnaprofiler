@@ -480,6 +480,13 @@ themselves are defined there. Every module takes --help.
                     help="Model .joblib for --classifier ml (default: the `ml.model` "
                          "key of --config; a relative path is read from the repo root). "
                          "<model>.schema.json must sit beside it")
+    cl.add_argument("--annotation", action="append", dest="annotation", default=None,
+                    metavar="LABEL:PATH",
+                    help="Annotation layer used as evidence, repeatable. LABEL is "
+                         "one of gene, te, ncrna, phas; "
+                         "PATH is a GFF3/GTF/BED/RepeatMasker .out. Adds "
+                         "annotation and annotation_support columns; the class "
+                         "is never changed, confidence moves by a capped nudge")
     cl.set_defaults(func=run_classify)
 
     from report_cli import run_report
