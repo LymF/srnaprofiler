@@ -8,6 +8,8 @@ from bisect import bisect_left
 from collections import namedtuple
 from itertools import accumulate
 
+from utils import log
+
 Feature = namedtuple("Feature", "start end strand ftype name")
 
 _STRANDS = ("+", "-", ".")
@@ -141,3 +143,122 @@ class IntervalIndex:
             i -= 1
         res.reverse()
         return res
+
+
+LAYER_KINDS = ("gene", "te", "ncrna", "phas")
+_SPAN_TYPES = {"gene", "mRNA", "transcript", "ncRNA_gene"}
+
+
+class Layer:
+    """One annotation layer: a kind label plus per-contig interval indexes."""
+
+    def __init__(self, kind, path, index, n_features):
+        self.kind = kind
+        self.path = path
+        self.index = index
+        self.n_features = n_features
+
+
+def parse_layer_spec(spec):
+    """Split 'kind:path' on the first ':' and validate the kind."""
+    kind, sep, path = spec.partition(":")
+    if kind not in LAYER_KINDS or not sep or not path:
+        raise ValueError(
+            f"invalid annotation layer {spec!r}: expected <kind>:<path> with "
+            f"kind one of {', '.join(LAYER_KINDS)}")
+    return kind, path
+
+
+def load_layers(specs, known_contigs):
+    """Load layers, dropping contigs absent from known_contigs (warned once per layer)."""
+    layers = []
+    for spec in specs:
+        kind, path = parse_layer_spec(spec)
+        parsed = parse_annotation(path)
+        index = {}
+        n_kept = 0
+        skipped = 0
+        unmatched = []
+        for contig, feats in parsed.items():
+            if contig in known_contigs:
+                index[contig] = IntervalIndex(feats)
+                n_kept += len(feats)
+            else:
+                skipped += len(feats)
+                unmatched.append(contig)
+        if skipped:
+            log(f"annotation layer {kind} ({path}): skipped {skipped} "
+                f"features on {len(unmatched)} contigs not in the reference "
+                f"(e.g. {', '.join(unmatched[:3])})", "WARN")
+        layers.append(Layer(kind, path, index, n_kept))
+    return layers
+
+
+def _covered(feats, start, end):
+    """Bases of [start, end) covered by the union of feats."""
+    ivs = sorted((max(f.start, start), min(f.end, end)) for f in feats)
+    total = 0
+    cur_s = cur_e = None
+    for a, b in ivs:
+        if b <= a:
+            continue
+        if cur_e is None or a > cur_e:
+            if cur_e is not None:
+                total += cur_e - cur_s
+            cur_s, cur_e = a, b
+        else:
+            cur_e = max(cur_e, b)
+    if cur_e is not None:
+        total += cur_e - cur_s
+    return total
+
+
+def _relation(locus_strand, feat_strand):
+    if locus_strand not in ("+", "-") or feat_strand not in ("+", "-"):
+        return "."
+    return "sense" if locus_strand == feat_strand else "antisense"
+
+
+def _best(feats, start, end):
+    return max(feats, key=lambda f: min(f.end, end) - max(f.start, start))
+
+
+def _entry(kind, feats, start, end, strand, frac):
+    b = _best(feats, start, end)
+    return f"{kind}:{b.name or b.ftype}:{_relation(strand, b.strand)}:{frac:.2f}"
+
+
+def summarize_locus(chrom, start, end, strand, layers, min_overlap):
+    """Contexts and a text summary of what a locus overlaps, per layer."""
+    length = end - start
+    contexts = set()
+    entries = []
+    have_gene = False
+    for layer in layers:
+        if layer.kind == "gene":
+            have_gene = True
+        idx = layer.index.get(chrom)
+        if idx is None or length <= 0:
+            continue
+        feats = idx.overlaps(start, end)
+        if not feats:
+            continue
+        if layer.kind == "gene":
+            exon_like = [f for f in feats if f.ftype not in _SPAN_TYPES]
+            span = [f for f in feats if f.ftype in _SPAN_TYPES]
+            ef = _covered(exon_like, start, end) / length
+            sf = _covered(span, start, end) / length
+            if ef >= min_overlap:
+                contexts.add("gene_exon")
+                entries.append(_entry("gene", exon_like, start, end, strand, ef))
+            elif sf >= min_overlap:
+                contexts.add("gene_intron")
+                entries.append(_entry("gene", span, start, end, strand, sf))
+        else:
+            frac = _covered(feats, start, end) / length
+            if frac >= min_overlap:
+                contexts.add(layer.kind)
+                entries.append(_entry(layer.kind, feats, start, end, strand, frac))
+    if have_gene and not contexts:
+        contexts.add("intergenic")
+    return {"contexts": contexts, "text": "|".join(entries)}
