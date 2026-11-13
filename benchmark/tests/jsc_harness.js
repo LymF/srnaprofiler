@@ -3,7 +3,7 @@
 // It implements only the DOM surface app.js touches: a missing method throws, on purpose.
 (function () {
   var WIDTH = CFG.width || 720;
-  var stats = {downloads: [], focus: 0, timers: []};
+  var stats = {downloads: [], focus: 0, timers: [], raf: []};
 
   function ClassList(e) { this.e = e; }
   ClassList.prototype = {
@@ -151,6 +151,9 @@
     addEventListener: function (t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); },
     setTimeout: function (f) { stats.timers.push(f); return stats.timers.length; },
     clearTimeout: function () {},
+    // frames run only when the probe says so (H.frames), so a throttled redraw is observable
+    requestAnimationFrame: function (f) { stats.rafId = (stats.rafId || 0) + 1; stats.raf.push({id: stats.rafId, f: f}); return stats.rafId; },
+    cancelAnimationFrame: function (id) { stats.raf = stats.raf.filter(function (q) { return q.id !== id; }); },
     ResizeObserver: ResizeObserver,
     XMLSerializer: XMLSerializer,
     Blob: Blob,
@@ -227,6 +230,16 @@
     },
     serialize: function (e) { return ser(e, true); },
     stats: function () { return stats; },
+    // run the queued animation frames; returns how many callbacks ran
+    frames: function () {
+      var n = 0, q;
+      while (stats.raf.length && n < 100) {
+        q = stats.raf; stats.raf = [];
+        q.forEach(function (it) { it.f(0); n += 1; });
+      }
+      return n;
+    },
+    pendingFrames: function () { return stats.raf.length; },
     scrolls: function () { return scrolls; },
     activeEl: function () { return document.activeElement; }
   };

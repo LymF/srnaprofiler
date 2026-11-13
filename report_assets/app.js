@@ -909,15 +909,20 @@
       if (fk && restore[fk]) { restore[fk](); }
     }
     var tools = h("div", "rpt-srna-fig__tools");
+    add(tools, o.tools);
+    // the table is built when first shown; a figure whose data changes (the genome view) rebuilds it
+    function fillTable() {
+      var t = o.table();
+      clear(tbl);
+      add(tbl, [t.plain ? null : note(t.exact ? T("ui.fig.exact") : T("ui.fig.precision")), dataTable(t.head, t.rows, t.left)].concat(t.more || []));
+    }
+    var tableStale = false;
     if (o.table) {
       var tb = button(T("ui.fig.table"));
       tb.setAttribute("aria-pressed", "false");
       tb.addEventListener("click", function () {
         tableOn = !tableOn;
-        if (tableOn && !tbl.firstChild) {
-          var t = o.table();
-          add(tbl, [t.plain ? null : note(t.exact ? T("ui.fig.exact") : T("ui.fig.precision")), dataTable(t.head, t.rows, t.left)].concat(t.more || []));
-        }
+        if (tableOn && (!tbl.firstChild || tableStale)) { fillTable(); tableStale = false; }
         if (tableOn) { plot.setAttribute("hidden", ""); tbl.removeAttribute("hidden"); } else {
           tbl.setAttribute("hidden", ""); plot.removeAttribute("hidden"); render(true);
         }
@@ -928,19 +933,26 @@
       });
       var dl = button(T("ui.fig.svg"));
       dl.addEventListener("click", function () {
+        if (o.flush) { o.flush(); }
         if (!svg) { render(true); }
         download(svg, o.file + ".svg");
       });
       add(tools, [tb, dl]);
     }
+    var nEl = o.n ? h("span", "rpt-srna-fig__n", o.n) : null;
     var title = h("h3", "rpt-srna-fig__title", [o.letter ? h("span", "rpt-srna-fig__letter", o.letter) : null,
-      h("span", "", o.title), o.n ? h("span", "rpt-srna-fig__n", o.n) : null]);
+      h("span", "", o.title), nEl]);
     if (o.tip) { title.setAttribute("title", o.tip); }
     var el = h("section", "rpt-srna-fig" + (o.wide ? " rpt-srna-fig--wide" : ""), [
       h("div", "rpt-srna-fig__head", [title, tools]), leg,
       o.body || plot, o.body ? null : tbl]);
     el.setAttribute("data-fig", o.letter || o.id || o.file);
     if (!o.body) { (o.live || live).push({plot: plot, render: render}); }
+    // hands the genome figure what it needs to redraw itself: the plot box, the range text and the redraw
+    if (o.setup) {
+      o.setup({plot: plot, n: nEl, render: render, label: lab,
+        table: function () { if (tableOn) { fillTable(); } else { tableStale = true; } }});
+    }
     return el;
   }
   function legend(items) {
@@ -1469,6 +1481,35 @@
   function gmClip(s, e, ws, we) {
     return {s: Math.max(s, ws), e: Math.min(e, we), l: s < ws, r: e > we};
   }
+  // ---- view helpers (genomic 0-based [start, end) pairs; pure) ----
+  var GM_MIN = 40;
+  function gmMinSpan(win) { return Math.min(GM_MIN, Math.max(0, win[1] - win[0])); }
+  // a view of `span` bp starting near `vs`, shifted to lie inside the window
+  function gmFit(vs, span, win) {
+    span = Math.min(Math.round(span), win[1] - win[0]);
+    vs = Math.min(Math.max(Math.round(vs), win[0]), win[1] - span);
+    return [vs, vs + span];
+  }
+  // zoom by `factor` (2 halves the span, 0.5 doubles it) keeping the position at anchorFrac (0..1) of the view fixed
+  function gmZoom(view, win, factor, anchorFrac) {
+    var span = view[1] - view[0], fr = anchorFrac === undefined ? 0.5 : Math.min(1, Math.max(0, anchorFrac));
+    var ns = Math.max(gmMinSpan(win), Math.round(span / factor));
+    return gmFit(view[0] + fr * span - fr * Math.min(ns, win[1] - win[0]), ns, win);
+  }
+  function gmPan(view, win, delta) { return gmFit(view[0] + delta, view[1] - view[0], win); }
+  // the locus with 10 % each side, at least 40 bp, inside the window
+  function gmLocusView(win, locus) {
+    var pad = (locus[1] - locus[0]) * 0.1, min = gmMinSpan(win);
+    var a = Math.max(win[0], locus[0] - pad), b = Math.min(win[1], locus[1] + pad);
+    if (b - a < min) { return gmFit((a + b) / 2 - min / 2, min, win); }
+    return gmFit(a, b - a, win);
+  }
+  // first and last coverage bin that shows in the view (first > last when none does)
+  function gmBinsInView(cv, view) {
+    var b = cv.b || 1, nb = cv.nb || 0, s = cv.s || 0;
+    var first = Math.max(0, Math.floor((view[0] - s) / b)), last = Math.min(nb - 1, Math.ceil((view[1] - s) / b) - 1);
+    return nb && first <= last ? {first: first, last: last} : {first: 0, last: -1};
+  }
   // greedy lane packing: items [{a, b}] (any order); lane index per item, boxes in a lane
   // keep `gap` apart. `cap` limits the lanes: items that fit in none get lane -1.
   function gmLanes(items, gap, cap, first) {
@@ -1526,6 +1567,7 @@
         else if (kind === "g") {
           var gp = gmGap(rw, a, b, xa, ws, we);
           if (gp[1] >= tw + 14) { it.label = {x: gp[0], anchor: "middle", inside: true}; }
+          else if (b - a >= tw + 16) { it.label = {x: (a + b) / 2, anchor: "middle", inside: true}; }   // zoomed into one gene
         } else if (b - a >= tw + 16) { it.label = {x: (a + b) / 2, anchor: "middle", inside: true}; }
       }
       return it;
@@ -1696,9 +1738,18 @@
     function teName(k) { return k === "other" ? T("ui.gm.te.other") : k; }
     function colorOf(rw) { return rw.kind === "t" ? GM_TE_FILL[rw.cls] : GM_FILL[rw.kind]; }
 
+    // the view: what is drawn, in genomic 0-based coordinates; the stored payload is never refetched
+    var win = [ws, we], view = [ws, we], lay = {x0: GM_GUT, x1: GM_GUT + 1}, ctl = null;
+    function viewIs(v) { return view[0] === v[0] && view[1] === v[1]; }
+    function seen(rw) { return rw.e > view[0] && rw.s < view[1]; }
+
     function draw(svg, cw) {
-      var W = parseFloat(svg.getAttribute("width")), x0 = GM_GUT, x1 = W - GM_RIGHT, span = Math.max(1, we - ws);
-      function xa(p) { return x0 + (Math.min(Math.max(p, ws), we) - ws) / span * (x1 - x0); }
+      var vs = view[0], ve = view[1];
+      var W = parseFloat(svg.getAttribute("width")), x0 = GM_GUT, x1 = W - GM_RIGHT, span = Math.max(1, ve - vs);
+      lay = {x0: x0, x1: x1};
+      function xa(p) { return x0 + (Math.min(Math.max(p, vs), ve) - vs) / span * (x1 - x0); }
+      // lanes come from the whole window, so a feature keeps its lane at every zoom
+      function xaFull(p) { return x0 + (Math.min(Math.max(p, ws), we) - ws) / Math.max(1, we - ws) * (x1 - x0); }
       // ---- plan: heights first, so the locus band can sit behind everything ----
       var y = 0, plan = [], RULER = 58, AXY = 28, HALF = 66, EH = 24, PREC = mi ? 20 : 0;
       plan.push({id: "ruler", y: 0, h: RULER}); y = RULER;
@@ -1707,8 +1758,14 @@
       tracks.forEach(function (t) {
         var given = ly.indexOf(GM_LAYER[t.kind]) >= 0;
         if (!given && !t.rows.length) { t.state = "nolayer"; } else if (!t.rows.length) { t.state = "empty"; }
-        t.place = gmPlace(t.kind, t.rows, xa, x0, x1, ws, we);
-        var more = (mo[t.kind] || 0) + t.place.dropped;
+        var full = gmPlace(t.kind, t.rows, xaFull, x0, x1, ws, we), dropped = 0;
+        t.place = viewIs(win) ? full : gmPlace(t.kind, t.rows, xa, x0, x1, vs, ve);
+        t.place.items.forEach(function (it, i) {
+          it.lane = full.items[i].lane;
+          if (it.lane < 0 && seen(it.row)) { dropped++; }
+        });
+        t.place.lanes = full.lanes;       // the lane layout of the window stays: nothing shifts when zooming
+        var more = (mo[t.kind] || 0) + dropped;
         t.more = more;
         var lh = GM_LANE[t.kind], body = t.state ? 28 : t.place.lanes * lh + 12;
         if (more) { body = Math.max(body, 46); }
@@ -1717,12 +1774,14 @@
       });
       var H = y + 4;
       // ---- locus band, vertical grid, separators ----
-      var lx0 = xa(loc[0]), lx1 = Math.max(xa(loc[1]), lx0 + 2);
-      svg.appendChild(sv("rect", {x: f2(lx0), y: AXY, width: f2(lx1 - lx0), height: H - AXY, fill: GM_BAND,
-        "class": "rpt-gm-band"}));
+      var lx0 = xa(loc[0]), lx1 = Math.max(xa(loc[1]), lx0 + 2), inLoc = loc[1] > vs && loc[0] < ve;
+      if (inLoc) {
+        svg.appendChild(sv("rect", {x: f2(lx0), y: AXY, width: f2(lx1 - lx0), height: H - AXY, fill: GM_BAND,
+          "class": "rpt-gm-band"}));
+      }
       var room = Math.max(2, Math.floor((x1 - x0) / (num(we).length * 8 + 24)));
-      var st = niceStep(Math.max(1, we - ws), room), lab = [];
-      for (var p = Math.ceil((ws + 1) / st) * st; p <= we; p += st) { lab.push([xa(p - 1), num(p)]); }
+      var st = niceStep(Math.max(1, ve - vs), room), lab = [];
+      for (var p = Math.ceil((vs + 1) / st) * st; p <= ve; p += st) { lab.push([xa(p - 1), num(p)]); }
       lab.forEach(function (t) {
         svg.appendChild(sv("line", {x1: f2(t[0]), x2: f2(t[0]), y1: AXY, y2: H - 4, stroke: GRID, "stroke-width": 1,
           "shape-rendering": "crispEdges", "class": "rpt-gm-vgrid", opacity: 0.7}));
@@ -1736,30 +1795,41 @@
       });
       xTicks(svg, lab, AXY - 11);
       svg.appendChild(text(8, AXY - 11, r.h, {cls: "rpt-gm-chrom", fill: INK, weight: 500}));
-      [lx0, lx1].forEach(function (x) {
-        svg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: AXY, y2: H - 4, stroke: ACCENT, "stroke-width": 1,
-          "shape-rendering": "crispEdges", "class": "rpt-gm-edge", opacity: 0.85}));
-      });
-      svg.appendChild(sv("rect", {x: f2(lx0), y: AXY - 1, width: f2(lx1 - lx0), height: 4, fill: ACCENT, "class": "rpt-gm-locus"}));
-      var lw = T("ui.gm.locus").length * GM_CHAR, lt = text(lx1 + 6, AXY + 19, T("ui.gm.locus"), {fill: "#1a6cb8", cls: "rpt-gm-loclabel"});
-      if (lx1 + 6 + lw > x1) { lt.setAttribute("x", f2(lx0 - 6)); lt.setAttribute("text-anchor", "end"); }
-      svg.appendChild(lt);
+      if (inLoc) {
+        [lx0, lx1].forEach(function (x) {
+          svg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: AXY, y2: H - 4, stroke: ACCENT, "stroke-width": 1,
+            "shape-rendering": "crispEdges", "class": "rpt-gm-edge", opacity: 0.85}));
+        });
+        svg.appendChild(sv("rect", {x: f2(lx0), y: AXY - 1, width: f2(lx1 - lx0), height: 4, fill: ACCENT, "class": "rpt-gm-locus"}));
+        var lw = T("ui.gm.locus").length * GM_CHAR, lt = text(lx1 + 6, AXY + 19, T("ui.gm.locus"), {fill: "#1a6cb8", cls: "rpt-gm-loclabel"});
+        if (lx1 + 6 + lw > x1) { lt.setAttribute("x", f2(lx0 - 6)); lt.setAttribute("text-anchor", "end"); }
+        svg.appendChild(lt);
+      }
       function tlabel(pl, title, sub) {
         svg.appendChild(text(8, pl.y + 21, title, {fill: INK, weight: 500, cls: "rpt-gm-tl"}));
         // the unit wraps into the gutter so it never meets the tick labels
         gmWrap(sub, 9).forEach(function (ln, i) { svg.appendChild(text(8, pl.y + 41 + i * 17, ln, {cls: "rpt-gm-ts"})); });
       }
       // ---- coverage ----
-      var pc = plan[1], base = pc.y + PREC + 8 + HALF, tk = ticks(cov.top, 2), sc = HALF / tk.top;
+      // only the bins in view count: the y axis is rescaled to them (the unit shared across series is unchanged)
+      var bv = gmBinsInView(cv, [vs, ve]), vTop = 0, vEnds = 0, vTot = {"+": 0, "-": 0}, bi;
+      for (bi = bv.first; bi <= bv.last; bi++) {
+        STRANDS.forEach(function (s) {
+          vTot[s] = Math.max(vTot[s], cov.tot[s][bi]);
+          vEnds = Math.max(vEnds, cov.ends[s][bi]);
+        });
+      }
+      vTop = Math.max(vTot["+"], vTot["-"]);
+      var pc = plan[1], base = pc.y + PREC + 8 + HALF, tk = ticks(vTop, 2), sc = HALF / tk.top;
       tlabel(pc, T(GM_TITLE.cv), T("ui.axis.depth"));
       yGrid(svg, x0, x1, base, HALF, -1, tk);
       yGrid(svg, x0, x1, base, HALF, 1, tk);
-      function colX(i) { return [xa(cv.s + i * bsz), xa(Math.min(cv.s + (i + 1) * bsz, we))]; }
+      function colX(i) { return [xa(cv.s + i * bsz), xa(Math.min(cv.s + (i + 1) * bsz, we))]; }   // bins at the view edge are cut
       STRANDS.forEach(function (s) {
         var dir = s === "+" ? -1 : 1;
         (cv.k || []).forEach(function (k, ki) {
           var dpath = "";
-          for (var i = 0; i < nb; i++) {
+          for (var i = bv.first; i <= bv.last; i++) {
             var v = cov.vals[s][ki][i];
             if (!(v > 0)) { continue; }
             var below = 0;
@@ -1770,14 +1840,14 @@
           }
           if (dpath) { svg.appendChild(sv("path", {d: dpath, fill: GM_SIZE_FILL[k] || OTHER_BAR, "class": "rpt-gm-cov", "data-k": k, "data-s": s})); }
         });
-        if (!(maxOf(cov.tot[s]) > 0)) { emptyNote(svg, x0, x1, base + dir * HALF / 2, "ui.fig.nostrand"); }
+        if (!(vTot[s] > 0)) { emptyNote(svg, x0, x1, base + dir * HALF / 2, "ui.fig.nostrand"); }
       });
       zeroLine(svg, x0, x1, base);
-      if (nb) {
+      if (bv.last >= bv.first) {
         var cols = [];
-        for (var bi = 0; bi < nb; bi++) { cols.push(colX(bi)); }
-        hits(svg, cols, base - HALF, base + HALF, function (i) {
-          var rowsT = [];
+        for (bi = bv.first; bi <= bv.last; bi++) { cols.push(colX(bi)); }
+        hits(svg, cols, base - HALF, base + HALF, function (j) {
+          var i = bv.first + j, rowsT = [];
           STRANDS.forEach(function (s) {
             rowsT.push({value: val(cov.tot[s][i]), label: strandLabel(s)});
             (cv.k || []).forEach(function (k, ki) {
@@ -1791,23 +1861,25 @@
       if (mi) {
         var px0 = xa(mi.lo), px1 = Math.max(xa(mi.lo + mi.L), px0 + 3), py = pc.y + 11;
         var pg = sv("g", {"class": "rpt-gm-prec"});
-        pg.appendChild(sv("line", {x1: f2(px0), x2: f2(px1), y1: py, y2: py, stroke: GM_PREC, "stroke-width": 3, "stroke-linecap": "round"}));
-        [px0, px1].forEach(function (x) { pg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: py - 4, y2: py + 4, stroke: GM_PREC, "stroke-width": 2})); });
-        var pt = text(px1 + 8, py + 4.5, T("mi.title"), {fill: INK, cls: "rpt-gm-lb"});
-        if (px1 + 8 + T("mi.title").length * GM_CHAR > x1) { pt.setAttribute("x", f2(px0 - 8)); pt.setAttribute("text-anchor", "end"); }
-        pg.appendChild(pt);
-        svg.appendChild(pg);
-        gmFeatHits(svg, [{x: px0, y: py - 8, w: px1 - px0, h: 16, track: "mi",
-          tip: {head: T("mi.title"), rows: [{value: T("ui.gm.tip.pos"), label: gmCoords(mi.lo, mi.lo + mi.L)}]}}]);
+        if (mi.lo + mi.L > vs && mi.lo < ve) {
+          pg.appendChild(sv("line", {x1: f2(px0), x2: f2(px1), y1: py, y2: py, stroke: GM_PREC, "stroke-width": 3, "stroke-linecap": "round"}));
+          [px0, px1].forEach(function (x) { pg.appendChild(sv("line", {x1: f2(x), x2: f2(x), y1: py - 4, y2: py + 4, stroke: GM_PREC, "stroke-width": 2})); });
+          var pt = text(px1 + 8, py + 4.5, T("mi.title"), {fill: INK, cls: "rpt-gm-lb"});
+          if (px1 + 8 + T("mi.title").length * GM_CHAR > x1) { pt.setAttribute("x", f2(px0 - 8)); pt.setAttribute("text-anchor", "end"); }
+          pg.appendChild(pt);
+          svg.appendChild(pg);
+          gmFeatHits(svg, [{x: px0, y: py - 8, w: px1 - px0, h: 16, track: "mi",
+            tip: {head: T("mi.title"), rows: [{value: T("ui.gm.tip.pos"), label: gmCoords(mi.lo, mi.lo + mi.L)}]}}]);
+        }
       }
       // ---- 5' ends ----
-      var pe = plan[2], eb = pe.y + 8 + EH, ek = ticks(cov.eTop, 1), esc = EH / ek.top;
+      var pe = plan[2], eb = pe.y + 8 + EH, ek = ticks(vEnds, 1), esc = EH / ek.top;
       tlabel(pe, T(GM_TITLE.ends));
       yGrid(svg, x0, x1, eb, EH, -1, ek);
       yGrid(svg, x0, x1, eb, EH, 1, ek);
       STRANDS.forEach(function (s) {
         var dir = s === "+" ? -1 : 1, dp = "";
-        for (var i = 0; i < nb; i++) {
+        for (var i = bv.first; i <= bv.last; i++) {
           var v = cov.ends[s][i];
           if (!(v > 0)) { continue; }
           var c = colX(i), gp = c[1] - c[0] >= 3 ? 0.5 : 0, yv = eb + dir * Math.max(1, v * esc);
@@ -1817,10 +1889,11 @@
         if (dp) { svg.appendChild(sv("path", {d: dp, fill: STRAND_FILL[s], "class": "rpt-gm-end", "data-s": s})); }
       });
       zeroLine(svg, x0, x1, eb);
-      if (nb) {
+      if (bv.last >= bv.first) {
         var ecols = [];
-        for (var ei = 0; ei < nb; ei++) { ecols.push(colX(ei)); }
-        hits(svg, ecols, eb - EH, eb + EH, function (i) {
+        for (var ei = bv.first; ei <= bv.last; ei++) { ecols.push(colX(ei)); }
+        hits(svg, ecols, eb - EH, eb + EH, function (j) {
+          var i = bv.first + j;
           return {head: gmCoords(cv.s + i * bsz, Math.min(cv.s + (i + 1) * bsz, we)), rows: STRANDS.map(function (s) {
             return {key: STRAND_FILL[s], value: val(cov.ends[s][i]), label: strandLabel(s)};
           })};
@@ -1835,9 +1908,9 @@
             {cls: "rpt-gm-empty"})));
         }
         t.place.items.forEach(function (it) {
-          if (it.lane < 0) { return; }
+          if (it.lane < 0 || !seen(it.row)) { return; }
           var cy = t.y + 6 + it.lane * t.lh + t.lh / 2, rw = it.row;
-          svg.appendChild(t.kind === "g" ? gmGene(it, cy, x0, x1, ws, we, xa) :
+          svg.appendChild(t.kind === "g" ? gmGene(it, cy, x0, x1, vs, ve, xa) :
             gmBar(it, cy, x0, x1, colorOf(rw), t.kind === "t" ? 8 : 12));
           fh.push({x: it.a, y: cy - t.lh / 2 + 1, w: it.b - it.a, h: t.lh - 2, track: t.kind, tip: gmTip(rw)});
         });
@@ -1860,15 +1933,122 @@
       legendItems = legendItems.concat([{kind: "none", label: T("ui.gm.legend.te"), head: 1}],
         teKeys.map(function (k) { return {kind: "sw", color: GM_TE_FILL[k], label: teName(k)}; }));
     }
-    return figure({letter: "I", title: T("ui.gm.title"),
-      n: T("ui.gm.range", {chrom: r.h, start: num(loc[0] + 1), end: num(loc[1]), n: num(loc[1] - loc[0])}),
-      legend: legendItems, height: 420, wide: true, width: 560, draw: draw, file: fileName(r, "I"),
+    // ---- controls: zoom, pan, locus, reset (buttons), wheel, drag and keys (on the plot) ----
+    var frame = 0, drag = null;
+    function rangeText() {
+      return T("ui.gm.range", {chrom: r.h, start: num(view[0] + 1), end: num(view[1]), n: num(view[1] - view[0])});
+    }
+    function mk(label, key, sym, fn) {
+      var b = button(label || sym);
+      b.setAttribute("aria-label", T(key));
+      b.setAttribute("title", T(key));
+      b.addEventListener("click", function () { fn(); });
+      return b;
+    }
+    var locView = gmLocusView(win, loc), minSpan = gmMinSpan(win);
+    var ui = {
+      zin: mk("+", "ui.gm.zoom.in", "+", function () { setView(gmZoom(view, win, 2, 0.5)); }),
+      zout: mk("\u2212", "ui.gm.zoom.out", "-", function () { setView(gmZoom(view, win, 0.5, 0.5)); }),
+      left: mk("\u25c0", "ui.gm.pan.left", "<", function () { setView(gmPan(view, win, -Math.round((view[1] - view[0]) * 0.2))); }),
+      right: mk("\u25b6", "ui.gm.pan.right", ">", function () { setView(gmPan(view, win, Math.round((view[1] - view[0]) * 0.2))); }),
+      loc: mk(T("ui.gm.locus"), "ui.gm.locus", "", function () { setView(locView); }),
+      reset: mk(T("ui.gm.zoom.reset"), "ui.gm.zoom.reset", "", function () { setView(win.slice()); })
+    };
+    function setDisabled(b, on) { if (on) { b.setAttribute("disabled", ""); } else { b.removeAttribute("disabled"); } }
+    function sync() {
+      var sp = view[1] - view[0];
+      setDisabled(ui.zin, sp <= minSpan);
+      setDisabled(ui.zout, viewIs(win));
+      setDisabled(ui.reset, viewIs(win));
+      setDisabled(ui.left, view[0] <= ws);
+      setDisabled(ui.right, view[1] >= we);
+      setDisabled(ui.loc, viewIs(locView));
+      if (ctl && ctl.n) { clear(ctl.n); add(ctl.n, rangeText()); }
+    }
+    function redraw() { frame = 0; if (ctl) { ctl.render(true); } }
+    // the state and the range text change at once; the SVG is redrawn once per animation frame
+    function setView(v) {
+      if (viewIs(v)) { return; }
+      view = v;
+      sync();
+      hideTip();
+      if (ctl) { ctl.table(); }
+      if (frame) { return; }
+      if (window.requestAnimationFrame) { frame = window.requestAnimationFrame(redraw); } else { redraw(); }
+    }
+    function flush() {
+      if (!frame) { return; }
+      if (window.cancelAnimationFrame) { window.cancelAnimationFrame(frame); }
+      redraw();
+    }
+    // the genomic position under a pointer, as a fraction of the plot (0..1)
+    function fracAt(ev) {
+      var bb = ctl.plot.getBoundingClientRect(), x = ev.clientX - bb.left + (ctl.plot.scrollLeft || 0);
+      return Math.min(1, Math.max(0, (x - lay.x0) / Math.max(1, lay.x1 - lay.x0)));
+    }
+    function within(box, el) {
+      for (; el; el = el.parentNode) { if (el === box) { return true; } }
+      return false;
+    }
+    function setup(c) {
+      ctl = c;
+      var plot = c.plot;
+      plot.setAttribute("tabindex", "0");
+      plot.setAttribute("role", "group");
+      plot.setAttribute("aria-label", c.label);
+      plot.classList.add("rpt-gm-plot");
+      sync();
+      // plain wheel zooms only while the plot has the keyboard focus (click it first); ctrl or cmd + wheel, which is also
+      // how a trackpad pinch arrives, zooms anywhere over it. Otherwise the wheel scrolls the page as usual.
+      plot.addEventListener("wheel", function (ev) {
+        if (!(ev.ctrlKey || ev.metaKey || within(plot, document.activeElement))) { return; }
+        if (ev.preventDefault) { ev.preventDefault(); }
+        var dy = Math.max(-300, Math.min(300, ev.deltaY || 0));
+        if (!dy) { return; }
+        setView(gmZoom(view, win, Math.pow(2, -dy / 100), fracAt(ev)));
+      }, {passive: false});
+      plot.addEventListener("pointerdown", function (ev) {
+        if (ev.button) { return; }
+        drag = {x: ev.clientX, v: view.slice(), on: false, id: ev.pointerId};
+      });
+      plot.addEventListener("pointermove", function (ev) {
+        if (!drag) { return; }
+        var dx = ev.clientX - drag.x;
+        if (!drag.on) {
+          if (Math.abs(dx) < 4) { return; }
+          drag.on = true;
+          if (plot.setPointerCapture && drag.id !== undefined) { try { plot.setPointerCapture(drag.id); } catch (e) { drag.id = undefined; } }
+        }
+        setView(gmPan(drag.v, win, -Math.round(dx * (drag.v[1] - drag.v[0]) / Math.max(1, lay.x1 - lay.x0))));
+      });
+      function end() { drag = null; }
+      ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (t) { plot.addEventListener(t, end); });
+      plot.addEventListener("keydown", function (ev) {
+        if (ev.ctrlKey || ev.metaKey || ev.altKey) { return; }
+        var k = ev.key, fn = null;
+        // on a feature the arrows walk the features instead; the other keys work from anywhere in the plot
+        if ((k === "ArrowLeft" || k === "ArrowRight") && ev.target === plot) {
+          fn = function () { ui[k === "ArrowLeft" ? "left" : "right"].click(); };
+        } else if (k === "+" || k === "=") { fn = function () { ui.zin.click(); }; }
+        else if (k === "-" || k === "_") { fn = function () { ui.zout.click(); }; }
+        else if (k === "0") { fn = function () { ui.reset.click(); }; }
+        if (!fn) { return; }
+        if (ev.preventDefault) { ev.preventDefault(); }
+        // a redraw replaces the focused feature: the focus moves to the plot so the keys keep working
+        if (ev.target !== plot && plot.focus) { plot.focus(); }
+        fn();
+      });
+    }
+
+    return figure({letter: "I", title: T("ui.gm.title"), n: rangeText(), tools: [h("span", "rpt-gm-ctl", [ui.zin, ui.zout, ui.left, ui.right, ui.loc, ui.reset])],
+      legend: legendItems, height: 420, wide: true, width: 560, draw: draw, file: fileName(r, "I"), setup: setup, flush: flush,
       table: function () {
         var out = [];
         tracks.forEach(function (t) {
           t.rows.forEach(function (rw) {
+            if (!seen(rw)) { return; }
             out.push([T(GM_TITLE[t.kind]), rw.label || "", rw.type || "", gmStrandText(rw.strand), num(rw.s + 1), num(rw.e),
-              rw.hl ? "✓" : ""]);
+              rw.hl ? "\u2713" : ""]);
           });
         });
         return {head: [T("ui.gm.th.track"), T("ui.gm.th.name"), T("ui.gm.tip.type"), T("ui.th.strand"), T("ui.gm.th.start"),
