@@ -1795,10 +1795,16 @@
     }
     var h2 = h("h2", "", r.n);
     h2.setAttribute("tabindex", "-1");
+    var anEl = null;
+    if (d && d.an) {
+      var chip = r.an ? h("span", "rpt-srna-an " + r.an, r.an) : null;
+      anEl = h("p", "rpt-srna-loc", [h("code", "", d.an), chip ? " " : "", chip]);
+    }
     add(box, [
       h("div", "rpt-srna-head", [h2, tag(r.c), conf, flag]),
       h("p", "rpt-srna-loc", T("ui.detail.sub", {where: where(r), reads: num(r.r)}) +
-        (typeof r.z === "number" ? T("ui.detail.size", {z: r.z}) : ""))]);
+        (typeof r.z === "number" ? T("ui.detail.size", {z: r.z}) : "")),
+      anEl, META.an && d ? note(META.an) : null]);
     if (!d) {
       box.appendChild(emptyMsg(T("ui.row.nodetail")));
       show("detail");

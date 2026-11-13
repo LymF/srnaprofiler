@@ -289,6 +289,60 @@ just leave that part out. `--no-library-qc` skips the extra BAM pass and the who
 
 ---
 
+## Annotation (optional)
+
+`classify --annotation LABEL:PATH` (repeatable) reads genome annotation as extra evidence for each
+locus. It is off by default. The class is never changed by it: annotation only nudges the
+confidence and can flag a locus for review.
+
+```
+srnaprofiler classify ... --annotation gene:genes.gff3 --annotation te:repeats.out.gz
+```
+
+- **Formats**: GFF3, GTF, BED, RepeatMasker `.out` and EDTA `.TEanno.gff3`, each plain or `.gz`.
+- **Labels**: `gene` (exon, intron), `te` (family and class when the file gives them), `ncrna` and
+  `phas` (known PHAS loci). A locus is tagged with a layer when the layer covers at least half of it
+  (`annotation.min_overlap`).
+- **Output**: two columns just before `review`, `annotation` (for example
+  `te:LTR/Gypsy:antisense:0.82|gene:exon:sense:0.10`, empty when nothing overlaps) and
+  `annotation_support` (`supports`, `conflicts`, `neutral` or `none`). The GFF3 gets the same two
+  attributes, and the `report` shows them on the cluster page.
+
+The support call comes from a biology table in `rules.yaml` / `rules.plant.yaml` (`annotation:`
+section, editable in a custom `--config`):
+
+| class | supports | conflicts |
+|---|---|---|
+| piRNA (animal) | TE | gene exon |
+| hcsiRNA (plant) | TE | gene exon |
+| siRNA | TE, gene exon | none |
+| phasiRNA, phasiRNA24 (plant) | known PHAS locus | none |
+| miRNA | intergenic, gene intron | TE |
+
+A locus whose contexts match neither column is `neutral`. For `supports` the confidence goes up by
+`annotation.nudge` (0.05, capped at 1); for `conflicts` it goes down by the same amount and
+`review` is set. `miRNA` and `ambiguous` calls get the annotation text and the support label, but
+no nudge and no review flag.
+
+Annotation is incomplete, above all for TEs and for non-model species, so a missing feature is
+never evidence against a class. Only a feature that is there can support or conflict.
+
+**TE annotation without a whole-genome run.** `annotate-loci` runs RepeatMasker on the classified
+loci only, which is far cheaper than masking the genome:
+
+```
+srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa -o out -p loci --species insects
+srnaprofiler classify ... --annotation te:out/loci.te.gff3
+```
+
+Use `--te-library` instead of `--species` for a custom library. RepeatMasker is an optional
+install (`environment.yml`).
+
+Without `--annotation`, nothing changes: `classify` writes byte-identical outputs to a run before
+the layer existed, which is what keeps the benchmark numbers valid.
+
+---
+
 ## Output
 
 `classify` writes `<prefix>.clusters.tsv`, `<prefix>.clusters.gff3`, `<prefix>.run.json` and
@@ -330,6 +384,7 @@ are larger by the multiplicity factor, 3.19× in one Drosophila library.
 | `score` | strength of the weakest defining evidence, in [0, 1]; a normalized Wilson lower bound against each signature's null, so it ranks reliability rather than sample size |
 | `s_1u`, `s_5a`, `s_fractop_bid`, `s_pingpong`, `s_phase` | the individual p-values, as −log10 |
 | `evidence` | which terms fired for the assigned class |
+| `annotation`, `annotation_support` | only with `--annotation`: overlapping features and whether they support or conflict with the class (see Annotation, above) |
 
 `score` and the `s_*` columns answer different questions: `s_*` say how surprising a signature
 is, which grows with depth; `score` says how strong the effect is, which does not. Use `score`

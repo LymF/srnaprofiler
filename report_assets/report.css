@@ -2299,6 +2299,10 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-conf { font-family: var(--rpt-font-mono); font-size: 14px; color: var(--rpt-text); }
 .rpt-srna-flag { font-size: 13px; font-weight: 500; color: #7a5208; background: #fef3d7;
   border: 1px solid #f3d38c; border-radius: 99px; padding: 2px 10px; }
+.rpt-srna-an { font-family: var(--rpt-font); font-size: 13px; font-weight: 500; border-radius: 99px;
+  padding: 2px 10px; border: 1px solid var(--rpt-border); color: var(--rpt-text-2); background: var(--rpt-surface); }
+.rpt-srna-an.supports { color: #1f7a3c; background: #e6f4ea; border-color: #b9dfc4; }
+.rpt-srna-an.conflicts { color: #7a5208; background: #fef3d7; border-color: #f3d38c; }
 .rpt-srna-strip { display: flex; flex-wrap: wrap; background: var(--rpt-surface);
   border: 1px solid var(--rpt-border); border-radius: var(--rpt-radius); margin: var(--rpt-space-3) 0; }
 .rpt-srna-strip > div { padding: 10px 16px; border-right: 1px solid var(--rpt-border); min-width: 0; }

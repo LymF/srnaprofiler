@@ -8,13 +8,16 @@ Payload (JSON in <script id="report-data">), read by the front end:
   rows[i]: n name, h chrom, s start, e end, r reads, c class, f confidence (null when
     ambiguous), z dominant length, v dot levels (one digit per dot, see _LEVEL),
     rv 1 if the classifier flagged the locus for review (else absent),
-    d 1 if details[str(i)] exists, nc nearest class and u reason (ambiguous only).
+    an annotation support (supports|conflicts|neutral; absent when none or without
+    classify --annotation), d 1 if details[str(i)] exists, nc nearest class and u reason (ambiguous only).
   details[str(i)]:
     v verdict key in strings (verdict.<class> or verdict.generic; the ambiguous
       one takes its reason from the row's u), seq major sequence, rpm,
     strip [[key, level, value|null]]: keys size (value = dominant length), 1u,
       10a (animal) or 5a (plant), strand (value = plus-strand share), pingpong
       (z, animal), phasing (p), multimap (share); level is a _LEVEL digit string,
+    an annotation text of the locus, e.g. te:LTR/Gypsy:antisense:0.82 (absent when empty;
+      evidence only, the class is never changed by it),
     ctx [reads_pct, conf_pct|null] (percentiles among shown clusters),
     ck [class, [status, observed text], ...] class checklist, rows in meta.cl[class] order
       (status: 1 met, 0 not met, 2 not available, 3 not tested; class is the nearest class
@@ -43,7 +46,9 @@ Payload (JSON in <script id="report-data">), read by the front end:
   meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
     conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary,
-    cl {class: [[check name key, rule text], ...]} the checklist rows per class.
+    cl {class: [[check name key, rule text], ...]} the checklist rows per class,
+    an legend sentence for the annotation chips (present only when some shown locus
+    carries annotation text).
 """
 import base64
 import html
@@ -167,6 +172,8 @@ def _row(i, c, has_detail, ex, kingdom):
          "d": 1 if has_detail else 0}
     if c.review:
         r["rv"] = 1
+    if c.annotation_support != "none":
+        r["an"] = c.annotation_support
     if amb:
         r["nc"] = rt.nearest_class(c)
     if ex["unresolved"]:
@@ -179,6 +186,8 @@ def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None):
          "strip": [[k, _LEVEL[lv], _n(v, 4)] for k, lv, v in ex["strip"]],
          "ctx": [ctx["reads_pct"], ctx["conf_pct"]],
          "seq": c.major_rna, "rpm": _n(c.reads_rpm), "sig": _signals(sig)}
+    if c.annotation:
+        d["an"] = c.annotation
     ck = report_checks.checklist(c, kingdom)
     if ck:
         d["ck"] = ck
@@ -209,7 +218,7 @@ def _payload(sel, summary, signals, title, mirna=None):
     if summary.get("qc"):
         lib["qc"] = summary["qc"]
     S = rt.STRINGS
-    return {
+    out = {
         "library": lib, "counts": counts, "warnings": rt.warnings(sel, summary),
         "rows": rows, "details": details, "strings": S,
         "meta": {"title": title, "floor": _n(sel.floor), "n_total": sel.n_total,
@@ -228,6 +237,11 @@ def _payload(sel, summary, signals, title, mirna=None):
                  "reads_shown": _n(sum(c.reads or 0 for c in sel.shown), 1),
                  "summary": rt.summary_sentence(counts, sel.floor)},
     }
+    if any(c.annotation for c in sel.shown):
+        out["meta"]["an"] = ("Annotation is evidence: it can raise or lower the confidence and "
+                             "flag a locus for review, but it never changes the class. "
+                             "Annotation is incomplete, so no annotation means nothing.")
+    return out
 
 
 # IBM Plex, latin subset (OFL, see report_assets/fonts/LICENSE-IBM-Plex.txt)

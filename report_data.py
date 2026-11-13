@@ -63,6 +63,8 @@ class Cluster:
     phase_number: float = None
     read_span: float = None
     density_pvalue: float = None
+    annotation: str = ""
+    annotation_support: str = "none"
 
 
 def _row_to_cluster(row, has_evidence):
@@ -87,6 +89,8 @@ def _row_to_cluster(row, has_evidence):
         phase_number=_num(row.get("phase_number")),
         read_span=_num(row.get("read_span")),
         density_pvalue=_num(row.get("density_pvalue")),
+        annotation=_str(row.get("annotation")),
+        annotation_support=_str(row.get("annotation_support")) or "none",
     )
 
 
