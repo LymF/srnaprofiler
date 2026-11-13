@@ -264,3 +264,39 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
     if annotated and not contexts:
         contexts.add("intergenic")
     return {"contexts": contexts, "text": "|".join(entries)}
+
+
+def support_for(cls, contexts, table):
+    """'supports', 'conflicts' or 'neutral' for a class given a locus's contexts."""
+    spec = table.get(cls)
+    if not spec or not contexts:
+        return "neutral"
+    if contexts & set(spec.get("supports") or ()):
+        return "supports"
+    if contexts & set(spec.get("conflicts") or ()):
+        return "conflicts"
+    return "neutral"
+
+
+def apply_annotation(records, layers, cfg):
+    """Fill annotation fields; nudge confidence and flag review. Never changes cls."""
+    counts = {"none": 0, "supports": 0, "conflicts": 0, "neutral": 0}
+    if not layers:
+        counts["none"] = len(records)
+        return counts
+    nudge = cfg.get("nudge", 0.05)
+    min_overlap = cfg.get("min_overlap", 0.5)
+    table = cfg.get("classes") or {}
+    for r in records:
+        res = summarize_locus(r.chrom, r.start, r.end, r.strand_call, layers, min_overlap)
+        r.annotation = res["text"]
+        sup = support_for(r.cls, res["contexts"], table)
+        r.annotation_support = sup
+        counts[sup] += 1
+        if r.cls in table and r.cls not in ("miRNA", "ambiguous"):
+            if sup == "supports":
+                r.confidence = min(1.0, round(r.confidence + nudge, 3))
+            elif sup == "conflicts":
+                r.confidence = max(0.0, round(r.confidence - nudge, 3))
+                r.review = True
+    return counts

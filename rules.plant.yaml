@@ -155,6 +155,19 @@ classes:
     w_fractop_mid: 1.0
     defining_evidence: [fractop_bid, size]
 
+annotation:
+  # Defaults from the biology table in the annotation-evidence spec. Annotation
+  # never changes `cls`: it moves confidence by at most `nudge` and sets review
+  # on conflicts. An absent feature is never evidence.
+  min_overlap: 0.5     # fraction of the locus a layer must cover to count
+  nudge: 0.05          # max confidence change from annotation, up or down
+  classes:             # context kinds: te, gene_exon, gene_intron, intergenic, ncrna, phas
+    hcsiRNA: {supports: [te], conflicts: [gene_exon]}
+    siRNA: {supports: [te, gene_exon], conflicts: []}
+    phasiRNA: {supports: [phas], conflicts: []}
+    phasiRNA24: {supports: [phas], conflicts: []}
+    miRNA: {supports: [intergenic, gene_intron], conflicts: [te]}
+
 # Model used by `classify --classifier ml` (path from the repo root; --ml-model overrides). Ignored in the default rules mode.
 ml:
   model: models/plant.joblib

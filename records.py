@@ -112,6 +112,9 @@ class ClusterRecord:
     evidence: str = ""
     gates: dict = field(default_factory=dict)   # class -> passes_gate; gate_<class> TSV columns
     p_real: Optional[float] = None   # ML mode only: probability the locus is a real small-RNA locus
+    # annotation evidence (never changes cls): text summary and supports/conflicts/neutral/none
+    annotation: str = ""
+    annotation_support: str = "none"
 
     @property
     def length(self) -> int:
