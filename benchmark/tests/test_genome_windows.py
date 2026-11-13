@@ -127,3 +127,131 @@ def test_build_windows_keys_and_clamp():
     assert out["cl1"]["w"] == [0, 70] and out["cl1"]["L"] == [10, 20]
     assert out["cl2"]["w"] == [430, 500]
     assert len(out["cl1"]["t"]) == 1 and out["cl2"]["t"] == []
+
+
+# ---- fix round 1 ----
+
+def _gtf_gene(gid, s, e, label, strand="+"):
+    return Feature(s, e, strand, "gene", "gene", gid, "", label)
+
+
+def _gtf_exon(tid, s, e, strand="+"):
+    return Feature(s, e, strand, "exon", "exon", "", tid, "")
+
+
+def test_gtf_gene_with_exons_no_transcript_rows_one_entry():
+    feats = [_gtf_gene("G1", 100, 1000, "Gone"),
+             _gtf_exon("T1", 100, 200), _gtf_exon("T1", 500, 600),
+             _gtf_exon("T2", 100, 200), _gtf_exon("T2", 500, 900)]
+    out = window_features("chr1", 0, 2000, (150, 160), [_layer("gene", feats)])
+    assert len(out["g"]) == 1
+    label, strand, s, e, hl, blocks = out["g"][0]
+    assert label == "Gone" and (s, e, hl) == (100, 900, 1)
+    assert blocks == [["E", 100, 200], ["E", 500, 900]]
+
+
+def test_two_genes_with_orphan_exons_two_entries():
+    feats = [_gtf_gene("G1", 100, 300, "A"), _gtf_gene("G2", 500, 800, "B"),
+             _gtf_exon("T1", 100, 200), _gtf_exon("T2", 500, 700)]
+    out = window_features("chr1", 0, 2000, (0, 1), [_layer("gene", feats)])
+    assert [(r[0], r[5]) for r in out["g"]] == [("A", [["E", 100, 200]]),
+                                                ("B", [["E", 500, 700]])]
+
+
+def test_orphan_exons_without_containing_gene_stay_separate():
+    feats = [_gtf_gene("G1", 100, 300, "A"),
+             _gtf_exon("T1", 100, 200),
+             _gtf_exon("T9", 1000, 1100),
+             _gtf_exon("T8", 150, 250, "-")]  # inside G1 but other strand
+    out = window_features("chr1", 0, 2000, (0, 1), [_layer("gene", feats)])
+    assert len(out["g"]) == 3
+    assert [r[0] for r in out["g"]] == ["A", "", ""]
+    assert out["g"][1][1] == "-"
+
+
+def test_gene_without_blocks_gets_one_span_block():
+    feats = [Feature(100, 300, "+", "gene", "gene", "G", "", "lonely")]
+    out = window_features("chr1", 0, 2000, (0, 1), [_layer("gene", feats)])
+    assert out["g"] == [["lonely", "+", 100, 300, 0, [["E", 100, 300]]]]
+    feats = [Feature(100, 300, "+", "gene", "gene", "G", "", "g"),
+             Feature(100, 300, "+", "mRNA", "mRNA", "T", "G", "t")]
+    out = window_features("chr1", 0, 2000, (0, 1), [_layer("gene", feats)])
+    assert out["g"][0][5] == [["E", 100, 300]]
+
+
+def test_build_windows_warns_once_per_missing_contig(capsys):
+    C = namedtuple("C", "name chrom start end")
+    cl = [C("a", "chrX", 10, 20), C("b", "chrX", 30, 40), C("c", "chrY", 5, 9)]
+    out = build_windows(cl, [], 50, {})
+    err = capsys.readouterr().err
+    assert err.count("[WARN]") == 2
+    assert err.count("chrX") == 1 and "chrY" in err and "clipped" in err
+    assert out["a"]["w"] == [0, 20]
+
+
+def test_gene_dense_window_dedups_and_caps():
+    feats = []
+    for i in range(80):
+        s = i * 100
+        feats += [Feature(s, s + 90, "+", "gene", "gene", f"G{i}", "", f"g{i}"),
+                  Feature(s, s + 90, "+", "mRNA", "mRNA", f"T{i}a", f"G{i}", ""),
+                  Feature(s, s + 50, "+", "mRNA", "mRNA", f"T{i}b", f"G{i}", ""),
+                  Feature(s, s + 90, "+", "exon", "exon", "", f"T{i}a"),
+                  Feature(s, s + 50, "+", "exon", "exon", "", f"T{i}b")]
+    out = window_features("chr1", 0, 8000, (7900, 7990), [_layer("gene", feats)])
+    assert len(out["g"]) == FEATURE_CAP and out["mo"]["g"] == 20
+    assert out["g"][-1][0] == "g79" and out["g"][-1][4] == 1
+    assert len({r[0] for r in out["g"]}) == FEATURE_CAP
+
+
+def test_missing_parents():
+    feats = [Feature(0, 100, "+", "mRNA", "mRNA", "T1", "GX", "tlabel"),  # no gene row
+             Feature(0, 100, "+", "exon", "exon", "", "T1"),
+             Feature(300, 400, "+", "exon", "exon", "", "TZ")]  # no transcript row
+    out = window_features("chr1", 0, 1000, (0, 1), [_layer("gene", feats)])
+    assert [(r[0], r[2], r[3]) for r in out["g"]] == [("tlabel", 0, 100), ("", 300, 400)]
+
+
+def test_ncbi_style_ids():
+    feats = [Feature(0, 500, "-", "gene", "gene", "gene-LOC1", "", "LOC1"),
+             Feature(0, 500, "-", "mRNA", "mRNA", "rna-XM_1", "gene-LOC1", "XM_1"),
+             Feature(0, 100, "-", "exon", "exon", "exon-XM_1-1", "rna-XM_1", ""),
+             Feature(300, 500, "-", "CDS", "CDS", "cds-XP_1", "rna-XM_1", "")]
+    out = window_features("chr1", 0, 1000, (0, 1), [_layer("gene", feats)])
+    assert out["g"] == [["LOC1", "-", 0, 500, 1, [["E", 0, 100], ["C", 300, 500]]]]
+
+
+def test_tied_transcripts_deterministic():
+    base = [Feature(0, 500, "+", "gene", "gene", "G", "", "g"),
+            Feature(0, 100, "+", "mRNA", "mRNA", "Ta", "G", ""),
+            Feature(0, 100, "+", "mRNA", "mRNA", "Tb", "G", ""),
+            Feature(0, 100, "+", "exon", "exon", "", "Ta"),
+            Feature(50, 100, "+", "CDS", "CDS", "", "Tb"),
+            Feature(0, 50, "+", "exon", "exon", "", "Tb")]
+    res = set()
+    for order in (base, base[::-1]):
+        out = window_features("chr1", 0, 1000, (0, 1), [_layer("gene", order)])
+        res.add(repr(out["g"]))
+    assert len(res) == 1
+
+
+def test_unstranded_and_unnamed_keep_dot_and_empty_label():
+    bed = [Feature(10, 20, ".", "feature", "feature")]
+    te = [Feature(10, 20, ".", "feature", "TE", "", "", "")]
+    out = window_features("chr1", 0, 100, (0, 5),
+                          [_layer("gene", bed), _layer("te", te)])
+    assert out["g"] == [["", ".", 10, 20, 0, [["E", 10, 20]]]]
+    assert out["t"] == [["", "TE", ".", 10, 20, 0]]
+
+
+def test_clusters_near_contig_ends_in_gene_window():
+    C = namedtuple("C", "name chrom start end")
+    feats = [Feature(0, 300, "+", "gene", "gene", "G", "", "g"),
+             Feature(0, 300, "+", "exon", "exon", "", "G"),
+             Feature(9700, 10000, "-", "gene", "gene", "H", "", "h"),
+             Feature(9700, 10000, "-", "exon", "exon", "", "H")]
+    out = build_windows([C("s", "chr1", 5, 20), C("e", "chr1", 9980, 9995)],
+                        [_layer("gene", feats)], 2000, {"chr1": 10000})
+    assert out["s"]["w"] == [0, 2020] and out["e"]["w"] == [7980, 10000]
+    assert [r[0] for r in out["s"]["g"]] == ["g"] and out["s"]["g"][0][4] == 1
+    assert [r[0] for r in out["e"]["g"]] == ["h"] and out["e"]["g"][0][4] == 1
