@@ -322,7 +322,13 @@ section, editable in a custom `--config`):
 A locus whose contexts match neither column is `neutral`. For `supports` the confidence goes up by
 `annotation.nudge` (0.05, capped at 1); for `conflicts` it goes down by the same amount and
 `review` is set. `miRNA` and `ambiguous` calls get the annotation text and the support label, but
-no nudge and no review flag.
+no nudge and no review flag. A `conflicts` nudge can take the confidence below the class's usual
+floor (1/K), so a flagged locus may read lower than any unannotated call of that class could.
+In a gene file only gene, transcript and exon-like rows (exon, CDS, UTR, ...) count; region,
+chromosome and match rows are ignored. A locus on an annotated contig that overlaps none of them is
+`intergenic` (written as `gene:intergenic:.:1.00`). Text entries are
+`kind:name:relation:fraction`, plus the feature ID as a fifth field when it has no `|` or `:`.
+The report adds a per-class table of supports/conflicts/neutral over the loci it lists.
 
 Annotation is incomplete, above all for TEs and for non-model species, so a missing feature is
 never evidence against a class. Only a feature that is there can support or conflict.
@@ -334,6 +340,10 @@ loci only, which is far cheaper than masking the genome:
 srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa -o out -p loci --species insects
 srnaprofiler classify ... --annotation te:out/loci.te.gff3
 ```
+
+RepeatMasker caps sequence ids at 50 characters, so the loci go in as `L1`, `L2`, ... and
+`out/loci.loci.map.tsv` (id, chrom, 0-based start, end) maps them back to the genome. A failed run
+removes its scratch files and can be rerun; only an existing `loci.te.gff3` blocks it.
 
 Use `--te-library` instead of `--species` for a custom library. RepeatMasker is an optional
 install (`environment.yml`).

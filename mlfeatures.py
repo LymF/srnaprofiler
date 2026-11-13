@@ -16,6 +16,9 @@ _CTX = ["ctx_te", "ctx_trna", "ctx_rrna", "ctx_gene"]
 
 FEATURES = [*_NUMERIC, "dicer_len", *[f"szp_{L}" for L in range(18, 36)],
             *[f"szm_{L}" for L in range(18, 36)], *_SHAPE, *_CTX]
+# Note: with `classify --annotation` the rule `confidence` is nudged by the annotation
+# (and `review` set), so it must never be used to train or evaluate an ML model.
+# Benchmarks and training runs are made without --annotation.
 RULE_COLS = ["score", "confidence", "s_1u", "s_5a", "s_fractop", "s_fractop_bal",
              "s_fractop_bid", "s_pingpong", "s_phase"]
 REPRO_COLS = ["repro_frac", "repro_rpm_ratio"]
