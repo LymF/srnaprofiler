@@ -55,8 +55,7 @@ def test_track_with_o_after_phas_with_note_and_legend(tmp_path):
     return {g: gutter(), tl: tl, leg: H.text(H.byClass(gmEl, "rpt-srna-legend", "ul")[0])};
     """
     r = run(tmp_path, d, body)
-    assert S["ui.gm.track.orf"].split(" (")[0] in r["g"]
-    assert "(experimental)" in r["g"]
+    assert S["ui.gm.track.orf"] == "Predicted ORFs" and S["ui.gm.track.orf"] in r["g"]
     assert " ".join(S["ui.gm.orf.note"].split()) in r["g"]
     assert r["tl"].index("PHAS loci") < len(r["tl"]) - 1      # something comes after PHAS
     assert S["ui.gm.orf.legend"] in r["leg"]
@@ -64,7 +63,7 @@ def test_track_with_o_after_phas_with_note_and_legend(tmp_path):
 
 def test_note_text_is_the_agreed_wording(tmp_path):
     S = orf_data(tmp_path)["strings"]
-    assert S["ui.gm.orf.note"] == "experimental: predicted from sequence, not annotation"
+    assert S["ui.gm.orf.note"] == "experimental"      # one muted line; the tip says "Predicted, not annotated"
     assert S["ui.gm.orf.empty"] == "No ORFs of at least {n} aa outside annotated CDS"
     assert S["ui.gm.orf.tip"] == "Predicted, not annotated"
 

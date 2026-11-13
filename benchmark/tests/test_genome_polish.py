@@ -173,7 +173,7 @@ def test_b4_legend_groups_keep_heading_with_entries_and_has_mark_entries(tmp_pat
     res.txt = H.text(ul);
     res.grp = H.byClass(ul, "grp", "li").map(function (li) {
       var kids = li.children || li.childNodes;
-      return {first: H.text(kids[0]), n: kids.length, firstEntries: H.all(kids[0], "li").length + H.all(kids[0], "span").length};
+      return {first: H.text(kids[0]), n: kids.length, unitKids: (kids[0].children || kids[0].childNodes).length};
     });
     res.heads = H.byClass(ul, "hd").length;
     return res;
@@ -182,11 +182,9 @@ def test_b4_legend_groups_keep_heading_with_entries_and_has_mark_entries(tmp_pat
     for k in ("ui.gm.legend.overlap", "ui.gm.legend.band", "ui.gm.legend.cont"):
         assert S[k] in r["txt"], k
     assert S["mi.title"] in r["txt"]
-    assert r["grp"] and all(g["n"] >= 2 for g in r["grp"])
-    assert any(S["ui.gm.legend.te"] in g["first"] for g in r["grp"])
-    # the unit that holds a heading also holds its first entry
-    for g in r["grp"]:
-        assert len(g["first"].strip()) > len(g["first"].split()[0]) or g["firstEntries"] > 1
+    assert r["grp"] and any(S["ui.gm.legend.te"] in g["first"] for g in r["grp"])
+    # the unit that holds a heading also holds its first entry: it never wraps away from it
+    assert all(g["unitKids"] >= 2 for g in r["grp"])
 
 
 @pytestmark_js

@@ -2330,7 +2330,7 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
   gap: var(--rpt-space-2); align-items: baseline; flex-wrap: wrap; }
 .rpt-srna-fig__letter { font-family: var(--rpt-font-mono); font-weight: 500; color: var(--rpt-accent-dark); }
 .rpt-srna-fig__n { font-size: 13px; font-weight: 400; color: var(--rpt-text-2); }
-.rpt-srna-fig__tools { display: flex; gap: var(--rpt-space-2); }
+.rpt-srna-fig__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rpt-space-2); }
 .rpt-srna-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px;
   color: var(--rpt-text-2); margin-bottom: var(--rpt-space-2); }
 .rpt-srna-legend li { display: inline-flex; align-items: center; gap: 6px; }
@@ -2384,17 +2384,33 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-ck__st.s2 svg, .rpt-srna-ck__st.s3 svg { color: var(--rpt-text-3); }
 
 /* ---- genomic context figure ---- */
-.rpt-srna-legend li.hd { color: var(--rpt-text); font-weight: 500; margin-left: 6px; }
-.rpt-srna-legend li.hd:first-child { margin-left: 0; }
+.rpt-srna-legend li.grp { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-left: 8px; }
+.rpt-srna-legend li.grp:first-of-type { margin-left: 0; }
+.rpt-srna-legend .unit { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 10px; white-space: nowrap; }
+.rpt-srna-legend .ent { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.rpt-srna-legend .hd { color: var(--rpt-text); font-weight: 500; }
+/* marks of the genome figure, drawn small */
+.rpt-srna-legend .mk { display: inline-block; flex: none; }
+.rpt-srna-legend .mk-ol { width: 16px; height: 10px; border-radius: 3px; background: var(--rpt-surface); border: 1.5px solid var(--rpt-text);
+  box-shadow: 0 0 0 2px rgba(47, 134, 214, .28); }
+.rpt-srna-legend .mk-band { width: 16px; height: 10px; background: #eaf3fb; border-left: 1px solid var(--rpt-accent);
+  border-right: 1px solid var(--rpt-accent); border-top: 2px solid var(--rpt-accent); }
+.rpt-srna-legend .mk-prec { width: 16px; height: 8px; border-left: 2px solid #15314b; border-right: 2px solid #15314b;
+  background: linear-gradient(#15314b, #15314b) center / 100% 3px no-repeat; }
+.rpt-srna-legend .mk-tri { width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  border-left: 8px solid var(--rpt-surface); position: relative; filter: drop-shadow(1px 0 0 var(--rpt-text-2)) drop-shadow(-1px 0 0 var(--rpt-text-2)); }
 svg text.rpt-gm-empty, svg text.rpt-gm-more, svg text.rpt-gm-ts { fill: var(--rpt-text-2); }
 svg text.rpt-gm-empty { font-style: italic; }
 svg .rpt-gm-lb { paint-order: stroke; }
+svg text.rpt-gm-lb-in { font-weight: 500; paint-order: normal; }
 svg .rpt-gm-feat { transition: opacity var(--m-in) var(--m-ease); }
 .rpt-gm-hit.on { fill: rgba(47, 134, 214, .12); stroke: var(--rpt-accent); stroke-width: 1; }
-/* genome view: zoom and pan controls, a plot that drags */
-.rpt-gm-ctl { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-right: var(--rpt-space-2); }
+/* genome view: zoom and pan controls in three groups, a plot that drags */
+.rpt-gm-ctl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 0; margin-right: var(--rpt-space-2); }
+.rpt-gm-grp { display: inline-flex; gap: 4px; }
+.rpt-gm-grp + .rpt-gm-grp { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--rpt-border); }
 .rpt-gm-ctl .rpt-btn { min-width: 32px; }
-.rpt-gm-ctl .rpt-btn[disabled] { opacity: .4; cursor: default; }
+.rpt-gm-ctl .rpt-btn[disabled] { opacity: .6; cursor: default; color: var(--rpt-text-3); }
 .rpt-gm-plot { cursor: grab; touch-action: pan-y; }
 .rpt-gm-plot:active { cursor: grabbing; }
-.rpt-gm-plot:focus-visible { outline-offset: -2px; }
+.rpt-gm-plot:focus-visible { outline: 1px solid rgba(47, 134, 214, .45); outline-offset: -1px; border-radius: 2px; }
