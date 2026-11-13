@@ -78,6 +78,7 @@ The order, and what each step is for:
   mirna       find and validate miRNA loci, so classify can carve them out
   classify    call loci, measure their signatures, assign a class
   classplots  look at the result: per-class and per-locus figures
+  annotate-loci  RepeatMasker on the classified loci only (feeds --annotation)
 
 A typical run:
 
@@ -577,6 +578,27 @@ themselves are defined there. Every module takes --help.
     cp.add_argument("--no-summary", dest="no_summary", action="store_true",
                     help="Skip the matplotlib QC summary")
     cp.set_defaults(func=run_classplots)
+
+    from annotate_loci import run_annotate_loci
+    al = subparsers.add_parser("annotate-loci",
+        help="Run RepeatMasker on the classified loci only (not the whole genome)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "example:\n"
+            "  srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa \\\n"
+            "      -o out --species insects\n"
+            "  srnaprofiler classify ... --annotation te:out/loci.te.gff3\n"
+        ))
+    al.add_argument("--clusters", required=True, help="classify .clusters.tsv")
+    al.add_argument("-g", "--genome", required=True, help="Genome FASTA")
+    al.add_argument("-o", "--outdir", required=True)
+    al.add_argument("-p", "--prefix", default="loci")
+    al.add_argument("--species", help="RepeatMasker -species (exactly one of "
+                                      "--species / --te-library)")
+    al.add_argument("--te-library", dest="te_library",
+                    help="Custom TE library FASTA (RepeatMasker -lib)")
+    al.add_argument("--threads", type=int, default=4)
+    al.set_defaults(func=run_annotate_loci)
 
     return parser
 

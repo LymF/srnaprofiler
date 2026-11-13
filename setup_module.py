@@ -70,6 +70,9 @@ MODULE_TOOLS = {
         _tool("RNAplot", "optional: draws the 2D structure when the Python "
                          "binding of ViennaRNA is not installed"),
     ],
+    "annotate-loci": [
+        _tool("RepeatMasker", "optional: needed for `annotate-loci`"),
+    ],
     "plots": [
         _tool("Rscript"),
         # Rscript on PATH says nothing about the libraries the scripts import.

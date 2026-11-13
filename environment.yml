@@ -30,6 +30,9 @@ dependencies:
   - bedtools        # pybedtools backend
   - viennarna       # RNAfold binary AND the Python binding
   - mirdeep2        # arthropod miRNA engine
+  # optional: only `annotate-loci` needs it; it also needs a Dfam/RepBase library
+  # or a --te-library FASTA. Remove this line to keep the environment smaller.
+  - repeatmasker
   # plots: the R scripts import these three by name
   - r-base
   - r-ggplot2
