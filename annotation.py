@@ -203,9 +203,13 @@ def _gene_class(ftype):
     """'exon', 'span' or None (ignored) for a feature type in a gene layer.
 
     A whitelist: stock files carry region/chromosome/match/transposable_element
-    rows that must never count as exons. BED rows (ftype "feature") are exon-like.
+    rows that must never count as exons. Any type containing "transposable_element"
+    (also transposable_element_gene, FlyBase) is ignored even though *_gene would
+    otherwise be a span. BED rows (ftype "feature") are exon-like.
     """
     t = ftype.lower()
+    if "transposable_element" in t:       # dm6 FlyBase TE insertions: the te layer's business, not a gene
+        return None
     if t in _EXON_TYPES:
         return "exon"
     if (t in _SPAN_EXACT or t.endswith("_gene") or t.endswith("rna")
@@ -285,7 +289,7 @@ def load_layers(specs, known_contigs):
                 f"this file", "WARN")
         if ignored:
             log(f"annotation layer {kind} ({path}): ignored {ignored} features "
-                f"of non gene/exon types (region, chromosome, match, ...)", "DEBUG")
+                f"of non gene/exon types (region, chromosome, match, transposable_element, ...)", "DEBUG")
         layers.append(Layer(kind, path, index, n_kept))
     return layers
 
@@ -325,10 +329,24 @@ def _clean(text):
     return text.replace("|", "_").replace(":", "_")
 
 
-def _entry(kind, feats, start, end, strand, frac):
-    """kind:name:relation:fraction[:feature_id]; the id only if it is parseable."""
+def _gene_name(feats, b, start, end):
+    """Name of a gene-layer entry: the label of the gene-level feature it overlaps most
+    (a bare exon rarely has a Name), else the label of the chosen feature, else its type."""
+    genes = [f for f in feats if f.label and (f.ftype.lower() in ("gene", "pseudogene")
+                                              or f.ftype.lower().endswith("_gene"))]
+    if genes:
+        return _best(genes, start, end).label
+    return b.label or b.name or b.ftype
+
+
+def _entry(kind, feats, start, end, strand, frac, names=None):
+    """kind:name:relation:fraction[:feature_id]; the id only if it is parseable.
+
+    A gene-layer entry carries the feature's label (Name) when present instead of its
+    type (`gene:HA8:...`); the other layers keep the family or class name."""
     b = _best(feats, start, end)
-    out = f"{kind}:{_clean(b.name or b.ftype)}:{_relation(strand, b.strand)}:{frac:.2f}"
+    name = _gene_name(names, b, start, end) if kind == "gene" else b.name or b.ftype
+    out = f"{kind}:{_clean(name)}:{_relation(strand, b.strand)}:{frac:.2f}"
     fid = getattr(b, "fid", "")
     if fid and "|" not in fid and ":" not in fid:
         out += f":{fid}"
@@ -357,10 +375,10 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
             sf = _covered(span, start, end) / length
             if ef >= min_overlap:
                 contexts.add("gene_exon")
-                entries.append(_entry("gene", exon_like, start, end, strand, ef))
+                entries.append(_entry("gene", exon_like, start, end, strand, ef, feats))
             elif sf >= min_overlap:
                 contexts.add("gene_intron")
-                entries.append(_entry("gene", span, start, end, strand, sf))
+                entries.append(_entry("gene", span, start, end, strand, sf, feats))
         else:
             frac = _covered(feats, start, end) / length
             if frac >= min_overlap:
