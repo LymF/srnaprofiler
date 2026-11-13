@@ -12,11 +12,16 @@ from collections import namedtuple
 
 from utils import log
 
-Feature = namedtuple("Feature", "start end strand ftype name fid", defaults=("",))
+Feature = namedtuple("Feature", "start end strand ftype name fid parent label",
+                    defaults=("", "", ""))
 
 _STRANDS = ("+", "-", ".")
 _ID_KEYS_GFF3 = ("ID",)
 _ID_KEYS_GTF = ("transcript_id", "gene_id")
+_LABEL_KEYS = ("Name", "gene_name", "gene", "locus_tag")
+_GTF_GENE_TYPES = ("gene",)
+_GTF_TRANSCRIPT_TYPES = ("transcript", "mRNA", "ncRNA", "lnc_RNA", "tRNA",
+                         "rRNA", "miRNA", "snRNA", "snoRNA", "primary_transcript")
 _CLASS_KEYS = ("classification", "Class", "class", "family", "Family")
 
 
@@ -76,8 +81,22 @@ def _gff_lines(lines, gtf):
             if attrs.get(key):
                 fid = attrs[key]
                 break
+        if gtf:
+            if ftype in _GTF_GENE_TYPES:
+                parent = ""
+            elif ftype in _GTF_TRANSCRIPT_TYPES:
+                parent = attrs.get("gene_id", "")
+            else:
+                parent = attrs.get("transcript_id", "")
+        else:
+            parent = attrs.get("Parent", "").split(",")[0].strip()
+        label = ""
+        for key in _LABEL_KEYS + (("gene_id",) if gtf else ("ID",)):
+            if attrs.get(key):
+                label = attrs[key]
+                break
         yield cols[0], Feature(start - 1, end, _strand(cols[6]), intern(ftype),
-                               intern(name), fid)
+                               intern(name), fid, intern(parent), intern(label))
 
 
 def _bed_lines(lines):
@@ -96,7 +115,7 @@ def _bed_lines(lines):
             continue
         strand = _strand(cols[5]) if len(cols) > 5 else "."
         name = cols[3] if len(cols) > 3 and cols[3] != "." else ""
-        yield cols[0], Feature(start, end, strand, "feature", name)
+        yield cols[0], Feature(start, end, strand, "feature", name, "", "", intern(name))
 
 
 def _rm_lines(lines):
@@ -112,7 +131,8 @@ def _rm_lines(lines):
         if begin < 1 or begin > end:
             continue
         strand = "-" if cols[8] == "C" else "+" if cols[8] == "+" else "."
-        yield cols[4], Feature(begin - 1, end, strand, "feature", cols[10])
+        yield cols[4], Feature(begin - 1, end, strand, "feature", cols[10], "", "",
+                               intern(cols[9]))
 
 
 def parse_annotation(path, known_contigs=None, unknown=None):

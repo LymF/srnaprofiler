@@ -17,7 +17,8 @@ def test_gff3_exon_and_gene_types(tmp_path):
            "chr1\tsrc\texon\t101\t150\t.\t-\t.\tParent=g1\n")
     d = parse_annotation(p)
     assert list(d) == ["chr1"]
-    assert d["chr1"][0] == Feature(100, 200, "+", "gene", "gene", "g1")
+    assert d["chr1"][0] == Feature(100, 200, "+", "gene", "gene", "g1",
+                                   label="g1")
     assert d["chr1"][1].strand == "-" and d["chr1"][1].ftype == "exon"
     assert d["chr1"][1].start == 100 and d["chr1"][1].end == 150
 
@@ -78,7 +79,8 @@ def test_repeatmasker_out(tmp_path):
     r2 = "  500  1.0 0.0 0.0  chr1  301  400  (700)  C  rep2  DNA/hAT  (0) 100 1  2\n"
     p = _w(tmp_path, "g.fa.out", hdr + r1 + r2)
     d = parse_annotation(p)
-    assert d["chr1"][0] == Feature(100, 200, "+", "feature", "LTR/Gypsy")
+    assert d["chr1"][0] == Feature(100, 200, "+", "feature", "LTR/Gypsy",
+                                   label="rep1")
     assert d["chr1"][1].strand == "-" and d["chr1"][1].name == "DNA/hAT"
     assert d["chr1"][1].start == 300
 
