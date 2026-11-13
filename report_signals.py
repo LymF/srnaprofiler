@@ -14,6 +14,7 @@ import pysam
 
 import samio
 import utils
+from report_html import _quant
 from features import revcomp
 from signals import offset_spectrum
 
@@ -312,6 +313,127 @@ def signals_for(bam_path, clusters, xm_as_nh=None, threads=1, hairpins=None):
         first = first or e
     if failed:
         utils.log(f"report figures: {failed} cluster(s) failed to read from the BAM "
+                  f"(zero-filled); first error: {first}", "WARN")
+    return out
+
+
+# ---- genome-browser window tracks (by strand and size class) ----
+
+SIZE_CLASSES = ("18-20", "21", "22", "23", "24", "25-35")  # reads outside 18-35 are ignored
+
+
+def _size_class(n):
+    if 18 <= n <= 20:
+        return 0
+    if 21 <= n <= 24:
+        return n - 20
+    if 25 <= n <= 35:
+        return 5
+    return None
+
+
+def _window_dims(ws, we, max_bins):
+    length = max(we - ws, 0)
+    B = max(1, -(-length // max_bins))
+    return length, B, -(-length // B)
+
+
+def _window_build(keys, ws, we, max_bins):
+    """Window tracks from the key Counter of `_accumulate` (same 1/NH weights as `_build`)."""
+    length, B, nb = _window_dims(ws, we, max_bins)
+    sums = {(s, k): [0] * nb for s in "+-" for k in range(len(SIZE_CLASSES))}
+    full = {sk: [0] * (nb + 1) for sk in sums}
+    ends = {s: [0.0] * nb for s in "+-"}
+    for (s, pos, L, nh, _b), c in keys.items():
+        k = _size_class(L)
+        if k is None:
+            continue
+        p5 = pos if s == "+" else pos + L - 1
+        if ws <= p5 < we:
+            ends[s][(p5 - ws) // B] += c / nh
+        lo, hi = max(pos, ws), min(pos + L, we)
+        if lo < hi:
+            _add_cov(sums[s, k], full[s, k], lo - ws, hi - ws, c / nh, B)
+    out = {"s": ws, "b": B, "nb": nb, "k": list(SIZE_CLASSES)}
+    for s in "+-":
+        out[s] = {cls: _quant(_cov_means(sums[s, k], full[s, k], B, length))
+                  for k, cls in enumerate(SIZE_CLASSES)}
+    out["e"] = {s: _quant([_r(v) for v in ends[s]]) for s in "+-"}
+    return out
+
+
+def window_tracks(fh, chrom, ws, we, *, xm_as_nh, max_bins=400):
+    """Mean 1/NH-weighted depth per bin of the window [ws, we), by strand and size class.
+
+    chrom is a reference name. Returns {"s": ws, "b": bin size, "nb": bins, "k": SIZE_CLASSES,
+    "+": {class: Pairs}, "-": {class: Pairs}, "e": {"+": Pairs, "-": Pairs}} with
+    bin size = max(1, ceil((we - ws) / max_bins)). The size is the read's own length
+    (query_length); reads outside 18-35 nt are ignored. "e" counts 5' ends per bin
+    (the right end of a "-" read), all classes together.
+
+    Pairs are the report encoding of `_quant` ([max, ints 0..99], value = int * max / 99) and
+    EVERY series (each class and strand, and each "e" strand) is quantised on its own, with its
+    own max: the first element of a Pairs. A renderer that wants one shared y scale must take
+    the largest of those maxima and rescale each series by max_series / max_shared.
+    """
+    n, keys, _ = _accumulate(fh, chrom, ws, we, xm_as_nh=xm_as_nh)
+    return _window_build(keys, ws, we, max_bins)
+
+
+def _empty_window(ws, we, max_bins=400):
+    return _window_build(Counter(), ws, we, max_bins)
+
+
+def _chunk_windows(bam_path, items, xm_as_nh):
+    """(tracks by name, failed count, first error) for plain-tuple (name, chrom, ws, we) windows."""
+    out = {}
+    failed, first = 0, None
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        refs = set(fh.references)
+        for name, chrom, ws, we in items:
+            if ws is None or we is None:
+                failed += 1
+                first = first or f"{name}: no coordinates"
+                out[name] = _empty_window(0, 0)
+                continue
+            if chrom not in refs:
+                failed += 1
+                first = first or f"{name}: contig {chrom!r} not in the BAM"
+                out[name] = _empty_window(ws, we)
+                continue
+            try:
+                out[name] = window_tracks(fh, chrom, ws, we, xm_as_nh=xm_as_nh)
+            except Exception as e:
+                failed += 1
+                first = first or f"{type(e).__name__}: {e}"
+                out[name] = _empty_window(ws, we)
+    return out, failed, first
+
+
+def window_tracks_for(bam_path, windows, xm_as_nh=None, threads=1):
+    """{name: window_tracks(...)} for windows = {name: (chrom, ws, we)}.
+
+    Same chunking and worker processes as `signals_for`; a window that cannot be read (unknown
+    contig, no coordinates, fetch error) is zero-filled and all of them are counted in one WARN.
+    """
+    if xm_as_nh is None:
+        xm_as_nh = samio.prefers_xm_as_nh(bam_path)
+    items = [(name, *w) for name, w in windows.items()]
+    chunks = [items[i:i + _CHUNK] for i in range(0, len(items), _CHUNK)]
+    if threads > 1 and len(chunks) > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=min(threads, len(chunks))) as ex:
+            results = list(ex.map(_chunk_windows, [bam_path] * len(chunks), chunks,
+                                  [xm_as_nh] * len(chunks)))
+    else:
+        results = [_chunk_windows(bam_path, ch, xm_as_nh) for ch in chunks]
+    out, failed, first = {}, 0, None
+    for o, f, e in results:
+        out.update(o)
+        failed += f
+        first = first or e
+    if failed:
+        utils.log(f"genome view: {failed} window(s) failed to read from the BAM "
                   f"(zero-filled); first error: {first}", "WARN")
     return out
 
