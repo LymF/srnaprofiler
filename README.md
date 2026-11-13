@@ -167,7 +167,7 @@ The file has three parts:
 | flag | default | meaning |
 |---|---|---|
 | `--min-reads` | 300 | depth floor in raw reads (the `reads` column, 1/NH-weighted): clusters below it are left out of the report and counted as hidden |
-| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (resolved clusters by confidence first, ambiguous ones after them); the rest stay in the list. Each page is about 7 KB, so about 7 MB per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
+| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (half the budget is split evenly across the classes present, best first; the rest follows the global order, resolved clusters by confidence before ambiguous ones); the rest stay in the list. Each page is about 7 KB, so about 7 MB per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
 | `--threads` | 1 | worker processes for the figure data. Pays off only for large inputs and on Linux (fork) |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
 | `--mirna` | `<prefix>.mirna.tsv` beside `--clusters` | the `mirna` module's table; draws the miRNA hairpin figure (below) on the page of each miRNA cluster it matches. An explicit file that does not exist is an error; an absent default file just means no figure |

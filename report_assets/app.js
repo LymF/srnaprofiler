@@ -1777,7 +1777,8 @@
     var conf = h("span", "rpt-srna-conf", T("ui.detail.conflabel", {v: confText(r)}));
     conf.setAttribute("title", r.c === "ambiguous" ? T("ui.detail.conf.amb") :
       r.c === "miRNA" ? T("ui.detail.conf.mirna") : META.mode === "ml" ?
-      T("ui.detail.conf.ml") : T("ui.detail.conf", {min: META.conf_min, k: META.conf_k}));
+      T("ui.detail.conf.ml") : T(META.kingdom === "plant" ? "ui.detail.conf.plant" : "ui.detail.conf",
+        {min: META.conf_min, k: META.conf_k}));
     var flag = null;
     if (r.rv) {
       flag = h("span", "rpt-srna-flag", T("ui.review"));

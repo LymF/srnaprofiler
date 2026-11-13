@@ -112,8 +112,8 @@ def run_report(args):
     log(f"report: {len(sel.shown)} clusters shown, {sel.n_hidden} hidden "
         f"(below {args.min_reads:g} reads) of {sel.n_total}", "INFO")
     if sel.capped:
-        log(f"report: detail capped at the top {args.max_detail} of {len(sel.shown)} "
-            f"clusters (raise --max-detail to include more)", "WARN")
+        log(f"report: detail capped at {args.max_detail} of {len(sel.shown)} "
+            f"clusters, each class keeping a share (raise --max-detail to include more)", "WARN")
 
     if args.max_detail > _LARGE_DETAIL:
         log(f"report: --max-detail {args.max_detail} is above {_LARGE_DETAIL}; each detail "

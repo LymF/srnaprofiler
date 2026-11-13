@@ -64,6 +64,7 @@ MODULE_TOOLS = {
         _pkg("pysam"),
         _pkg("pyyaml", "yaml"),
         _pkg("numpy"),
+        _pkg("scipy"),
         _tool("RNAfold", "optional: without it the miRNA hairpin figure has no "
                          "secondary structure (ViennaRNA, or its Python binding)"),
         _tool("RNAplot", "optional: draws the 2D structure when the Python "
