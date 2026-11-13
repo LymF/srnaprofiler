@@ -52,6 +52,10 @@ Payload (JSON in <script id="report-data">), read by the front end:
           blocks [t, s, e] with t E exon, C CDS or U UTR;
         t transposons, [label, family, strand, s, e, hl];
         r structural RNA and p PHAS loci, [label, ftype, strand, s, e, hl];
+        o predicted ORFs (EXPERIMENTAL, only with report --predict-orfs; never annotation),
+          [s, e, strand, aa] sorted by start: the span includes the stop codon, aa is the
+          length without it, ORFs overlapping an annotated CDS are left out, 60 at most
+          (the longest, the rest counted in mo.o), key absent when there is none;
       mo {track: n rows not shown}, present only when some track was capped (60 rows each),
       cv window coverage from report_signals.window_tracks (s window start, b bin size,
       nb bins, k size classes, "+"/"-" {class: [max, ints 0..99]}, e 5' ends {"+","-"}),
@@ -68,6 +72,8 @@ Payload (JSON in <script id="report-data">), read by the front end:
     not counted, so the table agrees with the list and the "analysed" figure. Classes by
     total descending, then name.
     meta.gm 1 and meta.flank N (bases each side): only with report --annotation.
+    meta.orf_min_aa N (shortest ORF, aa): only with report --predict-orfs (EXPERIMENTAL); it
+    makes the figure show the ORF track even when a window has no ORF.
 """
 import base64
 import html
@@ -234,7 +240,8 @@ def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None, genome=None):
     return d
 
 
-def _payload(sel, summary, signals, title, mirna=None, genome=None, flank=None):
+def _payload(sel, summary, signals, title, mirna=None, genome=None, flank=None,
+             orf_min_aa=None):
     summary = summary or {}
     detail_ids = {id(c) for c in sel.detail}
     ctx = report_data.library_context(sel.shown)
@@ -277,6 +284,8 @@ def _payload(sel, summary, signals, title, mirna=None, genome=None, flank=None):
     if genome:
         out["meta"]["gm"] = 1
         out["meta"]["flank"] = flank
+        if orf_min_aa:   # EXPERIMENTAL report --predict-orfs
+            out["meta"]["orf_min_aa"] = orf_min_aa
     if any(c.annotation_support in _AN_OK for c in sel.shown):
         out["meta"]["an"] = 1
         tally = {}
@@ -317,11 +326,13 @@ def _footer(kingdom="animal"):
         mmod=f"{rt.DISPLAY_MULTIMAP_MODERATE:g}", mhigh=f"{rt.DISPLAY_MULTIMAP_HIGH:g}"))
 
 
-def build_report(sel, summary, signals, title, out_path, mirna=None, genome=None, flank=None):
+def build_report(sel, summary, signals, title, out_path, mirna=None, genome=None, flank=None,
+                 orf_min_aa=None):
     """mirna: {cluster name: (report_mirna.Row, (dot-bracket, mfe, tool missing))} or None.
     genome: {cluster name: gm dict (report_genome.build_windows entry plus "cv")} or None;
-    flank (bases) goes to meta.flank with it."""
-    data = json.dumps(_payload(sel, summary, signals or {}, title, mirna, genome, flank),
+    flank (bases) goes to meta.flank with it; orf_min_aa (only with --predict-orfs) to
+    meta.orf_min_aa."""
+    data = json.dumps(_payload(sel, summary, signals or {}, title, mirna, genome, flank, orf_min_aa),
                       separators=(",", ":"), allow_nan=False)
     # "<" cannot close the script element; JSON still decodes it back
     data = data.replace("<", "\\u003c")

@@ -10,6 +10,7 @@ import report_data
 import report_genome
 import report_html
 import report_mirna
+import report_orfs
 import report_qc
 import report_signals
 import report_text
@@ -47,6 +48,8 @@ def _genome(args, sel, layers):
                                           max_bins=_GM_BINS)
     for name, g in gm.items():
         g["cv"] = cv[name]
+    if getattr(args, "predict_orfs", False):   # EXPERIMENTAL
+        report_orfs.add_orfs(gm, sel.detail, layers, args.genome, args.orf_min_aa)
     return gm
 
 
@@ -128,6 +131,15 @@ def run_report(args):
         _fail(f"--threads must be 1 or more (got {args.threads})")
     if getattr(args, "flank", 2000) < 0:
         _fail(f"--flank must be 0 or more (got {args.flank})")
+    if getattr(args, "predict_orfs", False):   # EXPERIMENTAL
+        if not getattr(args, "annotation", None):
+            _fail("--predict-orfs needs at least one --annotation (the ORFs sit in the "
+                  "genomic-context figure, and CDS in a gene layer are left out)")
+        if getattr(args, "orf_min_aa", 100) < 1:
+            _fail(f"--orf-min-aa must be 1 or more (got {args.orf_min_aa})")
+        msg = report_orfs.check_genome(getattr(args, "genome", None))
+        if msg:
+            _fail(msg)
     _need(args.clusters, "clusters TSV")
     _need(args.bam, "BAM")
     _need_index(args.bam)
@@ -170,7 +182,9 @@ def run_report(args):
     title = args.title or report_text.STRINGS["ui.title.default"]
     genome = _genome(args, sel, layers)
     report_html.build_report(sel, summary, signals, title, out, mirna=mirna, genome=genome,
-                             flank=getattr(args, "flank", None))
+                             flank=getattr(args, "flank", None),
+                             orf_min_aa=(args.orf_min_aa if getattr(args, "predict_orfs", False)
+                                         else None))
     if genome:
         added = sum(len(report_html.gm_json(g)) for g in genome.values())
         log(f"report: genome view for {len(genome)} windows, adds {added / 1e6:.2f} MB "

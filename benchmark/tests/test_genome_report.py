@@ -293,9 +293,9 @@ def test_plain_report_exact_keys(tmp_path):
 # here; a key built dynamically (e.g. "ui.gm.track." + kind) needs the prefix handled in
 # test_html_report_html.test_strings_have_no_orphans instead.
 # (the figure, Task 5, now reads: title, track.cv/ends/g/t/r/p, empty, nolayer, more, tip.*,
-# locus, range, legend.te, legend.size; track.orf is still unread)
+# locus, range, legend.te, legend.size; Task 7 reads track.orf: every GM key is used now)
 GM_UNUSED = {f"ui.gm.{k}" for k in GM_KEYS} - {f"ui.gm.{k}" for k in (
-    "title", "track.cv", "track.ends", "track.g", "track.t", "track.r", "track.p", "empty", "nolayer",
+    "title", "track.cv", "track.ends", "track.g", "track.t", "track.r", "track.p", "track.orf", "empty", "nolayer",
     "more", "tip.type", "tip.strand", "tip.pos", "tip.overlap", "tip.nostrand", "locus", "range",
     "zoom.in", "zoom.out", "zoom.reset", "pan.left", "pan.right", "legend.te", "legend.size")}
 

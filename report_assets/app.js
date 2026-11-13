@@ -1460,15 +1460,17 @@
   var GM_TRACKS = ["g", "t", "r", "p"];
   var GM_LAYER = {g: "gene", t: "te", r: "ncrna", p: "phas"};
   var GM_TITLE = {cv: "ui.gm.track.cv", ends: "ui.gm.track.ends", g: "ui.gm.track.g", t: "ui.gm.track.t",
-    r: "ui.gm.track.r", p: "ui.gm.track.p"};
+    r: "ui.gm.track.r", p: "ui.gm.track.p", o: "ui.gm.track.orf"};
   var GM_KIND = {g: "ui.gm.kind.g"};
-  var GM_CAP = {g: 10, t: 14, r: 6, p: 6};
-  var GM_LANE = {g: 26, t: 12, r: 20, p: 20};
+  var GM_CAP = {g: 10, t: 14, r: 6, p: 6, o: 8};
+  var GM_LANE = {g: 26, t: 12, r: 20, p: 20, o: 12};
   var GM_SIZE_FILL = {"18-20": "#94a3b8", "21": "#12a3a3", "22": "#e0921c", "23": "#1f9d6b",
     "24": "#2c5f8d", "25-35": "#7c4dff"};
   var GM_TE = ["LTR", "LINE", "SINE", "DNA", "RC"];
   var GM_TE_FILL = {LTR: "#c46a2a", LINE: "#6b4d99", SINE: "#a8413a", DNA: "#2c5f8d", RC: "#137d6f", other: "#8493a3"};
   var GM_FILL = {r: "#a0527c", p: "#1f9d6b"};
+  // EXPERIMENTAL predicted ORFs: a pale teal-grey bar with a darker outline, unlike every annotation colour
+  var GM_ORF = "#3d7d84", GM_ORF_FILL = "#b4d6d6";
   var GM_GENE = "#25527d", GM_GENE_LIGHT = "#8eaecb", GM_PREC = "#15314b", GM_BAND = "#eaf3fb";
   var GM_CHAR = 8;
 
@@ -1533,6 +1535,7 @@
     return (list || []).map(function (x) {
       if (kind === "g") { return {kind: kind, label: x[0], strand: x[1], s: x[2], e: x[3], hl: !!x[4], blocks: x[5] || [], type: T(GM_KIND.g)}; }
       if (kind === "t") { return {kind: kind, label: x[0], type: x[1], strand: x[2], s: x[3], e: x[4], hl: !!x[5], cls: gmTeClass(x[1])}; }
+      if (kind === "o") { return {kind: kind, label: "", type: T("ui.gm.orf.len", {n: num(x[3])}), strand: x[2], s: x[0], e: x[1], hl: false}; }
       return {kind: kind, label: x[0], type: x[1], strand: x[2], s: x[3], e: x[4], hl: !!x[5]};
     });
   }
@@ -1609,6 +1612,11 @@
   function gmStrandText(s) { return gmStranded(s) ? (s === "+" ? "+" : "−") : T("ui.gm.tip.nostrand"); }
   function gmCoords(s, e) { return T("ui.tip.pos", {start: num(s + 1), end: num(e)}); }
   function gmTip(rw) {
+    if (rw.kind === "o") {
+      return {head: T("ui.gm.orf.tip"), rows: [{label: rw.type},
+        gmStranded(rw.strand) ? {value: T("ui.gm.tip.strand"), label: gmStrandText(rw.strand)} : {label: T("ui.gm.tip.nostrand")},
+        {value: T("ui.gm.tip.pos"), label: gmCoords(rw.s, rw.e)}]};
+    }
     var out = [{value: T("ui.gm.tip.type"), label: rw.type || ""},
       gmStranded(rw.strand) ? {value: T("ui.gm.tip.strand"), label: gmStrandText(rw.strand)} : {label: T("ui.gm.tip.nostrand")},
       {value: T("ui.gm.tip.pos"), label: gmCoords(rw.s, rw.e)}];
@@ -1672,14 +1680,14 @@
   }
   // a transposon, structural RNA or PHAS locus: a thin rounded bar
   function gmBar(it, cy, x0, x1, fill, bh) {
-    var rw = it.row, g = sv("g", {"class": "rpt-gm-feat rpt-gm-bar" + (rw.hl ? " hl" : ""), "data-track": rw.kind,
+    var rw = it.row, orf = rw.kind === "o", g = sv("g", {"class": "rpt-gm-feat rpt-gm-bar" + (orf ? " rpt-gm-orf" : "") + (rw.hl ? " hl" : ""), "data-track": rw.kind,
       "data-clip": (it.clip.l ? "l" : "") + (it.clip.r ? "r" : ""), opacity: rw.hl ? 1 : 0.82});
     var w = it.b - it.a;
     g.appendChild(sv("rect", {x: f2(it.a), y: f2(cy - bh / 2), width: f2(w), height: bh, rx: Math.min(3, bh / 2, w / 2), fill: fill,
-      stroke: rw.hl ? INK : "none", "stroke-width": rw.hl ? 1.2 : 0}));
+      stroke: orf ? GM_ORF : rw.hl ? INK : "none", "stroke-width": orf ? 1 : rw.hl ? 1.2 : 0}));
     if (gmStranded(rw.strand) && w >= 18) {
       var dir = rw.strand === "+" ? 1 : -1;
-      for (var x = it.a + 9; x < it.b - 5; x += 12) { g.appendChild(gmChev(x, cy, dir, 2.2, "#ffffff")); }
+      for (var x = it.a + 9; x < it.b - 5; x += 12) { g.appendChild(gmChev(x, cy, dir, 2.2, orf ? GM_ORF : "#ffffff")); }
     }
     if (it.cl) { g.appendChild(gmCont(x0 + 1, cy, 1, fill)); }
     if (it.cr) { g.appendChild(gmCont(x1 - 1, cy, -1, fill)); }
@@ -1731,12 +1739,14 @@
     var gm = d.gm, ws = gm.w[0], we = gm.w[1], loc = gm.L || [ws, we], ly = gm.ly || [], mo = gm.mo || {};
     var cv = gm.cv || {nb: 0, k: [], s: ws, b: 1}, cov = gmCoverage(cv), nb = cv.nb || 0, bsz = cv.b || 1;
     var mi = d.mi && !d.mi.nowin && typeof d.mi.lo === "number" && d.mi.L > 0 ? d.mi : null;
-    var tracks = GM_TRACKS.map(function (k) { return {kind: k, rows: gmRows(k, gm[k])}; });
+    var orfOn = !!(gm.o || META.orf_min_aa);   // EXPERIMENTAL: the track exists only with ORFs or --predict-orfs
+    var tracks = GM_TRACKS.concat(orfOn ? ["o"] : []).map(function (k) { return {kind: k, rows: gmRows(k, gm[k])}; });
     var present = {};
     tracks.forEach(function (t) { t.rows.forEach(function (rw) { if (rw.cls) { present[rw.cls] = true; } }); });
     var teKeys = GM_TE.concat(["other"]).filter(function (k) { return present[k]; });
     function teName(k) { return k === "other" ? T("ui.gm.te.other") : k; }
-    function colorOf(rw) { return rw.kind === "t" ? GM_TE_FILL[rw.cls] : GM_FILL[rw.kind]; }
+    function colorOf(rw) { return rw.kind === "t" ? GM_TE_FILL[rw.cls] : rw.kind === "o" ? GM_ORF_FILL : GM_FILL[rw.kind]; }
+    var orfNote = gmWrap(T("ui.gm.orf.note"), 15), ORF_LBL = 58 + 15 * orfNote.length;   // the track label area: title, then the note
 
     // the view: what is drawn, in genomic 0-based coordinates; the stored payload is never refetched
     var win = [ws, we], view = [ws, we], lay = {x0: GM_GUT, x1: GM_GUT + 1}, ctl = null;
@@ -1756,7 +1766,7 @@
       plan.push({id: "cv", y: y, h: PREC + 8 + 2 * HALF + 8}); y += plan[1].h;
       plan.push({id: "ends", y: y, h: 8 + 2 * EH + 8}); y += plan[2].h;
       tracks.forEach(function (t) {
-        var given = ly.indexOf(GM_LAYER[t.kind]) >= 0;
+        var given = t.kind === "o" || ly.indexOf(GM_LAYER[t.kind]) >= 0;
         if (!given && !t.rows.length) { t.state = "nolayer"; } else if (!t.rows.length) { t.state = "empty"; }
         var full = gmPlace(t.kind, t.rows, xaFull, x0, x1, ws, we), dropped = 0;
         t.place = viewIs(win) ? full : gmPlace(t.kind, t.rows, xa, x0, x1, vs, ve);
@@ -1769,6 +1779,7 @@
         t.more = more;
         var lh = GM_LANE[t.kind], body = t.state ? 28 : t.place.lanes * lh + 12;
         if (more) { body = Math.max(body, 46); }
+        if (t.kind === "o") { body = Math.max(body, ORF_LBL + (more ? 18 : 0)); }
         t.y = y; t.h = body; t.lh = lh;
         plan.push({id: t.kind, y: y, h: body}); y += body;
       });
@@ -1902,19 +1913,26 @@
       // ---- annotation tracks ----
       var fh = [];
       tracks.forEach(function (t) {
-        tlabel(t, T(GM_TITLE[t.kind]));
+        if (t.kind === "o") {
+          var ot = T(GM_TITLE.o).split(" (");
+          svg.appendChild(text(8, t.y + 21, ot[0], {fill: INK, weight: 500, cls: "rpt-gm-tl"}));
+          svg.appendChild(text(8, t.y + 38, ot[1] ? "(" + ot[1] : "", {cls: "rpt-gm-tl rpt-gm-ts"}));
+          orfNote.forEach(function (ln, i) { svg.appendChild(text(8, t.y + 58 + i * 15, ln, {cls: "rpt-gm-ts rpt-gm-orfnote"})); });
+        } else {
+          tlabel(t, T(GM_TITLE[t.kind]));
+        }
         if (t.state) {
-          svg.appendChild(gmHalo(text(x0 + 10, t.y + 21, t.state === "empty" ? T("ui.gm.empty") : T("ui.gm.nolayer", {kind: GM_LAYER[t.kind]}),
-            {cls: "rpt-gm-empty"})));
+          svg.appendChild(gmHalo(text(x0 + 10, t.y + 21, t.kind === "o" ? T("ui.gm.orf.empty", {n: num(META.orf_min_aa || 0)}) :
+            t.state === "empty" ? T("ui.gm.empty") : T("ui.gm.nolayer", {kind: GM_LAYER[t.kind]}), {cls: "rpt-gm-empty"})));
         }
         t.place.items.forEach(function (it) {
           if (it.lane < 0 || !seen(it.row)) { return; }
           var cy = t.y + 6 + it.lane * t.lh + t.lh / 2, rw = it.row;
           svg.appendChild(t.kind === "g" ? gmGene(it, cy, x0, x1, vs, ve, xa) :
-            gmBar(it, cy, x0, x1, colorOf(rw), t.kind === "t" ? 8 : 12));
+            gmBar(it, cy, x0, x1, colorOf(rw), t.kind === "t" || t.kind === "o" ? 8 : 12));
           fh.push({x: it.a, y: cy - t.lh / 2 + 1, w: it.b - it.a, h: t.lh - 2, track: t.kind, tip: gmTip(rw)});
         });
-        if (t.more) { svg.appendChild(text(8, t.y + 41, T("ui.gm.more", {n: num(t.more)}), {cls: "rpt-gm-more"})); }
+        if (t.more) { svg.appendChild(text(8, t.kind === "o" ? t.y + ORF_LBL + 6 : t.y + 41, T("ui.gm.more", {n: num(t.more)}), {cls: "rpt-gm-more"})); }
       });
       fh.sort(function (a, b) { return a.x - b.x; });
       if (fh.length) { gmFeatHits(svg, fh); }
@@ -1933,6 +1951,7 @@
       legendItems = legendItems.concat([{kind: "none", label: T("ui.gm.legend.te"), head: 1}],
         teKeys.map(function (k) { return {kind: "sw", color: GM_TE_FILL[k], label: teName(k)}; }));
     }
+    if (orfOn) { legendItems.push({kind: "sw", color: GM_ORF_FILL, label: T("ui.gm.orf.legend")}); }
     // ---- controls: zoom, pan, locus, reset (buttons), wheel, drag and keys (on the plot) ----
     var frame = 0, drag = null;
     function rangeText() {
@@ -2052,7 +2071,7 @@
         tracks.forEach(function (t) {
           t.rows.forEach(function (rw) {
             if (!seen(rw)) { return; }
-            out.push([T(GM_TITLE[t.kind]), rw.label || "", rw.type || "", gmStrandText(rw.strand), num(rw.s + 1), num(rw.e),
+            out.push([T(t.kind === "o" ? "ui.gm.th.orf" : GM_TITLE[t.kind]), rw.label || "", rw.type || "", gmStrandText(rw.strand), num(rw.s + 1), num(rw.e),
               rw.hl ? "\u2713" : ""]);
           });
         });

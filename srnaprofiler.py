@@ -530,6 +530,16 @@ themselves are defined there. Every module takes --help.
     rp.add_argument("--flank", type=int, default=2000,
                     help="Bases shown each side of a locus in the genomic-context figure "
                          "(default: %(default)s; needs --annotation)")
+    rp.add_argument("--predict-orfs", dest="predict_orfs", action="store_true",
+                    help="EXPERIMENTAL, off by default. Add a track of ORFs predicted from the "
+                         "genome sequence (ATG to stop, six frames, outside annotated CDS) to "
+                         "the genomic-context figure. Not annotation; never used by the "
+                         "classifier. Needs --genome and --annotation")
+    rp.add_argument("--genome", default=None, metavar="FASTA",
+                    help="Genome FASTA indexed with samtools faidx (.fai), for --predict-orfs")
+    rp.add_argument("--orf-min-aa", dest="orf_min_aa", type=int, default=100,
+                    help="Shortest predicted ORF, in amino acids, 1 or more "
+                         "(default: %(default)s; needs --predict-orfs)")
     rp.add_argument("--title", default=None, help="Report title")
     rp.set_defaults(func=run_report)
 
