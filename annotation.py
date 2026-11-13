@@ -347,8 +347,19 @@ _CONTEXT_LAYER = {"te": "te", "ncrna": "ncrna", "phas": "phas", "gene_exon": "ge
                   "gene_intron": "gene", "intergenic": "gene"}
 
 
+_ABSENCE_CONFLICTS = {"gene_exon", "gene_intron", "intergenic"}
+
+
 def _needed_layers(spec):
-    """Layer kinds that could have supplied a class's `supports` evidence."""
+    """Layer kinds a `conflicts` verdict depends on.
+
+    Only an absence-type conflict (exon with NO TE) claims the absence of the
+    supporting feature, so it needs every layer kind that could have supplied
+    `supports`. A presence-type conflict (miRNA overlapping a TE) needs nothing
+    beyond the layer that produced the context.
+    """
+    if not set(spec.get("conflicts") or ()) & _ABSENCE_CONFLICTS:
+        return set()
     return {_CONTEXT_LAYER[k] for k in (spec.get("supports") or ()) if k in _CONTEXT_LAYER}
 
 

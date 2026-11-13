@@ -26,7 +26,6 @@ def _rec(cls="piRNA", conf=0.80, review=False):
 TE = [_layer("te", [Feature(0, 100, "+", "feature", "LTR")])]
 EXON = [_layer("gene", [Feature(0, 100, "+", "exon", "g1")])]
 TE_FAR = [_layer("te", [Feature(500, 600, "+", "feature", "LTR")])]  # no overlap
-GENE_FAR = [_layer("gene", [Feature(500, 600, "+", "exon", "g2")])]  # no overlap
 HCSI_CFG = {"nudge": 0.05, "min_overlap": 0.5, "classes": {
     "hcsiRNA": {"supports": ["te"], "conflicts": ["gene_exon"]}}}
 
@@ -66,7 +65,7 @@ def test_review_never_cleared():
 def test_miRNA_and_ambiguous_untouched():
     for cls, want in (("miRNA", "conflicts"), ("ambiguous", "neutral")):
         r = _rec(cls=cls, conf=0.7)
-        apply_annotation([r], TE + GENE_FAR, CFG)
+        apply_annotation([r], TE, CFG)
         assert r.confidence == 0.7 and r.review is False
         assert r.annotation.startswith("te:")
         assert r.annotation_support == want
@@ -131,3 +130,18 @@ def test_disabled_conflicts_logged_once(capsys):
     assert "[INFO]" in err
     apply_annotation([_rec()], EXON + TE_FAR, CFG)
     assert "conflicts disabled" not in capsys.readouterr().err
+
+
+def test_mirna_te_conflict_needs_only_te_layer(capsys):
+    r = _run("miRNA", TE, CFG, conf=0.7)
+    assert (r.annotation_support, r.confidence, r.review) == ("conflicts", 0.65, True)
+    assert "miRNA" not in capsys.readouterr().err
+
+
+def test_mirna_gene_only_on_gene_is_neutral():
+    r = _run("miRNA", EXON, CFG, conf=0.7)
+    assert (r.annotation_support, r.confidence, r.review) == ("neutral", 0.7, False)
+
+
+def test_mirna_support_for_loaded_te_only():
+    assert support_for("miRNA", {"te"}, TABLE, loaded={"te"}) == "conflicts"
