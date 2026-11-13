@@ -43,6 +43,15 @@ Payload (JSON in <script id="report-data">), read by the front end:
       reads, kind m|s|""]], cov per-base depth, more/mr rows and reads not drawn, anti/ovh
       reads not shown, lo genomic start of the precursor window, nowin 1 when the window could not be placed, t numbers [[key, value]],
       pc plant criteria [[key, status 1/0/2, observed, rule]]. Exact, not quantised.
+    gm (only with report --annotation): the genomic-context data of the locus, compact JSON,
+      empty lists dropped: w [start, end) window on the contig (the locus plus --flank each
+      side, clipped to the contig), L [start, end] the locus, g gene models, t transposons,
+      r structural RNA, p PHAS loci, mo [track keys that hit the per-track cap, with
+      the total], ly [kinds of the layers given], see report_genome.build_windows for the
+      row layouts, cv window coverage from report_signals.window_tracks (s window start,
+      b bin size, nb bins, k size classes, "+"/"-" {class: [max, ints 0..99]}, e 5' ends
+      {"+","-"}), 200 bins at most. Without --annotation there is no gm, and no meta.gm or
+      meta.flank either (the payload is the same as before the option existed).
   meta: title, floor, n_total, kingdom, mode, version, github, tagline, install
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
     conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary,
@@ -53,6 +62,7 @@ Payload (JSON in <script id="report-data">), read by the front end:
     the SHOWN loci only, i.e. the same ones the list holds; loci hidden below the floor are
     not counted, so the table agrees with the list and the "analysed" figure. Classes by
     total descending, then name.
+    meta.gm 1 and meta.flank N (bases each side): only with report --annotation.
 """
 import base64
 import html
@@ -186,7 +196,16 @@ def _row(i, c, has_detail, ex, kingdom):
     return r
 
 
-def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None):
+def _gm(g):
+    """Compact genome-view dict: empty lists and dicts dropped (cv is always kept)."""
+    return {k: v for k, v in g.items() if k == "cv" or k in ("w", "L") or v}
+
+
+def gm_json(g):
+    return json.dumps(_gm(g), separators=(",", ":"), allow_nan=False)
+
+
+def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None, genome=None):
     d = {"v": ex["verdict"],
          "strip": [[k, _LEVEL[lv], _n(v, 4)] for k, lv, v in ex["strip"]],
          "ctx": [ctx["reads_pct"], ctx["conf_pct"]],
@@ -196,6 +215,8 @@ def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None):
     ck = report_checks.checklist(c, kingdom)
     if ck:
         d["ck"] = ck
+    if genome:
+        d["gm"] = _gm(genome)
     if mirna:
         row, folded = mirna
         d["mi"] = report_mirna.figure_data(row, folded, (sig or {}).get("hp"),
@@ -203,13 +224,14 @@ def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None):
     return d
 
 
-def _payload(sel, summary, signals, title, mirna=None):
+def _payload(sel, summary, signals, title, mirna=None, genome=None, flank=None):
     summary = summary or {}
     detail_ids = {id(c) for c in sel.detail}
     ctx = report_data.library_context(sel.shown)
     rows, details, counts = [], {}, {}
     kingdom = sel.kingdom
     mirna = mirna or {}
+    genome = genome or {}
     for i, c in enumerate(sel.shown):
         ex = rt.explain(c, kingdom)
         has = id(c) in detail_ids
@@ -217,7 +239,7 @@ def _payload(sel, summary, signals, title, mirna=None):
         counts[c.cls] = counts.get(c.cls, 0) + 1
         if has:
             details[str(i)] = _detail(c, ex, signals.get(c.name), ctx[c.name], kingdom,
-                                      mirna.get(c.name))
+                                      mirna.get(c.name), genome.get(c.name))
     lib = {k: _n(summary.get(k), 4) for k in
            ("library_reads", "cluster_reads", "unique_share", "fragments", "fragment_reads")}
     if summary.get("qc"):
@@ -242,6 +264,9 @@ def _payload(sel, summary, signals, title, mirna=None):
                  "reads_shown": _n(sum(c.reads or 0 for c in sel.shown), 1),
                  "summary": rt.summary_sentence(counts, sel.floor)},
     }
+    if genome:
+        out["meta"]["gm"] = 1
+        out["meta"]["flank"] = flank
     if any(c.annotation_support in _AN_OK for c in sel.shown):
         out["meta"]["an"] = 1
         tally = {}
@@ -282,9 +307,11 @@ def _footer(kingdom="animal"):
         mmod=f"{rt.DISPLAY_MULTIMAP_MODERATE:g}", mhigh=f"{rt.DISPLAY_MULTIMAP_HIGH:g}"))
 
 
-def build_report(sel, summary, signals, title, out_path, mirna=None):
-    """mirna: {cluster name: (report_mirna.Row, (dot-bracket, mfe, tool missing))} or None."""
-    data = json.dumps(_payload(sel, summary, signals or {}, title, mirna),
+def build_report(sel, summary, signals, title, out_path, mirna=None, genome=None, flank=None):
+    """mirna: {cluster name: (report_mirna.Row, (dot-bracket, mfe, tool missing))} or None.
+    genome: {cluster name: gm dict (report_genome.build_windows entry plus "cv")} or None;
+    flank (bases) goes to meta.flank with it."""
+    data = json.dumps(_payload(sel, summary, signals or {}, title, mirna, genome, flank),
                       separators=(",", ":"), allow_nan=False)
     # "<" cannot close the script element; JSON still decodes it back
     data = data.replace("<", "\\u003c")

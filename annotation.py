@@ -3,6 +3,7 @@
 Coordinates are 0-based half-open. Malformed lines are skipped, never raised.
 """
 import gzip
+import os
 import re
 import zlib
 from sys import intern
@@ -231,6 +232,14 @@ def parse_layer_spec(spec):
             f"invalid annotation layer {spec!r}: expected <kind>:<path> with "
             f"kind one of {', '.join(LAYER_KINDS)}")
     return kind, path
+
+
+def check_layer_specs(specs):
+    """Fail on a bad label or a missing file, before any heavy work (shared by classify and report)."""
+    for spec in specs:
+        _, path = parse_layer_spec(spec)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"annotation file not found: {path}")
 
 
 def load_layers(specs, known_contigs):

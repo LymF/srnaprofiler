@@ -468,7 +468,8 @@ def test_strings_have_no_orphans():
         # the STRINGS table itself does not count as a use
         py += re.sub(r"STRINGS = \{.*?\n\}", "", src, flags=re.S)
     dynamic = ("verdict.", "status.", "check.", "amb.crit.", "ui.dot.", "ui.help.sizes.",
-                   "ck.thr.", "ck.obs.", "ck.st.", "lq.", "mi.nostruct.", "mi.num.", "mi.crit.")
+                   "ck.thr.", "ck.obs.", "ck.st.", "lq.", "mi.nostruct.", "mi.num.", "mi.crit.",
+                   "ui.gm.")   # ui.gm.*: read by the genome-view JS (later tasks)
     orphans = [k for k in rt.STRINGS
                if f'"{k}"' not in code and f'"{k}"' not in py and not k.startswith(dynamic)]
     assert orphans == []

@@ -384,7 +384,7 @@ def _empty_window(ws, we, max_bins=400):
     return _window_build(Counter(), ws, we, max_bins)
 
 
-def _chunk_windows(bam_path, items, xm_as_nh):
+def _chunk_windows(bam_path, items, xm_as_nh, max_bins=400):
     """(tracks by name, failed count, first error) for plain-tuple (name, chrom, ws, we) windows."""
     out = {}
     failed, first = 0, None
@@ -394,23 +394,24 @@ def _chunk_windows(bam_path, items, xm_as_nh):
             if ws is None or we is None:
                 failed += 1
                 first = first or f"{name}: no coordinates"
-                out[name] = _empty_window(0, 0)
+                out[name] = _empty_window(0, 0, max_bins)
                 continue
             if chrom not in refs:
                 failed += 1
                 first = first or f"{name}: contig {chrom!r} not in the BAM"
-                out[name] = _empty_window(ws, we)
+                out[name] = _empty_window(ws, we, max_bins)
                 continue
             try:
-                out[name] = window_tracks(fh, chrom, ws, we, xm_as_nh=xm_as_nh)
+                out[name] = window_tracks(fh, chrom, ws, we, xm_as_nh=xm_as_nh,
+                                          max_bins=max_bins)
             except Exception as e:
                 failed += 1
                 first = first or f"{type(e).__name__}: {e}"
-                out[name] = _empty_window(ws, we)
+                out[name] = _empty_window(ws, we, max_bins)
     return out, failed, first
 
 
-def window_tracks_for(bam_path, windows, xm_as_nh=None, threads=1):
+def window_tracks_for(bam_path, windows, xm_as_nh=None, threads=1, max_bins=400):
     """{name: window_tracks(...)} for windows = {name: (chrom, ws, we)}.
 
     Same chunking and worker processes as `signals_for`; a window that cannot be read (unknown
@@ -424,9 +425,10 @@ def window_tracks_for(bam_path, windows, xm_as_nh=None, threads=1):
         from concurrent.futures import ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=min(threads, len(chunks))) as ex:
             results = list(ex.map(_chunk_windows, [bam_path] * len(chunks), chunks,
-                                  [xm_as_nh] * len(chunks)))
+                                  [xm_as_nh] * len(chunks),
+                                  [max_bins] * len(chunks)))
     else:
-        results = [_chunk_windows(bam_path, ch, xm_as_nh) for ch in chunks]
+        results = [_chunk_windows(bam_path, ch, xm_as_nh, max_bins) for ch in chunks]
     out, failed, first = {}, 0, None
     for o, f, e in results:
         out.update(o)

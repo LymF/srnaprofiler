@@ -5,16 +5,49 @@ import sys
 
 import pysam
 
+import annotation
 import report_data
+import report_genome
 import report_html
 import report_mirna
 import report_qc
 import report_signals
 import report_text
+import samio
 from utils import log
 
 
 _LARGE_DETAIL = 5000  # above this, warn about file size
+_GM_WARN_BYTES = 20 * 1024 * 1024   # warn when the genome view adds more than this
+_GM_BINS = 200                      # coverage bins per window in the genome view
+
+
+def _load_layers(args):
+    """Annotation layers for the genome view, or None. A bad label, a missing file or an
+    unreadable (truncated/fake .gz) file stops here, before any BAM pass."""
+    specs = getattr(args, "annotation", None) or []
+    if not specs:
+        return None
+    try:
+        annotation.check_layer_specs(specs)
+        return annotation.load_layers(specs, set(samio.bam_references(args.bam)))
+    except (ValueError, FileNotFoundError) as e:
+        _fail(str(e))
+
+
+def _genome(args, sel, layers):
+    """{cluster name: window dict + "cv"} for the detailed loci, or None without layers."""
+    if layers is None:
+        return None
+    lengths = samio.reference_lengths(args.bam)
+    gm = report_genome.build_windows(sel.detail, layers, args.flank, lengths)
+    wins = {name: (c.chrom, g["w"][0], g["w"][1])
+            for c in sel.detail for name, g in [(c.name, gm[c.name])]}
+    cv = report_signals.window_tracks_for(args.bam, wins, threads=args.threads,
+                                          max_bins=_GM_BINS)
+    for name, g in gm.items():
+        g["cv"] = cv[name]
+    return gm
 
 
 def _fragments_path(args):
@@ -93,9 +126,12 @@ def run_report(args):
         _fail(f"--min-reads must be a finite number, 0 or more (got {args.min_reads})")
     if args.threads < 1:
         _fail(f"--threads must be 1 or more (got {args.threads})")
+    if getattr(args, "flank", 2000) < 0:
+        _fail(f"--flank must be 0 or more (got {args.flank})")
     _need(args.clusters, "clusters TSV")
     _need(args.bam, "BAM")
     _need_index(args.bam)
+    layers = _load_layers(args)   # validated before any BAM pass
     frags = _fragments_path(args)
     if frags:
         _need(frags, "fragments TSV")
@@ -132,5 +168,14 @@ def run_report(args):
     os.makedirs(args.outdir, exist_ok=True)
     out = os.path.join(args.outdir, f"{args.prefix}.report.html")
     title = args.title or report_text.STRINGS["ui.title.default"]
-    report_html.build_report(sel, summary, signals, title, out, mirna=mirna)
+    genome = _genome(args, sel, layers)
+    report_html.build_report(sel, summary, signals, title, out, mirna=mirna, genome=genome,
+                             flank=getattr(args, "flank", None))
+    if genome:
+        added = sum(len(report_html.gm_json(g)) for g in genome.values())
+        log(f"report: genome view for {len(genome)} windows, adds {added / 1e6:.2f} MB "
+            f"({added // len(genome)} bytes per locus)", "INFO")
+        if added > _GM_WARN_BYTES:
+            log(f"report: the genome view adds {added / 1e6:.1f} MB (over 20 MB); lower "
+                f"--max-detail or --flank to shrink the file", "WARN")
     log(f"report written: {out}", "INFO")

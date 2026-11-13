@@ -9,7 +9,7 @@ from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
 
-from annotation import (apply_annotation, load_layers, parse_layer_spec,
+from annotation import (apply_annotation, check_layer_specs, load_layers,
                         validate_annotation_config)
 from reporter import write_tsv, write_gff3, write_run_json, write_fragments_tsv
 from utils import log
@@ -155,10 +155,7 @@ def _run_params(args):
 
 def run_classify(args):
     annotation_specs = getattr(args, "annotation", None) or []
-    for spec in annotation_specs:      # fail on a bad label before any heavy work
-        _, layer_path = parse_layer_spec(spec)
-        if not os.path.isfile(layer_path):
-            raise FileNotFoundError(f"annotation file not found: {layer_path}")
+    check_layer_specs(annotation_specs)    # fail on a bad label before any heavy work
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
     config = load_config(args.config)

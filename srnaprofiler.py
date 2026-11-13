@@ -522,6 +522,14 @@ themselves are defined there. Every module takes --help.
     rp.add_argument("--no-library-qc", dest="no_library_qc", action="store_true",
                     help="Skip the extra BAM pass that builds the library quality strip "
                          "(whole-library read-length histogram and flags)")
+    rp.add_argument("--annotation", action="append", dest="annotation", default=None,
+                    metavar="LABEL:PATH",
+                    help="Annotation layer for the genomic-context figure on each detail page, "
+                         "repeatable. LABEL is one of gene, te, ncrna, phas; PATH is a "
+                         "GFF3/GTF/BED/RepeatMasker .out (same as classify)")
+    rp.add_argument("--flank", type=int, default=2000,
+                    help="Bases shown each side of a locus in the genomic-context figure "
+                         "(default: %(default)s; needs --annotation)")
     rp.add_argument("--title", default=None, help="Report title")
     rp.set_defaults(func=run_report)
 
