@@ -212,3 +212,39 @@
 - Features capped at 60 per track per window.
 - ORFs: ATG-to-stop, six frames, minimum 100 aa, only where no CDS is annotated; experimental flag.
 - Data prerequisites (not code tasks, done by the controller on the server): rebuild `rmsk_te.bed` for Drosophila with `repClass/repName` in column 4; find and fetch a TE GFF for Arabidopsis (Araport11 or TAIR10); then regenerate the two real reports for review.
+
+---
+
+### Task 8: Real-data fixes and visual polish (added after the first real-data run, 2026-11-13)
+
+**Files:**
+- Modify: `annotation.py`, `report_assets/app.js`, `report_assets/report.css`, `report_text.py`, `README.md`
+- Test: `benchmark/tests/test_genome_polish.py` and the existing genome test files
+
+**Interfaces:**
+- Consumes: everything from Tasks 1-7.
+- Produces: no new public interface; behaviour fixes and a visual pass.
+
+**A. Real-data fixes (found on the real dm6 / TAIR10 runs)**
+- A1. The Ensembl dm6 GFF3 carries FlyBase TE insertions as `transposable_element_gene` (5896) and `transposable_element` (5896). `annotation._gene_class` treats `*_gene` as a gene span, so these TEs are drawn as genes (`invader1{}2621`, `HMS-Beagle{}2504`) and pollute `gene_intron`/`intergenic` contexts. Fix: in a gene layer, any type containing `transposable_element` (case-insensitive) is ignored (counted in the existing DEBUG "ignored N features" log), documented in the README next to the type whitelist.
+- A2. Annotation text for gene-layer entries uses the feature's `label` (Name) when present instead of the type (`gene:HA8:sense:0.55`, not `gene:gene:sense:0.55`); TE/ncrna/phas entries keep the family/class name; update affected tests and the contract examples.
+
+**B. Visual polish (all listed flaws; verify on REAL report data, see below)**
+1. The "Predicted ORFs (experimental)" track: the label column wraps into four lines and the empty track is ~120 px tall. Shorten the label to "Predicted ORFs", put "experimental" as a small badge or a one-line muted caption that does not wrap into a tall block, and give an empty ORF track the same height as other empty tracks.
+2. Axes: the lower (antisense) half of the coverage and 5' ends y axes shows unsigned tick labels and the two panels sit close, so scales are easy to confuse. Use a real minus sign on the antisense ticks, add a unit label on the 5' ends panel, and separate the two panels visually.
+3. Gene labels placed in an intron gap sit on the intron line/chevrons and clip against the locus band edge; labels centred on dark exon/PHAS boxes smudge with the halo. Use clean placement rules: label beside the model when it fits, else inside the widest gap on a small background pill, else inside a box in light text without halo; never clip at the band edge.
+4. Legend: group items so a heading ("Transposon class") never separates from its entries when wrapping; add compact entries for the marks that have none (outline = overlaps the locus, locus band, miRNA precursor bar, continuation triangle).
+5. Highlight contrast: the `hl` outline/opacity difference is subtle on light TE colours and white chevrons are low contrast on the grey "Other" class; improve.
+6. Controls: separate zoom/pan from Locus/Reset visually (group spacing or a thin divider), raise the disabled-state legibility (opacity .4 is too faint; keep the disabled look but readable), rename the "Locus" button label to "Zoom to locus" (string change) so it no longer duplicates the "Locus" band label; lighten the heavy focus ring around the plot.
+7. Zoomed to the locus: the locus band then fills the plot and its label drops into the gutter; keep the band label inside the plot, and keep the top edge from reading as the plot frame.
+8. Tooltips near the bottom edge of the viewport clip; check the flip logic in `showTip` and fix.
+9. The figure letter "I" before "A": drop the letter on this figure if the `figure()` helper allows an unlettered figure (otherwise keep it and say why).
+10. At 800 px and 480 px widths nothing may overlap; the plot scrolls horizontally inside its card below ~560 px.
+
+**Real-data verification (mandatory):** two real reports are in `/private/tmp/claude-501/-Users-lucasmelo/98c1215c-4a0e-4faa-b4de-b553a40b3bd2/scratchpad/gm_real/` (`SRR30544370.report.html` Drosophila, 40 MB; `SRR24236124.report.html` Arabidopsis, 32 MB, built from the Task 7 head). The helper `real_shot.py` there reduces a report to one locus (keeps the real payload of that row) and screenshots it in headless Chrome: `python3 -I real_shot.py <acc> <row index> <out.png> [width] [height]`. Use these rows: Drosophila 148 (2L:22409725-22433640, 12 genes, 57 TEs, 3 ORFs), 55 (3R:12466646-12504730, 44 genes, 65 TEs), 3729 (siRNA over a lncRNA), 0 (miRNA with 8 genes), Arabidopsis 939 (HA8 gene models), 7829 (Pt, 13 genes). NOTE the embedded payloads were built BEFORE fix A1/A2, so to see A1 effects rebuild one report or patch the payload; the polish items (B) can be judged on them as they are. Open each PNG with the Read tool at 1400 and 800 px, critique as a designer, iterate at least three rounds, and keep the final PNGs in the scratchpad dir (not the repo).
+
+- [ ] **Step 1: Write failing tests** for A1 (a dm6-style GFF with `transposable_element_gene` + `transposable_element` + a normal gene: only the normal gene reaches the gene layer, ignored count logged), A2 (text entry uses the label), and for the testable parts of B (button label string, ORF track label string and height rule as pure helpers, legend items present, minus-sign tick labels, unlettered figure if done).
+- [ ] **Step 2: Run** `python -m pytest benchmark/tests/test_genome_polish.py -v` -> FAIL.
+- [ ] **Step 3: Implement** A1, A2, then the polish items B1-B10.
+- [ ] **Step 4: Run** the new file and the full suite -> PASS; run the real-data screenshot loop and iterate.
+- [ ] **Step 5: Commit** in logical groups, each ending with the Co-Authored-By trailer.
