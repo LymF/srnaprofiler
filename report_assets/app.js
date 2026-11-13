@@ -139,6 +139,18 @@
   }
   function emptyMsg(text) { return h("p", "rpt-srna-empty", text); }
   function note(text) { return h("p", "rpt-srna-note", text); }
+  // the only annotation verdicts that may reach a class name
+  var AN_OK = ["supports", "conflicts", "neutral"];
+  // per-class table of annotation verdicts over the listed loci (meta.an_sum); text nodes only
+  function annotationSummary(sum) {
+    var head = h("tr", "", ["ui.an.th.class", "ui.an.th.supports", "ui.an.th.conflicts",
+      "ui.an.th.neutral"].map(function (k) { return h("th", "", T(k)); }));
+    var body = h("tbody", "", Object.keys(sum).map(function (c) {
+      return h("tr", "", [h("td", "", c)].concat(sum[c].map(function (n) { return h("td", "", num(n)); })));
+    }));
+    return [h("h3", "rpt-srna-h", T("ui.an.title")), note(T("ui.an.note")),
+      h("div", "rpt-srna-scroll", h("table", "rpt-srna-table", [h("thead", "", head), body]))];
+  }
 
   // ---- tooltip: one element, filled with text nodes ----
   var tipEl = document.getElementById("tip");
@@ -463,6 +475,7 @@
         stat(T("ui.lib.frag"), num(lib.fragments),
           lib.fragment_reads === null || lib.fragment_reads === undefined ? "" :
             T("ui.lib.frag.sub", {n: num(lib.fragment_reads)}))])]);
+    if (META.an_sum) { add(box, annotationSummary(META.an_sum)); }
     if (lib.qc) { add(box, libraryQuality(lib.qc)); }
   }
 
@@ -1797,14 +1810,14 @@
     h2.setAttribute("tabindex", "-1");
     var anEl = null;
     if (d && d.an) {
-      var chip = r.an ? h("span", "rpt-srna-an " + r.an, r.an) : null;
+      var chip = AN_OK.indexOf(r.an) >= 0 ? h("span", "rpt-srna-an " + r.an, r.an) : null;
       anEl = h("p", "rpt-srna-loc", [h("code", "", d.an), chip ? " " : "", chip]);
     }
     add(box, [
       h("div", "rpt-srna-head", [h2, tag(r.c), conf, flag]),
       h("p", "rpt-srna-loc", T("ui.detail.sub", {where: where(r), reads: num(r.r)}) +
         (typeof r.z === "number" ? T("ui.detail.size", {z: r.z}) : "")),
-      anEl, META.an && d ? note(META.an) : null]);
+      anEl, META.an && d ? note(T("ui.an.legend")) : null]);
     if (!d) {
       box.appendChild(emptyMsg(T("ui.row.nodetail")));
       show("detail");

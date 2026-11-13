@@ -140,6 +140,16 @@ STRINGS = {
     "ui.ctx.conf": "Confidence rank",
     "ui.ctx.pct": "percentile {pct}",
     "ui.ctx.conf.na": "No rank within the class",
+    "ui.an.legend": ("Annotation is evidence: it can raise or lower the confidence and flag a "
+                     "locus for review, but it never changes the class. Annotation is "
+                     "incomplete, so no annotation means nothing."),
+    "ui.an.title": "Annotation evidence per class",
+    "ui.an.note": ("Loci listed in this report, by whether the annotation supports the class "
+                   "call, conflicts with it, or says nothing."),
+    "ui.an.th.class": "Class",
+    "ui.an.th.supports": "Supports",
+    "ui.an.th.conflicts": "Conflicts",
+    "ui.an.th.neutral": "Neutral",
     "ui.review": "Flagged for review",
     "ui.review.tip": "The classifier marked this locus for a manual look.",
     "ui.brand": "srnaprofiler",

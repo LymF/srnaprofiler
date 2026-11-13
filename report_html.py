@@ -47,8 +47,12 @@ Payload (JSON in <script id="report-data">), read by the front end:
     (two lines), defining {class: [check keys the class is decided by]}, conf_min,
     conf_k, dot_names, dot_legend, kt, n_hidden, capped, n_detail, reads_shown, summary,
     cl {class: [[check name key, rule text], ...]} the checklist rows per class,
-    an legend sentence for the annotation chips (present only when some shown locus
-    carries annotation text).
+    an 1 when some shown locus carries an annotation verdict (supports|conflicts|neutral): the
+    legend sentence is then strings["ui.an.legend"]. Absent without classify --annotation.
+    an_sum {class: [supports, conflicts, neutral]} (same condition): loci per class among
+    the SHOWN loci only, i.e. the same ones the list holds; loci hidden below the floor are
+    not counted, so the table agrees with the list and the "analysed" figure. Classes by
+    total descending, then name.
 """
 import base64
 import html
@@ -64,6 +68,7 @@ import report_text as rt
 import version
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_assets")
+_AN_OK = ("supports", "conflicts", "neutral")
 _LEVEL = {"absent": "0", "weak": "1", "present": "2", "unavailable": "3",
           "low": "4", "moderate": "5", "high": "6"}
 
@@ -172,7 +177,7 @@ def _row(i, c, has_detail, ex, kingdom):
          "d": 1 if has_detail else 0}
     if c.review:
         r["rv"] = 1
-    if c.annotation_support != "none":
+    if c.annotation_support in _AN_OK:   # whitelisted: it reaches a CSS class in the page
         r["an"] = c.annotation_support
     if amb:
         r["nc"] = rt.nearest_class(c)
@@ -237,10 +242,14 @@ def _payload(sel, summary, signals, title, mirna=None):
                  "reads_shown": _n(sum(c.reads or 0 for c in sel.shown), 1),
                  "summary": rt.summary_sentence(counts, sel.floor)},
     }
-    if any(c.annotation for c in sel.shown):
-        out["meta"]["an"] = ("Annotation is evidence: it can raise or lower the confidence and "
-                             "flag a locus for review, but it never changes the class. "
-                             "Annotation is incomplete, so no annotation means nothing.")
+    if any(c.annotation_support in _AN_OK for c in sel.shown):
+        out["meta"]["an"] = 1
+        tally = {}
+        for c in sel.shown:
+            if c.annotation_support in _AN_OK:
+                tally.setdefault(c.cls, [0, 0, 0])[_AN_OK.index(c.annotation_support)] += 1
+        out["meta"]["an_sum"] = dict(sorted(tally.items(),
+                                            key=lambda kv: (-sum(kv[1]), kv[0])))
     return out
 
 
