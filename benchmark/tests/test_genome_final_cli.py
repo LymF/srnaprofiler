@@ -88,3 +88,40 @@ def test_nm_reaches_the_payload_and_is_dropped_when_empty(tmp_path):
     assert gms and all(g["nm"] == ["te"] and g["ly"] == ["gene"] for g in gms)
     report_cli.run_report(base.args_for(tmp_path, annotation=["gene:" + gff(tmp_path)], flank=2000))
     assert all("nm" not in d["gm"] for d in payload(tmp_path)["details"].values() if "gm" in d)
+
+
+# ---- I-4: classify and report annotation consistency ----
+
+def _run_json(tmp_path, ann):
+    import json
+    d = {"min_reads": 1}
+    if ann is not None:
+        d["annotation"] = ann
+    (tmp_path / "run.run.json").write_text(json.dumps(d))
+
+
+def test_consistency_warns_on_difference(tmp_path, capsys):
+    _run_json(tmp_path, ["gene:/other/dir/genes.gff3"])
+    report_cli.run_report(base.args_for(tmp_path, annotation=["gene:" + gff(tmp_path)], flank=2000))
+    t = _err(capsys)
+    assert t.count("differs from the classify run") == 1 and "genes.gff3" in t and "g.gff3" in t
+
+
+def test_consistency_warns_when_one_side_is_empty(tmp_path, capsys):
+    _run_json(tmp_path, None)
+    report_cli.run_report(base.args_for(tmp_path, annotation=["gene:" + gff(tmp_path)], flank=2000))
+    assert "classify used none" in _err(capsys)
+    _run_json(tmp_path, ["gene:x.gff3"])
+    report_cli.run_report(base.args_for(tmp_path))
+    assert "report uses none" in _err(capsys)
+
+
+def test_consistency_silent_when_same_set_or_no_run_json(tmp_path, capsys):
+    report_cli.run_report(base.args_for(tmp_path, annotation=["gene:" + gff(tmp_path)], flank=2000))
+    assert "differs" not in _err(capsys)
+    _run_json(tmp_path, ["gene:/elsewhere/g.gff3"])    # same label and basename
+    report_cli.run_report(base.args_for(tmp_path, annotation=["gene:" + gff(tmp_path)], flank=2000))
+    assert "differs" not in _err(capsys)
+    (tmp_path / "run.run.json").write_text("not json")
+    report_cli.run_report(base.args_for(tmp_path, annotation=["gene:" + gff(tmp_path)], flank=2000))
+    assert "differs" not in _err(capsys)

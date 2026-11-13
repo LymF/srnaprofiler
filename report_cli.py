@@ -1,4 +1,5 @@
 """`report` subcommand: build the self-contained HTML report from classify output."""
+import json
 import math
 import os
 import sys
@@ -52,6 +53,37 @@ def _genome(args, sel, layers):
     if getattr(args, "predict_orfs", False):   # EXPERIMENTAL
         report_orfs.add_orfs(gm, sel.detail, layers, args.genome, args.orf_min_aa)
     return gm
+
+
+def _spec_key(spec):
+    kind, _, path = str(spec).partition(":")
+    return kind, os.path.basename(path)
+
+
+def _check_annotation_consistency(args):
+    """WARN when `classify` and `report` were given different annotation files.
+
+    The header chip comes from `classify --annotation` (recorded in <prefix>.run.json beside
+    --clusters), the figure from `report --annotation`; they can silently disagree."""
+    if not args.clusters.endswith(".clusters.tsv"):
+        return
+    path = args.clusters[:-len(".clusters.tsv")] + ".run.json"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            run = json.load(fh)
+    except (OSError, ValueError):
+        return
+    if not isinstance(run, dict):
+        return
+    mine = {_spec_key(x) for x in (getattr(args, "annotation", None) or [])}
+    theirs = {_spec_key(x) for x in (run.get("annotation") or []) if isinstance(x, str)}
+    if mine == theirs:
+        return
+    fmt = lambda ks: ", ".join(sorted(f"{k}:{b}" for k, b in ks)) or "none"
+    log(f"report: the annotation differs from the classify run ({os.path.basename(path)}): "
+        f"classify used {fmt(theirs)}, report uses {fmt(mine)}; the annotation text in the "
+        f"header comes from classify and the genomic-context figure from report, so they "
+        f"may disagree. Pass the same --annotation files to both", "WARN")
 
 
 def _fragments_path(args):
@@ -153,6 +185,7 @@ def run_report(args):
     _need(args.clusters, "clusters TSV")
     _need(args.bam, "BAM")
     _need_index(args.bam)
+    _check_annotation_consistency(args)
     layers = _load_layers(args)   # validated before any BAM pass
     frags = _fragments_path(args)
     if frags:
@@ -175,7 +208,7 @@ def run_report(args):
 
     if args.max_detail > _LARGE_DETAIL:
         log(f"report: --max-detail {args.max_detail} is above {_LARGE_DETAIL}; each detail "
-            f"page is about 7 KB (about 7 MB per 1000 pages), so the file can get large "
+            f"page is about 7 KB (about 7 MB per 1000 pages; 13 KB and 13 MB with --annotation), so the file can get large "
             f"and slow to open in a browser", "WARN")
 
     summary = report_data.library_summary(clusters, frags)

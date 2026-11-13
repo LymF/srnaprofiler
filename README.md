@@ -163,11 +163,19 @@ The file has three parts:
   figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
   nucleotide logo, top sequences and library context (a miRNA cluster matched to a `--mirna` table also gets the hairpin figure, below). Sense is drawn up and antisense down. Every
   figure except the top-sequences one has a table view and a "Download SVG" button.
+- **Genomic context** (only with `--annotation`): the locus with `--flank` bases each side on its
+  contig, one track each for coverage (by read size class), 5' ends (summed per bin, not per base),
+  genes (exons, CDS, UTR, strand arrows), transposons, structural RNA and PHAS loci, plus the
+  predicted ORFs with `--predict-orfs` and a miRNA precursor window on miRNA clusters. Zoom with the
+  buttons, Ctrl/Cmd + wheel (the plain wheel only while the figure has the focus), the keys `+`,
+  `-`, `0` and the arrows, and pan by dragging. The Table and Download SVG buttons reflect the
+  current view. A layer whose contigs match none of the BAM references says so in its track
+  (usually chr1 vs 1 naming).
 
 | flag | default | meaning |
 |---|---|---|
 | `--min-reads` | 300 | depth floor in raw reads (the `reads` column, 1/NH-weighted): clusters below it are left out of the report and counted as hidden |
-| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (half the budget is split evenly across the classes present, best first; the rest follows the global order, resolved clusters by confidence before ambiguous ones); the rest stay in the list. Each page is about 7 KB, so about 7 MB per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
+| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (half the budget is split evenly across the classes present, best first; the rest follows the global order, resolved clusters by confidence before ambiguous ones); the rest stay in the list. Each page is about 7 KB (about 13 KB with `--annotation`), so about 7 MB (13 MB) per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
 | `--threads` | 1 | worker processes for the figure data. Pays off only for large inputs and on Linux (fork) |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
 | `--mirna` | `<prefix>.mirna.tsv` beside `--clusters` | the `mirna` module's table; draws the miRNA hairpin figure (below) on the page of each miRNA cluster it matches. An explicit file that does not exist is an error; an absent default file just means no figure |
@@ -175,6 +183,23 @@ The file has three parts:
 | `--qc-summary` | `<prefix>.qc_summary.txt` beside `--clusters` | `qc` summary, the fallback for reads before/after trimming |
 | `--no-library-qc` | off | skip the extra BAM pass that builds the library quality strip |
 | `--title` | built-in | page title |
+| `--annotation` | none | `LABEL:PATH`, repeatable, same labels (`gene`, `te`, `ncrna`, `phas`) and formats as `classify --annotation`. Adds the "Genomic context" figure (below) to each cluster page |
+| `--flank` | 2000 | bases shown each side of the locus in that figure, 0 to 100000. Only with `--annotation` (otherwise `report` warns that it is ignored) |
+| `--predict-orfs` | off | EXPERIMENTAL. Adds a track of ORFs predicted from the genome sequence (not annotation, never used by the classifier). Needs `--annotation` and `--genome` |
+| `--genome` | none | genome FASTA indexed with `samtools faidx` (`.fai`), read by `--predict-orfs` only |
+| `--orf-min-aa` | 100 | shortest predicted ORF, in amino acids (only with `--predict-orfs`) |
+
+**Size.** `--annotation` adds about 6 KB to each detail page, so a report with it is about 13 KB
+per page. The coverage series (`cv`) dominates that and does not depend on `--flank`; what controls
+the file size is `--max-detail` (about 80 MB at `--max-detail 6000` on a Drosophila run). `report`
+logs the bytes the genome view added and warns when the finished file is over 50 MiB; lower
+`--max-detail` to shrink it.
+
+**Use the same annotation in both commands.** The annotation text and support chip in a cluster's
+header come from `classify --annotation`; the Genomic context figure comes from `report
+--annotation`. Pass the SAME files to both or they can disagree. `report` reads `<prefix>.run.json`
+beside `--clusters` (where `classify` records its annotation) and logs one warning naming the
+difference when the labels and file names differ, or when only one of the two had an annotation.
 
 The BAM must be indexed (`samtools index`); without the index `report` stops with an error.
 The floor only filters the view. It does not change how loci are called or classified.
