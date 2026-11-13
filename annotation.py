@@ -4,14 +4,19 @@ Coordinates are 0-based half-open. Malformed lines are skipped, never raised.
 """
 import gzip
 import re
+import zlib
+from sys import intern
+from urllib.parse import unquote
 from bisect import bisect_left
 from collections import namedtuple
 
 from utils import log
 
-Feature = namedtuple("Feature", "start end strand ftype name")
+Feature = namedtuple("Feature", "start end strand ftype name fid", defaults=("",))
 
 _STRANDS = ("+", "-", ".")
+_ID_KEYS_GFF3 = ("ID",)
+_ID_KEYS_GTF = ("transcript_id", "gene_id")
 _CLASS_KEYS = ("classification", "Class", "class", "family", "Family")
 
 
@@ -30,7 +35,7 @@ def _attrs_gff3(text):
     for part in text.split(";"):
         if "=" in part:
             k, v = part.split("=", 1)
-            out[k.strip()] = v.strip()
+            out[k.strip()] = unquote(v.strip())
     return out
 
 
@@ -66,7 +71,13 @@ def _gff_lines(lines, gtf):
             if attrs.get(key):
                 name = attrs[key]
                 break
-        yield cols[0], Feature(start - 1, end, _strand(cols[6]), ftype, name)
+        fid = ""
+        for key in (_ID_KEYS_GTF if gtf else _ID_KEYS_GFF3):
+            if attrs.get(key):
+                fid = attrs[key]
+                break
+        yield cols[0], Feature(start - 1, end, _strand(cols[6]), intern(ftype),
+                               intern(name), fid)
 
 
 def _bed_lines(lines):
@@ -103,8 +114,12 @@ def _rm_lines(lines):
         yield cols[4], Feature(begin - 1, end, strand, "feature", cols[10])
 
 
-def parse_annotation(path):
-    """Parse an annotation file into {contig: [Feature, ...]}."""
+def parse_annotation(path, known_contigs=None, unknown=None):
+    """Parse an annotation file into {contig: [Feature, ...]}.
+
+    With known_contigs, features on other contigs are not retained; they are
+    only counted into the `unknown` dict ({contig: n}) when one is given.
+    """
     lower = str(path).lower()
     if lower.endswith(".gz"):
         lower = lower[:-3]
@@ -119,6 +134,10 @@ def parse_annotation(path):
         else:
             gen = _gff_lines(fh, gtf=False)
         for contig, feat in gen:
+            if known_contigs is not None and contig not in known_contigs:
+                if unknown is not None:
+                    unknown[contig] = unknown.get(contig, 0) + 1
+                continue
             out.setdefault(contig, []).append(feat)
     return out
 
@@ -194,31 +213,46 @@ def parse_layer_spec(spec):
 
 
 def load_layers(specs, known_contigs):
-    """Load layers, dropping contigs absent from known_contigs (warned once per layer)."""
+    """Load layers, keeping only contigs in known_contigs (the BAM references).
+
+    Contigs of the file absent from the reference are warned about once per
+    layer; when NO contig of the layer matches the reference the warning says
+    so loudly instead (usually chr1 vs 1 naming).
+    """
     layers = []
     for spec in specs:
         kind, path = parse_layer_spec(spec)
-        parsed = parse_annotation(path)
+        unknown = {}
+        try:
+            parsed = parse_annotation(path, known_contigs, unknown)
+        except (EOFError, OSError, zlib.error) as exc:  # truncated/fake .gz, I/O
+            raise ValueError(
+                f"cannot read annotation file {path}: {type(exc).__name__}: {exc}"
+            ) from exc
         index = {}
         n_kept = 0
-        skipped = 0
-        unmatched = []
         ignored = 0
         for contig, feats in parsed.items():
-            if contig in known_contigs:
-                if kind == "gene":
-                    n_all = len(feats)
-                    feats = [f for f in feats if _gene_class(f.ftype)]
-                    ignored += n_all - len(feats)
-                index[contig] = IntervalIndex(feats)
-                n_kept += len(feats)
-            else:
-                skipped += len(feats)
-                unmatched.append(contig)
-        if skipped:
+            if kind == "gene":
+                n_all = len(feats)
+                feats = [f for f in feats if _gene_class(f.ftype)]
+                ignored += n_all - len(feats)
+            index[contig] = IntervalIndex(feats)
+            n_kept += len(feats)
+        skipped = sum(unknown.values())
+        eg = ", ".join(list(unknown)[:3])
+        if not parsed and unknown:
+            log(f"annotation layer {kind} ({path}): NO contig of this file "
+                f"matches the reference ({len(unknown)} contigs, {skipped} "
+                f"features, e.g. {eg}); check contig naming, e.g. chr1 vs 1. "
+                f"This layer will contribute nothing", "WARN")
+        elif skipped:
             log(f"annotation layer {kind} ({path}): skipped {skipped} "
-                f"features on {len(unmatched)} contigs not in the reference "
-                f"(e.g. {', '.join(unmatched[:3])})", "WARN")
+                f"features on {len(unknown)} contigs not in the reference "
+                f"(e.g. {eg})", "WARN")
+        elif not parsed:
+            log(f"annotation layer {kind} ({path}): no features parsed from "
+                f"this file", "WARN")
         if ignored:
             log(f"annotation layer {kind} ({path}): ignored {ignored} features "
                 f"of non gene/exon types (region, chromosome, match, ...)", "DEBUG")
@@ -257,9 +291,18 @@ def _best(feats, start, end):
     return max(feats, key=lambda f: min(f.end, end) - max(f.start, start))
 
 
+def _clean(text):
+    return text.replace("|", "_").replace(":", "_")
+
+
 def _entry(kind, feats, start, end, strand, frac):
+    """kind:name:relation:fraction[:feature_id]; the id only if it is parseable."""
     b = _best(feats, start, end)
-    return f"{kind}:{b.name or b.ftype}:{_relation(strand, b.strand)}:{frac:.2f}"
+    out = f"{kind}:{_clean(b.name or b.ftype)}:{_relation(strand, b.strand)}:{frac:.2f}"
+    fid = getattr(b, "fid", "")
+    if fid and "|" not in fid and ":" not in fid:
+        out += f":{fid}"
+    return out
 
 
 def summarize_locus(chrom, start, end, strand, layers, min_overlap):
@@ -295,6 +338,7 @@ def summarize_locus(chrom, start, end, strand, layers, min_overlap):
                 entries.append(_entry(layer.kind, feats, start, end, strand, frac))
     if annotated and not contexts:
         contexts.add("intergenic")
+        entries.append("gene:intergenic:.:1.00")
     return {"contexts": contexts, "text": "|".join(entries)}
 
 
@@ -310,8 +354,66 @@ def support_for(cls, contexts, table):
     return "neutral"
 
 
+CONTEXT_KINDS = ("te", "gene_exon", "gene_intron", "intergenic", "ncrna", "phas")
+
+
+def _number(cfg, key, default, ok, rule):
+    v = cfg.get(key, default)
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not ok(v):
+        raise ValueError(f"annotation.{key} must be {rule}, got {v!r}")
+    return v
+
+
+def validate_annotation_config(cfg):
+    """Return the annotation block normalised; ValueError naming the bad key.
+
+    `annotation:` null in a YAML is the empty block. Warns once when the block
+    has no classes (e.g. a config copied from an old rules.yaml): the layers
+    would be reported but never support or conflict with anything.
+    """
+    if cfg is None:
+        cfg = {}
+    if not isinstance(cfg, dict):
+        raise ValueError(f"annotation must be a mapping, got {type(cfg).__name__}")
+    out = dict(cfg)
+    _number(cfg, "nudge", 0.05, lambda v: 0 <= v <= 0.2, "a number in [0, 0.2]")
+    _number(cfg, "min_overlap", 0.5, lambda v: 0 < v <= 1, "a number in (0, 1]")
+    classes = cfg.get("classes")
+    if classes is None:
+        classes = {}
+    if not isinstance(classes, dict):
+        raise ValueError("annotation.classes must be a mapping of class -> "
+                         "{supports, conflicts}")
+    for cls, spec in classes.items():
+        if spec is None:
+            continue
+        if not isinstance(spec, dict):
+            raise ValueError(f"annotation.classes.{cls} must be a mapping with "
+                             f"supports/conflicts lists")
+        for key in ("supports", "conflicts"):
+            v = spec.get(key)
+            if v is None:
+                continue
+            if not isinstance(v, (list, tuple)):
+                hint = f" (write [{v}] for one context)" if isinstance(v, str) else ""
+                raise ValueError(f"annotation.classes.{cls}.{key} must be a "
+                                 f"list, got {v!r}{hint}")
+            for kind in v:
+                if kind not in CONTEXT_KINDS:
+                    raise ValueError(
+                        f"annotation.classes.{cls}.{key}: unknown context "
+                        f"{kind!r}; use one of {', '.join(CONTEXT_KINDS)}")
+    out["classes"] = classes
+    if not classes:
+        log("annotation block has no classes: annotation is reported per locus "
+            "but never supports or conflicts with a class (copy the annotation "
+            "block from the shipped rules.yaml)", "WARN")
+    return out
+
+
 def apply_annotation(records, layers, cfg):
     """Fill annotation fields; nudge confidence and flag review. Never changes cls."""
+    cfg = cfg or {}
     counts = {"none": 0, "supports": 0, "conflicts": 0, "neutral": 0}
     if not layers:
         counts["none"] = len(records)

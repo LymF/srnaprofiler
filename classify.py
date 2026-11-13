@@ -5,11 +5,12 @@ from collections import defaultdict
 from features import extract_by_chrom, parse_trim_to_reads
 from samio import (ensure_sorted_indexed_bam, mapped_chromosomes, total_mapped,
                    prefers_xm_as_nh, weighted_library_size,
-                   reference_alignment_counts)
+                   reference_alignment_counts, bam_references)
 from mapping import available_memory_mb
 from decider import RuleScorer, load_config
 
-from annotation import apply_annotation, load_layers, parse_layer_spec
+from annotation import (apply_annotation, load_layers, parse_layer_spec,
+                        validate_annotation_config)
 from reporter import write_tsv, write_gff3, write_run_json, write_fragments_tsv
 from utils import log
 
@@ -161,6 +162,7 @@ def run_classify(args):
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
     config = load_config(args.config)
+    ann_cfg = validate_annotation_config(config.get("annotation")) if annotation_specs else None
     ext_cfg = {"dicermin": 18, "dicermax": 35, "strand_cutoff": 0.8}
     ext_cfg.update(config.get("extractor", {}))
     ext_cfg["size_windows"] = class_size_windows(config)
@@ -181,6 +183,12 @@ def run_classify(args):
     base = os.path.join(outdir, args.prefix)
     log(f"Ensuring sorted, indexed BAM (threads={threads})...", "INFO")
     bam_path = ensure_sorted_indexed_bam(args.sam, base, threads)
+
+    layers = None
+    if annotation_specs:
+        # Before any heavy work: a bad layer file must not cost hours. Known
+        # contigs are every BAM reference, not only those with reads.
+        layers = load_layers(annotation_specs, set(bam_references(bam_path)))
 
     xm_as_nh = prefers_xm_as_nh(bam_path)
     if xm_as_nh:
@@ -211,7 +219,6 @@ def run_classify(args):
 
     chroms = mapped_chromosomes(bam_path)
     counts = dict(zip(chroms, reference_alignment_counts(bam_path)))
-    all_chroms = list(chroms)   # every BAM reference, before --organelle-contigs
     exclude = parse_contig_list(getattr(args, "organelle_contigs", None))
     if exclude:
         chroms, dropped = select_contigs(chroms, exclude)
@@ -255,8 +262,7 @@ def run_classify(args):
         r.gates = scorer.gate_flags(r)
 
     if annotation_specs:
-        layers = load_layers(annotation_specs, set(all_chroms))
-        counts_by_support = apply_annotation(records, layers, config.get("annotation", {}))
+        counts_by_support = apply_annotation(records, layers, ann_cfg)
         log("annotation support: " + ", ".join(
             f"{k}={v}" for k, v in counts_by_support.items()), "INFO")
 

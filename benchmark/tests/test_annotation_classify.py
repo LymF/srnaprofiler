@@ -236,7 +236,7 @@ def test_e2e_organelle_contigs_still_pass_all_bam_references(e2e, monkeypatch):
     assert {r["chrom"] for r in rows} == {"chr1"}
 
 
-def test_e2e_contig_name_mismatch_warns_once_and_is_neutral(tmp_path, monkeypatch, capsys):
+def test_e2e_contig_name_mismatch_zero_match_warning_and_is_neutral(tmp_path, monkeypatch, capsys):
     bam, fa = _build_inputs(tmp_path, (("1", 5000), ("2", 5000)), [("1", 1000)])
     te = tmp_path / "te.out"
     te.write_text(
@@ -245,10 +245,69 @@ def test_e2e_contig_name_mismatch_warns_once_and_is_neutral(tmp_path, monkeypatc
     out = tmp_path / "o"
     run_classify(_args(tmp_path, bam, fa, out, annotation=[f"te:{te}"]))
     err = capsys.readouterr().err
-    assert err.count("[WARN]") == 1 and "not in the reference" in err
+    assert err.count("[WARN]") == 1
+    assert "NO contig of this file matches the reference" in err
+    assert "chr1 vs 1" in err and "skipped" not in err
     _, rows = _table(out / "run.clusters.tsv")
     assert rows
     # No contig of the layer matches the BAM: the code yields "neutral" (absent
     # features are never evidence) with an empty summary, not "none".
     assert {r["annotation_support"] for r in rows} == {"neutral"}
     assert {r["annotation"] for r in rows} == {""}
+
+
+def _no_extract(monkeypatch):
+    import classify
+
+    def boom(*a, **k):
+        raise AssertionError("extraction ran before the annotation inputs were validated")
+    monkeypatch.setattr(classify, "extract_by_chrom", boom)
+
+
+def test_e2e_readless_scaffold_does_not_warn(tmp_path, capsys):
+    chroms = (("chr1", 5000), ("scaf1", 5000))
+    bam, fa = _build_inputs(tmp_path, chroms, [("chr1", 1000)])
+    te = tmp_path / "te.out"
+    te.write_text(
+        "score  div. del. ins.  sequence  begin end (left)  repeat class/family begin end (left) ID\n\n"
+        "  500  1.0  0.0  0.0  chr1  900  1100  (3900)  +  rep1  LTR/Gypsy  1  200  (0)  1\n"
+        "  500  1.0  0.0  0.0  scaf1  900  1100  (3900)  +  rep1  LTR/Gypsy  1  200  (0)  1\n")
+    run_classify(_args(tmp_path, bam, fa, tmp_path / "o", annotation=[f"te:{te}"]))
+    assert "[WARN]" not in capsys.readouterr().err
+
+
+def _cfg_with(tmp_path, annotation_yaml):
+    import yaml
+    cfg = yaml.safe_load((REPO / "rules.yaml").read_text())
+    cfg.pop("annotation", None)
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml.safe_dump(cfg) + annotation_yaml)
+    return str(p)
+
+
+def test_e2e_annotation_null_is_empty_block_with_warning(e2e, capsys):
+    tmp_path, bam, fa, te = e2e
+    cfg = _cfg_with(tmp_path, "annotation: null\n")
+    out = tmp_path / "o"
+    run_classify(_args(tmp_path, bam, fa, out, annotation=[f"te:{te}"], config=cfg))
+    assert "no classes" in capsys.readouterr().err
+    _, rows = _table(out / "run.clusters.tsv")
+    assert {r["annotation_support"] for r in rows} == {"neutral"}
+
+
+def test_invalid_annotation_config_fails_before_extraction(e2e, monkeypatch):
+    tmp_path, bam, fa, te = e2e
+    _no_extract(monkeypatch)
+    cfg = _cfg_with(tmp_path, "annotation:\n  nudge: 0.9\n")
+    with pytest.raises(ValueError, match="nudge"):
+        run_classify(_args(tmp_path, bam, fa, tmp_path / "o",
+                           annotation=[f"te:{te}"], config=cfg))
+
+
+def test_bad_gz_layer_fails_before_extraction(e2e, monkeypatch):
+    tmp_path, bam, fa, te = e2e
+    _no_extract(monkeypatch)
+    bad = tmp_path / "bad.gff3.gz"
+    bad.write_text("not gzip\n")
+    with pytest.raises(ValueError, match="bad.gff3.gz"):
+        run_classify(_args(tmp_path, bam, fa, tmp_path / "o", annotation=[f"te:{bad}"]))

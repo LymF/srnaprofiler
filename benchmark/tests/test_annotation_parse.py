@@ -17,7 +17,7 @@ def test_gff3_exon_and_gene_types(tmp_path):
            "chr1\tsrc\texon\t101\t150\t.\t-\t.\tParent=g1\n")
     d = parse_annotation(p)
     assert list(d) == ["chr1"]
-    assert d["chr1"][0] == Feature(100, 200, "+", "gene", "gene")
+    assert d["chr1"][0] == Feature(100, 200, "+", "gene", "gene", "g1")
     assert d["chr1"][1].strand == "-" and d["chr1"][1].ftype == "exon"
     assert d["chr1"][1].start == 100 and d["chr1"][1].end == 150
 

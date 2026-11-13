@@ -69,8 +69,9 @@ def write_gff3(records, path, annotated=False):
             attrs = (f"ID={r.name};score={'NA' if r.score is None else r.score};"
                      f"confidence={r.confidence};review={r.review}")
             if annotated:
-                attrs += (f";annotation_support={r.annotation_support}"
-                          f";annotation={_gff3_escape(r.annotation)}")
+                attrs += f";annotation_support={r.annotation_support}"
+                if r.annotation:
+                    attrs += f";annotation={_gff3_escape(r.annotation)}"
             fh.write("\t".join([
                 r.chrom, "srnaprofiler", r.cls or "unclassified",
                 str(r.start + 1), str(r.end), score_col,

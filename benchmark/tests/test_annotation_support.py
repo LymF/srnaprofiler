@@ -49,8 +49,8 @@ def test_nudge_is_bounded():
     a, b = _rec(conf=0.98), _rec(conf=0.02)
     apply_annotation([a], TE, CFG)
     apply_annotation([b], EXON, CFG)
-    assert a.confidence == 1.0
-    assert b.confidence == 0.0
+    assert a.confidence == 1.0 and a.annotation_support == "supports"
+    assert b.confidence == 0.0 and b.annotation_support == "conflicts"
 
 
 def test_review_never_cleared():
@@ -60,17 +60,18 @@ def test_review_never_cleared():
 
 
 def test_miRNA_and_ambiguous_untouched():
-    for cls in ("miRNA", "ambiguous"):
+    for cls, want in (("miRNA", "conflicts"), ("ambiguous", "neutral")):
         r = _rec(cls=cls, conf=0.7)
         apply_annotation([r], TE, CFG)
         assert r.confidence == 0.7 and r.review is False
         assert r.annotation.startswith("te:")
-        assert r.annotation_support in ("conflicts", "neutral", "supports")
+        assert r.annotation_support == want
 
 
 def test_no_layers_marks_none():
     recs = [_rec(), _rec(cls="miRNA")]
-    apply_annotation(recs, [], CFG)
+    assert apply_annotation(recs, [], CFG) == {
+        "none": 2, "supports": 0, "conflicts": 0, "neutral": 0}
     for r in recs:
         assert r.annotation_support == "none" and r.annotation == ""
 

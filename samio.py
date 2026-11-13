@@ -97,6 +97,12 @@ def mapped_chromosomes(bam_path):
         return [s.contig for s in fh.get_index_statistics() if s.mapped > 0]
 
 
+def bam_references(bam_path):
+    """Every reference name in the BAM header, with or without reads."""
+    with pysam.AlignmentFile(bam_path, "rb") as fh:
+        return list(fh.references)
+
+
 _PAIR = {"A": "T", "T": "A", "C": "G", "G": "C"}
 
 
