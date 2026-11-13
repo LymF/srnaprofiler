@@ -44,7 +44,7 @@ def _f(x):
         v = float(x)
     except (TypeError, ValueError):
         return None
-    return None if v != v else v
+    return v if math.isfinite(v) else None
 
 
 def _i(x):
@@ -396,23 +396,25 @@ def hairpin_spec(row):
     """What the BAM pass needs: (lo, hi, strand, precursor, mature (a, b)|None, star|None),
     plain tuples so it crosses a process boundary; None when the precursor cannot be placed."""
     win = window(row)
-    if win is None:
-        return None
+    if win is None or row.strand not in ("+", "-"):
+        return None   # an unknown strand ('.') gets no reads: they would be drawn as '+'
     seg = segments(row)
-    return (win[0], win[1], "-" if row.strand == "-" else "+", row.precursor_seq,
+    return (win[0], win[1], row.strand, row.precursor_seq,
             seg["m"], seg["s"])
 
 
-def figure_data(row, folded, hp):
+def figure_data(row, folded, hp, failed=False):
     """The `mi` entry of a detail page.
 
     folded: (dot-bracket|None, mfe|None, tool_missing bool[, xy]); hp: the reads dict of
-    report_signals.HairpinReads.build() or None.
+    report_signals.HairpinReads.build() or None;
+    failed: the BAM read of this cluster failed or its chromosome is not in the BAM.
     Keys: n name, st strand, L precursor length, seq (RNA) or absent, m/s [a, b] segments,
     lp [a, b] loop, db dot-bracket, mfe, xy flat ints x0,y0,x1,y1,... of the 2D diagram (absent
     when no layout tool), ns why there is no structure (m missing, f failed),
     rd [[a, b, sequence (case = match), reads, kind m/s/""]], cov per-base depth, more/mr
     variants and reads not drawn, anti/ovh reads not shown, lo genomic window start,
+    err 1 when the reads could not be read, nr 1 when the strand is unknown (no reads drawn),
     t numbers [[key, value]], pc criteria [[key, status, observed, rule]].
     """
     seg = segments(row)
@@ -436,6 +438,10 @@ def figure_data(row, folded, hp):
     win = window(row)
     if win is None:
         d["nowin"] = 1
+    elif row.strand not in ("+", "-"):
+        d["nostrand"] = 1
+    elif failed or hp is None:
+        d["err"] = 1
     elif hp is not None:
         d.update({k: hp[k] for k in ("rd", "cov", "more", "mr", "anti", "ovh") if k in hp})
         d["lo"] = win[0]

@@ -1316,8 +1316,13 @@
       return {c: c, lo: lo, w: w, at: function (v) { return Math.max(0, Math.min(n - 1, Math.floor((v - lo) / w))); }};
     }
     var lr = rows.filter(function (x) { return x.r > 0; }).map(function (x) { return Math.log(x.r) / Math.LN10; });
-    var rlo = lr.length ? Math.floor(Math.min.apply(null, lr) * 4) / 4 : 0;
-    var rhi = lr.length ? Math.ceil(Math.max.apply(null, lr) * 4 + 1e-9) / 4 : 1;
+    var mn = Infinity, mx = -Infinity;
+    for (var li = 0; li < lr.length; li++) {
+      if (lr[li] < mn) { mn = lr[li]; }
+      if (lr[li] > mx) { mx = lr[li]; }
+    }
+    var rlo = lr.length ? Math.floor(mn * 4) / 4 : 0;
+    var rhi = lr.length ? Math.ceil(mx * 4 + 1e-9) / 4 : 1;
     if (rhi <= rlo) { rhi = rlo + 0.25; }
     var HR = hist(lr, rlo, rhi, Math.min(24, Math.max(4, Math.round((rhi - rlo) * 8))));
     var confs = r.c === "ambiguous" ? [] : rows.filter(function (x) { return x.c === r.c && x.f !== null; })
@@ -1719,6 +1724,10 @@
     }
     if (mi.nowin) {
       notes.push(note(T("mi.nowin")));
+    } else if (mi.nostrand) {
+      notes.push(note(T("mi.nostrand")));
+    } else if (mi.err) {
+      notes.push(note(T("ui.fig.err")));
     } else if (!L.reads) {
       notes.push(note(T("mi.noreads")));
     } else {

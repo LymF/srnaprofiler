@@ -184,7 +184,8 @@ def _detail(c, ex, sig, ctx, kingdom="animal", mirna=None):
         d["ck"] = ck
     if mirna:
         row, folded = mirna
-        d["mi"] = report_mirna.figure_data(row, folded, (sig or {}).get("hp"))
+        d["mi"] = report_mirna.figure_data(row, folded, (sig or {}).get("hp"),
+                                      failed=bool(sig) and "hp" not in sig)
     return d
 
 

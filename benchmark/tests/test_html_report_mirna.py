@@ -354,6 +354,23 @@ def test_figure_data_shapes(tmp_path):
     assert d["nowin"] == 1 and "rd" not in d
 
 
+def test_figure_data_failed_read_and_unknown_strand(tmp_path):
+    r = load_one(tmp_path)
+    assert rm.figure_data(r, (None, None, False), None, failed=True)["err"] == 1
+    assert "err" not in rm.figure_data(r, (None, None, False), {"rd": [], "cov": []})
+    u = load_one(tmp_path, strand=".")
+    assert rm.hairpin_spec(u) is None
+    d = rm.figure_data(u, (None, None, False), None, failed=True)
+    assert d["nostrand"] == 1 and "err" not in d and "rd" not in d and d["st"] == "+"
+    assert rm.hairpin_spec(r)[2] == "+"
+
+
+def test_f_returns_none_for_non_finite():
+    for bad in (float("inf"), float("-inf"), float("nan"), "inf", "nan", "x", None):
+        assert rm._f(bad) is None
+    assert rm._f("1.5") == 1.5 and rm._f(0) == 0.0
+
+
 # ---- 2D layout ----
 
 PS = """%!PS

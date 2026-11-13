@@ -54,7 +54,7 @@ return res;
 """
 
 
-def build(tmp_path, mi_args, strand="+", cls="miRNA", fold=("((((..))))", -3.2, False), hp=None):
+def build(tmp_path, mi_args, strand="+", cls="miRNA", fold=("((((..))))", -3.2, False), hp=None, nohp=False):
     row = load_one(tmp_path, strand=strand, **(mi_args or {}))
     prec = row.precursor_seq or precursor()
     rd = [[M_AB[0], M_AB[1], prec[M_AB[0]:M_AB[1]].lower(), 12.0, "m"],
@@ -70,7 +70,7 @@ def build(tmp_path, mi_args, strand="+", cls="miRNA", fold=("((((..))))", -3.2, 
     c = mk("mir1", reads=900, cls=cls, start=START, end=END)
     from report_data import select
     sel = select([c], 300.0)
-    sig = {c.name: dict(full_sig(), hp=hp)}
+    sig = {c.name: dict(full_sig()) if nohp else dict(full_sig(), hp=hp)}
     out = tmp_path / "r.html"
     report_html.build_report(sel, SUMMARY, sig, "t", str(out), mirna={"mir1": (row, fold)})
     d = data_of(out.read_text())
@@ -224,3 +224,18 @@ def test_2d_diagram_absent_without_coordinates(tmp_path):
     assert "xy" not in d["details"]["0"]["mi"]
     r = run(tmp_path, text, d)
     assert r["has"] and r["bands"] == 3
+
+
+def test_unread_bam_says_so_not_no_reads(tmp_path):
+    d, text = build(tmp_path, None, nohp=True)
+    r = run(tmp_path, text, d)
+    S = d["strings"]
+    assert r["has"] and r["reads"] == 0
+    assert S["ui.fig.err"] in r["notes"] and S["mi.noreads"] not in r["notes"]
+
+
+def test_unknown_strand_draws_no_reads(tmp_path):
+    d, text = build(tmp_path, None, strand=".", nohp=True)
+    r = run(tmp_path, text, d)
+    S = d["strings"]
+    assert r["has"] and r["reads"] == 0 and S["mi.nostrand"] in r["notes"]

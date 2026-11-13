@@ -306,6 +306,7 @@ STRINGS = {
     "mi.nostruct.f": "Structure not available: RNAfold could not fold this sequence.",
     "mi.noseq": "The miRNA table has no precursor sequence for this locus (miRScore did not score it), so the hairpin cannot be drawn. The numbers are below.",
     "mi.nowin": "The precursor could not be placed on the genome from its coordinates, so its reads are not shown.",
+    "mi.nostrand": "The strand of this precursor is not known (the miRDeep2 table gave '.'), so its reads are not shown.",
     "mi.noreads": "No reads of the precursor strand fall fully inside the precursor in the BAM.",
     "mi.more": "{n} more sequences ({reads} reads) are not drawn; the table view lists the drawn ones.",
     "mi.anti": "Not shown: {anti} reads on the opposite strand and {ovh} reads that run past the precursor ends.",
