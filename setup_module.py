@@ -72,6 +72,8 @@ MODULE_TOOLS = {
     ],
     "annotate-loci": [
         _tool("RepeatMasker", "optional: needed for `annotate-loci`"),
+        _tool("cmscan", "optional: needed for annotate-loci --ncrna-cm"),
+        _tool("cmpress", "optional: needed for annotate-loci --ncrna-cm"),
     ],
     "te-library": [
         _tool("BuildDatabase", "optional: needed for `te-library` (RepeatModeler)"),

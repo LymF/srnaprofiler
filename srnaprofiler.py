@@ -78,7 +78,7 @@ The order, and what each step is for:
   mirna       find and validate miRNA loci, so classify can carve them out
   classify    call loci, measure their signatures, assign a class
   classplots  look at the result: per-class and per-locus figures
-  annotate-loci  RepeatMasker on the classified loci only (feeds --annotation)
+  annotate-loci  RepeatMasker / Infernal on the classified loci only (feeds --annotation)
   te-library  build a TE library for a genome (RepeatModeler2) and drop gene contaminants
 
 A typical run:
@@ -600,13 +600,16 @@ themselves are defined there. Every module takes --help.
 
     from annotate_loci import run_annotate_loci
     al = subparsers.add_parser("annotate-loci",
-        help="Run RepeatMasker on the classified loci only (not the whole genome)",
+        help="Annotate the classified loci only: RepeatMasker (TE) and/or Infernal (structural RNA)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "example:\n"
             "  srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa \\\n"
             "      -o out --species insects\n"
             "  srnaprofiler classify ... --annotation te:out/loci.te.gff3\n"
+            "  srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa \\\n"
+            "      -o out -p loci --ncrna-cm Rfam.cm   # structural RNA (Infernal)\n"
+            "  srnaprofiler classify ... --annotation ncrna:out/loci.ncrna.gff3\n"
         ))
     al.add_argument("--clusters", required=True, help="classify .clusters.tsv")
     al.add_argument("-g", "--genome", required=True, help="Genome FASTA")
@@ -616,6 +619,17 @@ themselves are defined there. Every module takes --help.
                                       "--species / --te-library)")
     al.add_argument("--te-library", dest="te_library",
                     help="Custom TE library FASTA (RepeatMasker -lib)")
+    al.add_argument("--ncrna-cm", dest="ncrna_cm",
+                    help="Rfam.cm: also scan the loci for structural RNA with Infernal "
+                         "cmscan (independent of --species/--te-library; at least one mode "
+                         "is required)")
+    al.add_argument("--ncrna-clanin", dest="ncrna_clanin",
+                    help="Rfam.clanin (adds --oclan --oskip to cmscan)")
+    al.add_argument("--ncrna-classes", dest="ncrna_classes",
+                    default="ambiguous,siRNA,phasiRNA,phasiRNA24,miRNA",
+                    help="Comma-separated locus classes to scan, or 'all' (default: "
+                         "%(default)s; hcsiRNA is most of the sequence and rarely a "
+                         "structural RNA)")
     al.add_argument("--threads", type=int, default=4)
     al.set_defaults(func=run_annotate_loci)
 

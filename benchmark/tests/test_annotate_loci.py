@@ -208,3 +208,215 @@ def test_failure_keeps_preexisting_files(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         annotate_loci.run_annotate_loci(a)
     assert _leftovers(a) == ["loci.repeatmasker"]
+
+
+# ---- structural RNA (--ncrna-cm) with fake cmscan/cmpress on PATH ----
+import stat
+
+import annotate_loci as al
+
+
+def _tool(path, body):
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+
+def _tbl_row(fam, acc, q, f, t, strand, ev, inc="!", clan="-"):
+    return (f"1 {fam} {acc} {clan} {q} - cm 1 100 {f} {t} {strand} no 1 0.5 0.0 "
+            f"50.0 {ev} {inc} * 0 0 0 0 0 0 desc text\n")
+
+
+class Nc:
+    def __init__(self, tmp_path, monkeypatch, tools=("cmscan", "cmpress"), rows=""):
+        self.bin = tmp_path / "bin"
+        self.bin.mkdir()
+        self.log = tmp_path / "calls.log"
+        self.log.write_text("")
+        self.tbl = tmp_path / "canned.tbl"
+        self.tbl.write_text("# header\n" + rows)
+        self.scan_copy = tmp_path / "scan_copy.fa"
+        monkeypatch.setenv("FAKE_LOG", str(self.log))
+        monkeypatch.setenv("FAKE_TBL", str(self.tbl))
+        monkeypatch.setenv("FAKE_SCAN", str(self.scan_copy))
+        monkeypatch.setenv("PATH", f"{self.bin}:/bin:/usr/bin")
+        if "cmscan" in tools:
+            _tool(self.bin / "cmscan",
+                  'echo "cmscan $*" >> "$FAKE_LOG"\n'
+                  'while [ $# -gt 1 ]; do [ "$1" = "--tblout" ] && out="$2"; last="$1"; shift; done\n'
+                  'cp "$FAKE_TBL" "$out"\ncp "$1" "$FAKE_SCAN"\n')
+        if "cmpress" in tools:
+            _tool(self.bin / "cmpress", 'echo "cmpress $*" >> "$FAKE_LOG"\ntouch "$2.i1m"\n')
+
+    def calls(self):
+        return self.log.read_text().splitlines()
+
+    def scanned(self):
+        return [l[1:].strip() for l in self.scan_copy.read_text().splitlines() if l.startswith(">")]
+
+
+def _nc_args(tmp_path, rows=None, cm_index=True, **kw):
+    fa, _ = _genome(tmp_path)
+    rows = rows or [("chr1", 0, 60, "hcsiRNA"), ("chr1", 100, 160, "miRNA"),
+                    ("chr1", 200, 260, "ambiguous")]
+    p = tmp_path / "c.tsv"
+    p.write_text(HEADER + "".join(
+        f"{c}\t{s}\t{e}\tn{i}\t{cl}\t10\t24\n" for i, (c, s, e, cl) in enumerate(rows)))
+    cm = tmp_path / "Rfam.cm"
+    cm.write_text("cm")
+    if cm_index:
+        (tmp_path / "Rfam.cm.i1m").write_text("x")
+    d = dict(clusters=str(p), genome=fa, outdir=str(tmp_path / "out"), prefix="loci",
+             species=None, te_library=None, threads=2, ncrna_cm=str(cm),
+             ncrna_clanin=None, ncrna_classes=al.DEFAULT_NCRNA_CLASSES)
+    d.update(kw)
+    return argparse.Namespace(**d)
+
+
+def test_ncrna_default_classes_scan_only_selected(tmp_path, monkeypatch):
+    nc = Nc(tmp_path, monkeypatch)
+    al.run_annotate_loci(_nc_args(tmp_path))
+    assert nc.scanned() == ["L2", "L3"]
+
+
+def test_ncrna_all_scans_every_locus(tmp_path, monkeypatch):
+    nc = Nc(tmp_path, monkeypatch)
+    al.run_annotate_loci(_nc_args(tmp_path, ncrna_classes="all"))
+    assert nc.scanned() == ["L1", "L2", "L3"]
+
+
+def test_cmpress_only_when_index_missing(tmp_path, monkeypatch):
+    nc = Nc(tmp_path, monkeypatch)
+    al.run_annotate_loci(_nc_args(tmp_path, cm_index=True))
+    assert not any(c.startswith("cmpress") for c in nc.calls())
+    import shutil
+    shutil.rmtree(tmp_path / "out")
+    os.remove(tmp_path / "Rfam.cm.i1m")
+    al.run_annotate_loci(_nc_args(tmp_path, cm_index=False))
+    assert any(c.startswith("cmpress -F") for c in nc.calls())
+
+
+def test_cmscan_flags_and_z_value(tmp_path, monkeypatch):
+    nc = Nc(tmp_path, monkeypatch)
+    al.run_annotate_loci(_nc_args(tmp_path))
+    cmd = [c for c in nc.calls() if c.startswith("cmscan")][0]
+    # two loci of 60 bp: 2 * 0.00012 Mb < 1, so Z = 1
+    assert " -Z 1 " in cmd and "--cut_ga --rfam --nohmmonly --fmt 2 --cpu 2" in cmd
+    assert "--oclan" not in cmd and "-o /dev/null" in cmd and "--tblout" in cmd
+
+
+def test_z_value_scales(tmp_path):
+    f = tmp_path / "s.fa"
+    f.write_text(">a\n" + "A" * 1_250_000 + "\n")
+    assert al._z_value(str(f)) == "2.5"
+
+
+def test_clanin_adds_oclan_oskip(tmp_path, monkeypatch):
+    nc = Nc(tmp_path, monkeypatch)
+    cl = tmp_path / "Rfam.clanin"
+    cl.write_text("x")
+    al.run_annotate_loci(_nc_args(tmp_path, ncrna_clanin=str(cl)))
+    cmd = [c for c in nc.calls() if c.startswith("cmscan")][0]
+    assert f"--clanin {cl} --oclan --oskip" in cmd
+
+
+def test_coordinates_classes_and_inc_filter(tmp_path, monkeypatch):
+    rows = (_tbl_row("MIR166", "RF00644", "L2", 5, 25, "+", "1e-5") +
+            _tbl_row("tRNA", "RF00005", "L3", 30, 10, "-", "2e-9") +
+            _tbl_row("snoR14", "RF00001", "L3", 1, 20, "+", "1e-3") +
+            _tbl_row("5S_rRNA", "RF00001", "L3", 1, 20, "+", "1e-3", inc="?") +
+            _tbl_row("U2", "RF00004", "L2", 40, 55, "+", "1e-4") +
+            _tbl_row("5_8S_rRNA", "RF00002", "L2", 1, 5, "+", "1e-4") +
+            _tbl_row("RNaseP_nuc", "RF00009", "L2", 6, 9, "+", "1e-4") +
+            _tbl_row("SSU_rRNA_plant", "RF01960", "L2", 10, 12, "+", "1e-4"))
+    Nc(tmp_path, monkeypatch, rows=rows)
+    a = _nc_args(tmp_path)
+    al.run_annotate_loci(a)
+    gff = tmp_path / "out" / "loci.ncrna.gff3"
+    lines = [l.rstrip("\n").split("\t") for l in open(gff) if not l.startswith("#")]
+    assert len(lines) == 7                       # the inc "?" row is gone
+    assert [(l[0], int(l[3])) for l in lines] == sorted((l[0], int(l[3])) for l in lines)
+    by = {l[8].split(";")[0]: l for l in lines}
+    mir = by["Name=MIR166"]                       # L2 starts at 100 (0-based)
+    assert (mir[3], mir[4], mir[6], mir[1], mir[2]) == ("105", "125", "+", "Infernal", "ncRNA")
+    assert "Accession=RF00644" in mir[8] and "Class=miRNA" in mir[8] and "evalue=1e-5" in mir[8]
+    trna = by["Name=tRNA"]                        # reverse hit 30..10 on L3 (start 200)
+    assert (trna[3], trna[4], trna[6]) == ("210", "230", "-") and "Class=tRNA" in trna[8]
+    cls = {k: v[8].split("Class=")[1].split(";")[0] for k, v in by.items()}
+    assert cls["Name=snoR14"] == "snoRNA" and cls["Name=U2"] == "snRNA"
+    assert cls["Name=5_8S_rRNA"] == "rRNA" and cls["Name=SSU_rRNA_plant"] == "rRNA"
+    assert cls["Name=RNaseP_nuc"] == "ncRNA"
+
+
+def test_output_loads_as_ncrna_layer(tmp_path, monkeypatch):
+    Nc(tmp_path, monkeypatch, rows=_tbl_row("MIR166", "RF00644", "L2", 5, 25, "+", "1e-5"))
+    al.run_annotate_loci(_nc_args(tmp_path))
+    from annotation import load_layers
+    L = load_layers([f"ncrna:{tmp_path / 'out' / 'loci.ncrna.gff3'}"], {"chr1"})[0]
+    assert L.kind == "ncrna" and L.n_features == 1
+    f = parse_annotation(str(tmp_path / "out" / "loci.ncrna.gff3"))["chr1"][0]
+    assert (f.start, f.end) == (104, 125)
+
+
+def test_both_modes_in_one_call(tmp_path, monkeypatch):
+    Nc(tmp_path, monkeypatch, rows=_tbl_row("MIR166", "RF00644", "L2", 5, 25, "+", "1e-5"))
+    monkeypatch.setattr(al, "which", lambda n: True)
+    monkeypatch.setattr(al, "_run_repeatmasker", _fake_rm)
+    al.run_annotate_loci(_nc_args(tmp_path, species="insects"))
+    out = tmp_path / "out"
+    assert (out / "loci.te.gff3").exists() and (out / "loci.ncrna.gff3").exists()
+
+
+def test_neither_mode_is_error(tmp_path, monkeypatch):
+    Nc(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit):
+        al.run_annotate_loci(_nc_args(tmp_path, ncrna_cm=None))
+
+
+def test_both_te_options_still_error_with_ncrna(tmp_path, monkeypatch):
+    Nc(tmp_path, monkeypatch)
+    monkeypatch.setattr(al, "which", lambda n: True)
+    with pytest.raises(SystemExit):
+        al.run_annotate_loci(_nc_args(tmp_path, species="x", te_library="l.fa"))
+
+
+def test_existing_ncrna_output_blocks_rerun(tmp_path, monkeypatch, capsys):
+    Nc(tmp_path, monkeypatch)
+    a = _nc_args(tmp_path)
+    os.makedirs(a.outdir)
+    open(os.path.join(a.outdir, "loci.ncrna.gff3"), "w").write("keep")
+    with pytest.raises(SystemExit):
+        al.run_annotate_loci(a)
+    assert "exists" in capsys.readouterr().err
+    assert open(os.path.join(a.outdir, "loci.ncrna.gff3")).read() == "keep"
+
+
+@pytest.mark.parametrize("tools,name", [(("cmpress",), "cmscan"), (("cmscan",), "cmpress")])
+def test_missing_infernal_tool_is_error(tmp_path, monkeypatch, capsys, tools, name):
+    Nc(tmp_path, monkeypatch, tools=tools)
+    with pytest.raises(SystemExit):
+        al.run_annotate_loci(_nc_args(tmp_path, cm_index=(name == "cmscan") and False))
+    err = capsys.readouterr().err
+    assert name in err and "infernal" in err
+
+
+def test_failed_cmscan_cleans_scratch(tmp_path, monkeypatch):
+    nc = Nc(tmp_path, monkeypatch)
+    _tool(nc.bin / "cmscan", "exit 1\n")
+    a = _nc_args(tmp_path)
+    with pytest.raises(SystemExit):
+        al.run_annotate_loci(a)
+    assert _leftovers(a) == []
+
+
+def test_no_locus_of_selected_classes_is_error(tmp_path, monkeypatch):
+    Nc(tmp_path, monkeypatch)
+    a = _nc_args(tmp_path, rows=[("chr1", 0, 60, "hcsiRNA")])
+    with pytest.raises(SystemExit):
+        al.run_annotate_loci(a)
+    assert _leftovers(a) == []
+
+
+def test_setup_lists_infernal_tools():
+    import setup_module
+    names = {r["name"]: r for r in setup_module.MODULE_TOOLS["annotate-loci"]}
+    assert "optional" in names["cmscan"]["note"] and "optional" in names["cmpress"]["note"]

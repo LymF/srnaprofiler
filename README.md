@@ -85,7 +85,7 @@ predictions from `mirna`, is what keeps them labelled correctly.
 | `mapping` | align to the genome, optionally dropping structural RNA |
 | `mirna` | find and validate miRNA loci, so `classify` can carve them out |
 | `classify` | call loci, measure their signatures, assign a class (optionally with `--annotation`) |
-| `annotate-loci` | annotate transposons on the classified loci only (RepeatMasker), for organisms without a TE annotation |
+| `annotate-loci` | annotate transposons (RepeatMasker) and/or structural RNA (Infernal + Rfam) on the classified loci only, for organisms without an annotation |
 | `te-library` | build a TE library for a genome (RepeatModeler2) and drop gene contaminants, to feed `annotate-loci --te-library` |
 | `classplots` | look at the result: per-class and per-locus figures |
 | `report` | read the result: one offline HTML page with plain-language explanations |
@@ -412,6 +412,24 @@ removes its scratch files and can be rerun; only an existing `loci.te.gff3` bloc
 
 Use `--te-library` instead of `--species` for a custom library. RepeatMasker is an optional
 install (`environment-te.yml`, below).
+
+**Structural RNA on the loci.** `annotate-loci --ncrna-cm Rfam.cm` scans the loci with Infernal
+`cmscan` (Rfam GA thresholds) and writes `out/loci.ncrna.gff3`, which loads as an `ncrna` layer. On
+*A. thaliana* (22584 loci, Rfam 15) structural-RNA hits are rare in hcsiRNA loci (2.9%) but
+cover 40% of `ambiguous` loci (tRNA in 283 of 365), 16% of siRNA and 34% of miRNA loci (MIR families).
+hcsiRNA is 94% of the sequence (the other classes are 1 Mb of 20 Mb) and scanning all loci took
+1h48 (CPU shared), while the other classes cost minutes, so by default only
+`--ncrna-classes ambiguous,siRNA,phasiRNA,phasiRNA24,miRNA` are scanned; `all` scans every locus.
+
+```
+srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa -o out -p loci --ncrna-cm Rfam.cm
+srnaprofiler classify ... --annotation ncrna:out/loci.ncrna.gff3
+```
+
+Get the models from https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz (gunzip it) and,
+optionally, `--ncrna-clanin Rfam.clanin` (same directory; adds `--oclan --oskip`). `cmpress -F` runs
+once if the index is missing. The TE mode (`--species`/`--te-library`) and this mode are independent;
+give at least one, or both in one call. Infernal is optional (`environment-te.yml`).
 
 **Building a TE library (`te-library`).** Three routes to a TE annotation: (1) a curated
 library from Dfam/RepeatMasker (`annotate-loci --species`), enough for model clades; (2) a library built for

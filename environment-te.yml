@@ -20,6 +20,7 @@ dependencies:
   - hmmer
   - cd-hit
   - minimap2
+  - infernal           # annotate-loci --ncrna-cm (cmscan, cmpress)
   - ltr_retriever      # RepeatModeler -LTRStruct
   - genometools-genometools
   - mafft
