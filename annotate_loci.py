@@ -132,8 +132,8 @@ def ncrna_class(family):
 def parse_tblout(path, scan_ids, loci):
     """Hits of a cmscan --fmt 2 tblout with inc '!', as GFF3 rows in genome coordinates.
 
-    Columns (1-based): 2 family, 3 accession, 5 query, 10/11 seq from/to,
-    12 strand, 18 E-value, 19 inc. Returns (rows, n_loci_hit).
+    Columns (1-based): 2 family, 3 accession, 4 query, 10/11 seq from/to,
+    12 strand, 18 E-value, 19 inc (checked on a real Infernal 1.1.5 --fmt 2 file). Returns (rows, n_loci_hit).
     """
     rows, hit = [], set()
     with open(path) as fh:
@@ -143,7 +143,7 @@ def parse_tblout(path, scan_ids, loci):
             c = line.split()
             if len(c) < 19 or c[18] != "!":
                 continue
-            q = c[4]
+            q = c[3]
             if q not in loci:
                 log(f"query name {q} is not in the loci map; skipped", "WARN")
                 continue

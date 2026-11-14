@@ -222,8 +222,9 @@ def _tool(path, body):
 
 
 def _tbl_row(fam, acc, q, f, t, strand, ev, inc="!", clan="-"):
-    return (f"1 {fam} {acc} {clan} {q} - cm 1 100 {f} {t} {strand} no 1 0.5 0.0 "
-            f"50.0 {ev} {inc} * 0 0 0 0 0 0 desc text\n")
+    # column order of a real `cmscan --fmt 2` tblout: idx, target, acc, query, qacc, clan, mdl, ...
+    return (f"1 {fam} {acc} {q} - {clan} cm 1 100 {f} {t} {strand} no 1 0.5 0.0 "
+            f"50.0 {ev} {inc} * - - - - - - desc text\n")
 
 
 class Nc:
@@ -420,3 +421,17 @@ def test_setup_lists_infernal_tools():
     import setup_module
     names = {r["name"]: r for r in setup_module.MODULE_TOOLS["annotate-loci"]}
     assert "optional" in names["cmscan"]["note"] and "optional" in names["cmpress"]["note"]
+
+
+def test_parse_tblout_real_infernal_lines(tmp_path):
+    """Two lines copied from a real Infernal 1.1.5 `cmscan --fmt 2` run (Arabidopsis loci)."""
+    tbl = tmp_path / "real.tbl"
+    tbl.write_text(
+        "#idx target name          accession query name           accession clan name mdl mdl from   mdl to seq from   seq to strand trunc pass   gc  bias  score   E-value inc olp anyidx afrct1 afrct2 winidx wfrct1 wfrct2 description of target\n"
+        "1    MIR166               RF00075   L11                  -         -          cm       10      108       99        1      - 5'&3'    4 0.40   0.0   62.3   1.5e-13  !   *       -      -      -      -      -      - MicroRNA MIR166\n"
+        "1    tRNA                 RF00005   L13                  -         CL00001    cm        1       71      407      336      -    no    1 0.50   0.0   67.7   9.7e-14  !   *       -      -      -      -      -      - tRNA\n")
+    rows, n = al.parse_tblout(str(tbl), {"L11": "miRNA", "L13": "ambiguous"},
+                              {"L11": ("1", 1000), "L13": ("2", 500)})
+    assert n == 2
+    assert rows[0][:6] == ("1", 1001, 1099, "-", "MIR166", "RF00075")
+    assert rows[1][:6] == ("2", 837, 907, "-", "tRNA", "RF00005")
