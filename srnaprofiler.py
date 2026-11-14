@@ -79,6 +79,7 @@ The order, and what each step is for:
   classify    call loci, measure their signatures, assign a class
   classplots  look at the result: per-class and per-locus figures
   annotate-loci  RepeatMasker on the classified loci only (feeds --annotation)
+  te-library  build a TE library for a genome (RepeatModeler2) and drop gene contaminants
 
 A typical run:
 
@@ -617,6 +618,34 @@ themselves are defined there. Every module takes --help.
                     help="Custom TE library FASTA (RepeatMasker -lib)")
     al.add_argument("--threads", type=int, default=4)
     al.set_defaults(func=run_annotate_loci)
+
+    from te_library import run_te_library
+    tl = subparsers.add_parser("te-library",
+        help="Build a TE library for a genome (RepeatModeler2) and remove gene contaminants",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "example:\n"
+            "  srnaprofiler te-library -g genome.fa -o out -p sp --threads 32 \\\n"
+            "      --organelle-contigs Pt,Mt --genes genes.gff3\n"
+            "  srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa \\\n"
+            "      -o out --te-library out/sp-families.fa\n"
+        ))
+    tl.add_argument("-g", "--genome", required=True, help="Genome FASTA")
+    tl.add_argument("-o", "--outdir", required=True)
+    tl.add_argument("-p", "--prefix", required=True)
+    tl.add_argument("--threads", type=int, default=4)
+    tl.add_argument("--resume", action="store_true",
+                    help="Continue an interrupted RepeatModeler run (-recoverDir)")
+    tl.add_argument("--organelle-contigs", dest="organelle_contigs",
+                    help="Comma-separated contigs left out of the genome given to RepeatModeler")
+    tl.add_argument("--genes", help="Gene annotation (GFF3/GTF[.gz]); exons of its non-TE "
+                                    "genes are excluded from the library")
+    tl.add_argument("--exclude-fasta", dest="exclude_fasta", action="append",
+                    help="FASTA of sequences to exclude (repeatable), e.g. Rfam rRNA/tRNA")
+    tl.add_argument("--dfam-species", dest="dfam_species",
+                    help='Append curated Dfam families for this taxon ("Latin name")')
+    tl.add_argument("--families", help="Start from this library, skipping RepeatModeler")
+    tl.set_defaults(func=run_te_library)
 
     return parser
 

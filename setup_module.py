@@ -73,6 +73,12 @@ MODULE_TOOLS = {
     "annotate-loci": [
         _tool("RepeatMasker", "optional: needed for `annotate-loci`"),
     ],
+    "te-library": [
+        _tool("BuildDatabase", "optional: needed for `te-library` (RepeatModeler)"),
+        _tool("RepeatModeler", "optional: needed for `te-library`"),
+        _tool("minimap2", "optional: needed for `te-library` filtering"),
+        _tool("famdb.py", "optional: needed for `te-library --dfam-species`"),
+    ],
     "plots": [
         _tool("Rscript"),
         # Rscript on PATH says nothing about the libraries the scripts import.

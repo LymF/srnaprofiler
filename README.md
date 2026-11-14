@@ -86,6 +86,7 @@ predictions from `mirna`, is what keeps them labelled correctly.
 | `mirna` | find and validate miRNA loci, so `classify` can carve them out |
 | `classify` | call loci, measure their signatures, assign a class (optionally with `--annotation`) |
 | `annotate-loci` | annotate transposons on the classified loci only (RepeatMasker), for organisms without a TE annotation |
+| `te-library` | build a TE library for a genome (RepeatModeler2) and drop gene contaminants, to feed `annotate-loci --te-library` |
 | `classplots` | look at the result: per-class and per-locus figures |
 | `report` | read the result: one offline HTML page with plain-language explanations |
 
@@ -411,6 +412,31 @@ removes its scratch files and can be rerun; only an existing `loci.te.gff3` bloc
 
 Use `--te-library` instead of `--species` for a custom library. RepeatMasker is an optional
 install (`environment.yml`).
+
+**Building a TE library (`te-library`).** Three routes to a TE annotation: (1) a curated
+library from Dfam/RepeatMasker (`annotate-loci --species`), enough for model clades; (2) a library built for
+the genome with `te-library`; (3) an annotation you already have (`--annotation te:...`). Measured on
+*A. thaliana*, Dfam 4.0 curated has 9 families and RepeatMasker with it found 0 TEs in 22584 loci
+(recall 0.2% against TAIR10); RepeatModeler2 on the genome (3h49, 32 threads) gave 631 families and,
+used in `annotate-loci`, 68.8% recall and 83.2% precision (130 s for the loci). RepeatModeler2 families
+also include multicopy gene families (20.8% of the loci called TE by that library alone lie >=50% on a
+gene exon, against 0.9% where it agrees with TAIR10), so `te-library` filters them out:
+
+```
+srnaprofiler te-library -g genome.fa -o OUTDIR -p PREFIX [--threads N] [--resume]
+    [--organelle-contigs Pt,Mt] [--genes GENES.gff3|gtf[.gz]] [--exclude-fasta FASTA ...]
+    [--dfam-species "Latin name"] [--families EXISTING.fa]
+srnaprofiler annotate-loci --clusters run.clusters.tsv -g genome.fa -o out --te-library OUTDIR/PREFIX-families.fa
+```
+
+Steps: write the nuclear genome (without `--organelle-contigs`); `BuildDatabase` + `RepeatModeler -LTRStruct`
+(`--resume` passes `-recoverDir` to an interrupted run; `--families` skips this step); drop each family
+that `minimap2 -x asm20` aligns to the exons of the non-TE genes (`--genes`) or to `--exclude-fasta`
+sequences with identity >= 0.80 over >= 50% of the family; families classed rRNA, tRNA, snRNA, scRNA
+or srpRNA are always dropped; optionally append curated Dfam families (`--dfam-species`, needs `famdb.py`).
+It writes `OUTDIR/PREFIX-families.fa` and `OUTDIR/PREFIX.te-library.report.tsv` (kept/dropped, reason,
+matched sequence per family). Without `--genes`/`--exclude-fasta` no sequence filtering happens.
+RepeatModeler, minimap2 and famdb.py are optional installs; `classify` and `report` never call them.
 
 Without `--annotation`, nothing changes: `classify` writes byte-identical outputs to a run before
 the layer existed, which is what keeps the benchmark numbers valid.
