@@ -33,3 +33,16 @@ def test_bed_class_slash_family_simple_repeat_left_out(tmp_path):
     bed = "chr1\t0\t100\tSimple_repeat/(TA)n\t0\t+\nchr1\t200\t300\tLTR/Copia\t0\t+\n"
     L = _te(tmp_path, bed, "r.bed")
     assert L.n_features == 1
+
+
+def test_bed_simple_repeat_by_name_only(tmp_path):
+    bed = ("chr1\t0\t100\t(TTTTA)n\t0\t+\nchr1\t100\t200\tA-rich\t0\t+\n"
+           "chr1\t200\t300\tRNA\t0\t+\nchr1\t400\t500\tATCOPIA1\t0\t+\n")
+    L = _te(tmp_path, bed, "n.bed")
+    assert L.n_features == 1
+
+
+def test_generic_rna_class_left_out(tmp_path):
+    gff = ("##gff-version 3\n"
+           "chr1\tRepeatMasker\trepeat_region\t1\t100\t.\t+\t.\tName=x;Class=RNA\n")
+    assert _te(tmp_path, gff, "r.gff3").n_features == 0

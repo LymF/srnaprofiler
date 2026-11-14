@@ -13,8 +13,6 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-import pysam
-
 from utils import log, which
 
 MIN_IDENTITY = 0.80
@@ -36,7 +34,7 @@ def read_fasta(path):
     head, parts = None, []
     with _open_text(path) as fh:
         for line in fh:
-            line = line.rstrip("\n")
+            line = line.rstrip("\r\n")
             if line.startswith(">"):
                 if head is not None:
                     yield head, "".join(parts)
@@ -65,31 +63,45 @@ def write_nuclear_fasta(genome, out_fa, exclude):
     with _open_text(genome) as fh, open(out_fa, "w") as out:
         for line in fh:
             if line.startswith(">"):
-                name = family_name(line[1:].rstrip("\n"))
+                name = family_name(line[1:].rstrip("\r\n"))
                 keep = name not in exclude
                 if name in exclude:
                     seen.add(name)
             if keep:
-                out.write(line if line.endswith("\n") else line + "\n")
+                out.write(line.rstrip("\r\n") + "\n")
     return sorted(exclude - seen)
 
 
+def _contig_names(genome):
+    with _open_text(genome) as fh:
+        return {family_name(l[1:].rstrip("\r\n")) for l in fh if l.startswith(">")}
+
+
 def write_gene_exons(genes, genome, out_fa):
-    """FASTA of the exons of the non-TE genes of an annotation. Returns the count."""
+    """FASTA of the exons of the non-TE genes of an annotation. Returns the count.
+
+    The genome is streamed contig by contig, so no .fai is needed.
+    """
     from annotation import _drop_te_trees, _gene_class, parse_annotation
+    contigs = _contig_names(genome)
+    unknown = {}
+    feats = parse_annotation(genes, known_contigs=contigs, unknown=unknown)
     n = 0
-    with pysam.FastaFile(genome) as fa, open(out_fa, "w") as out:
-        feats = parse_annotation(genes, known_contigs=set(fa.references))
-        for contig, fl in feats.items():
-            fl = _drop_te_trees(fl)
-            for f in fl:
-                if _gene_class(f.ftype) != "exon":
-                    continue
-                if f.end <= f.start:
+    with open(out_fa, "w") as out:
+        for head, seq in read_fasta(genome):
+            contig = family_name(head)
+            for f in _drop_te_trees(feats.get(contig, [])):
+                if _gene_class(f.ftype) != "exon" or f.end <= f.start:
                     continue
                 n += 1
-                out.write(f">exon{n}|{contig}:{f.start}-{f.end}\n"
-                          f"{fa.fetch(contig, f.start, f.end)}\n")
+                out.write(f">exon{n}|{contig}:{f.start}-{f.end}\n{seq[f.start:f.end]}\n")
+    if n == 0:
+        skipped = sum(unknown.values())
+        eg = ", ".join(list(unknown)[:3])
+        _die(f"--genes {genes}: no exon of a non-TE gene was extracted from the genome. "
+             + (f"{skipped} features lie on {len(unknown)} contigs absent from the "
+                f"genome (e.g. {eg}); check contig naming, e.g. Chr1 vs 1"
+                if unknown else "the file has no gene exon rows"))
     return n
 
 
@@ -98,7 +110,7 @@ def concat_fastas(paths, out_fa):
         for p in paths:
             with _open_text(p) as fh:
                 for line in fh:
-                    out.write(line if line.endswith("\n") else line + "\n")
+                    out.write(line.rstrip("\r\n") + "\n")
 
 
 def _union_len(spans):
@@ -163,6 +175,16 @@ def _run_dirs(outdir):
     return sorted(dirs, key=lambda d: d.stat().st_mtime, reverse=True)
 
 
+def _run_dirs(outdir):
+    """RepeatModeler run directories, newest first.
+
+    A run leaves many RM_* directories (RepeatClassifier makes temporary ones too); only a real
+    run directory has a `rmod.log` or a `round-1` folder."""
+    dirs = [d for d in outdir.glob("RM_*")
+            if (d / "rmod.log").exists() or (d / "round-1").exists()]
+    return sorted(dirs, key=lambda d: d.stat().st_mtime, reverse=True)
+
+
 def _repeatmodeler_library(outdir, prefix):
     fam = outdir / f"{prefix}-families.fa"
     if fam.exists():
@@ -174,10 +196,34 @@ def _repeatmodeler_library(outdir, prefix):
     return None
 
 
+def _pick_run_dir(outdir, prefix):
+    """The RM_* dir to resume: the one whose rmod.log mentions the prefix, else the newest."""
+    dirs = _run_dirs(outdir)
+    for d in dirs:
+        lg = d / "rmod.log"
+        try:
+            if lg.exists() and prefix in lg.read_text(errors="replace"):
+                return d
+        except OSError:
+            pass
+    return dirs[0] if dirs else None
+
+
+def _validate(args, filtering, genes, excl, families_in):
+    for label, path in [("--genes", genes), ("--families", families_in),
+                        ("--genome", args.genome)] + [("--exclude-fasta", p) for p in excl]:
+        if path and not os.path.isfile(path):
+            _die(f"{label} {path}: no such file")
+    for p in excl:
+        if not any(seq for _, seq in read_fasta(p)):
+            _die(f"--exclude-fasta {p} holds no sequence")
+
+
 def run_te_library(args):
     outdir = Path(args.outdir)
     prefix = args.prefix
     final = outdir / f"{prefix}-families.fa"
+    raw = outdir / f"{prefix}-families.raw.fa"
     report = outdir / f"{prefix}.te-library.report.tsv"
     genes = getattr(args, "genes", None)
     excl = list(getattr(args, "exclude_fasta", None) or [])
@@ -188,10 +234,12 @@ def run_te_library(args):
     if report.exists():
         _die(f"{report} exists; refusing to overwrite a finished library. "
              f"Remove it or pick another --prefix/--outdir")
-    if families_in and final.exists():
+    if families_in and final.exists() and not os.path.samefile(families_in, final):
         _die(f"{final} exists; refusing to overwrite it. Remove it or pick "
              f"another --prefix/--outdir")
-    need = [] if families_in else [
+    _validate(args, filtering, genes, excl, families_in)
+    reuse = (not families_in) and (raw.exists() or final.exists())
+    need = [] if (families_in or reuse) else [
         ("BuildDatabase", "RepeatModeler (`conda install -c bioconda repeatmodeler`)"),
         ("RepeatModeler", "RepeatModeler (`conda install -c bioconda repeatmodeler`)")]
     if filtering:
@@ -200,15 +248,22 @@ def run_te_library(args):
         if not which(tool):
             _die(f"{tool} is not on PATH. Install it with {hint}; it is "
                  f"optional for the rest of srnaprofiler")
+    organelle = [x.strip() for x in (getattr(args, "organelle_contigs", None) or "").split(",")
+                 if x.strip()]
     outdir.mkdir(parents=True, exist_ok=True)
 
     # 1-2. library to filter
     if families_in:
         src = Path(families_in)
         log(f"using the library {src}; RepeatModeler is skipped")
+    elif reuse:
+        if not raw.exists():
+            os.replace(final, raw)
+        src = raw
+        log(f"{src.name} already exists and no report: RepeatModeler finished earlier "
+            f"but filtering did not; RepeatModeler is skipped and this library is filtered")
     else:
         genome = args.genome
-        organelle = [x.strip() for x in (args.organelle_contigs or "").split(",") if x.strip()]
         if organelle:
             nuc = outdir / f"{prefix}.nuclear.fa"
             missing = write_nuclear_fasta(args.genome, str(nuc), organelle)
@@ -227,10 +282,13 @@ def run_te_library(args):
             _die(f"BuildDatabase failed: {exc} (see {db_log})")
         cmd = ["RepeatModeler", "-database", prefix, "-threads", str(args.threads),
                "-LTRStruct"]
-        rmdirs = _run_dirs(outdir)
-        if getattr(args, "resume", False) and rmdirs:
-            cmd += ["-recoverDir", str(rmdirs[0])]
-            log(f"resuming RepeatModeler from {rmdirs[0]}")
+        if getattr(args, "resume", False):
+            rd = _pick_run_dir(outdir, prefix)
+            if rd is not None:
+                cmd += ["-recoverDir", str(rd)]
+                log(f"resuming RepeatModeler from {rd}")
+            else:
+                log("--resume: no RM_* run directory to resume; starting fresh")
         log(f"RepeatModeler running (hours); log: {rm_log}. If interrupted, rerun "
             f"the same command with --resume")
         try:
@@ -241,22 +299,36 @@ def run_te_library(args):
         if src is None:
             _die(f"RepeatModeler produced no {final.name} or RM_*/consensi.fa.classified "
                  f"in {outdir}")
+    if src.exists() and final.exists() and os.path.samefile(src, final):
+        os.replace(final, raw)
+        src = raw
+        log(f"the input library is kept as {raw}")
 
     # families metadata (streamed; sequences are not kept)
-    lengths, classes, order = {}, {}, []
+    lengths, classes, order, verdict = {}, {}, [], {}
+    dup = 0
     for head, seq in read_fasta(src):
         nm = family_name(head)
         if nm in lengths:
+            dup += 1
             continue
         lengths[nm] = len(seq)
         classes[nm] = family_class(nm)
         order.append(nm)
+        if not seq:
+            verdict[nm] = ("empty", "")
+    if not order:
+        _die(f"the input library {src} has 0 families")
+    if dup:
+        log(f"{dup} duplicate family names in {src}; the first of each is kept", "WARN")
+    if any(r == "empty" for r, _ in verdict.values()):
+        log(f"{sum(1 for r, _ in verdict.values() if r == 'empty')} zero-length "
+            f"families dropped", "WARN")
     log(f"{len(order)} input families from {src}")
 
     # 3. filter
-    verdict = {}                      # name -> (reason, matched)
     for nm in order:
-        if classes[nm] in RNA_CLASSES:
+        if nm not in verdict and classes[nm] in RNA_CLASSES:
             verdict[nm] = (classes[nm], "")
     note = ""
     if filtering:
@@ -271,8 +343,9 @@ def run_te_library(args):
         concat_fastas(parts, str(excl_fa))
         paf = outdir / f"{prefix}.te-library.paf"
         try:
-            _run(["minimap2", "-x", "asm20", "-t", str(args.threads), str(excl_fa),
-                  str(src)], stdout_path=str(paf))
+            _run(["minimap2", "-x", "asm20", "-c", "-s", "60", "-N", "5",
+                  "-t", str(args.threads), str(excl_fa), str(src)],
+                 stdout_path=str(paf))
         except (subprocess.CalledProcessError, OSError) as exc:
             _die(f"minimap2 failed: {exc}")
         for nm, (cov, tname) in parse_paf(paf, lengths).items():
@@ -289,6 +362,7 @@ def run_te_library(args):
     tmp = outdir / f"{prefix}-families.fa.tmp"
     kept = Counter()
     names = set()
+    n_dfam = 0
     with open(tmp, "w") as out:
         for head, seq in read_fasta(src):
             nm = family_name(head)
@@ -299,7 +373,6 @@ def run_te_library(args):
                 continue
             out.write(f">{head}\n{seq}\n")
             kept[classes[nm] or "unclassified"] += 1
-        # 4. Dfam
         if dfam:
             n_dfam = _append_dfam(dfam, outdir, prefix, out, names)
             if n_dfam:
@@ -307,6 +380,7 @@ def run_te_library(args):
     os.replace(tmp, final)
 
     with open(report, "w", newline="") as fh:
+        fh.write(f"# source library: {src}\n")
         if note:
             fh.write(f"# {note}\n")
         w = csv.writer(fh, delimiter="\t", lineterminator="\n")
@@ -332,10 +406,14 @@ def _append_dfam(species, outdir, prefix, out, names):
               species], stdout_path=str(dfa))
     except (subprocess.CalledProcessError, OSError) as exc:
         log(f"famdb.py failed ({exc}); the Dfam merge is skipped", "WARN")
+        dfa.unlink(missing_ok=True)
         return 0
-    n = 0
+    n = rna = 0
     for head, seq in read_fasta(dfa):
         if not seq:
+            continue
+        if family_class(family_name(head)) in RNA_CLASSES:
+            rna += 1
             continue
         nm = "dfam|" + family_name(head)
         if nm in names:
@@ -343,6 +421,8 @@ def _append_dfam(species, outdir, prefix, out, names):
         names.add(nm)
         out.write(f">dfam|{head}\n{seq}\n")
         n += 1
+    if rna:
+        log(f"{rna} Dfam families of RNA classes ({', '.join(RNA_CLASSES)}) dropped")
     if n == 0:
         log(f"famdb.py returned no families for {species!r}; nothing merged", "WARN")
     else:

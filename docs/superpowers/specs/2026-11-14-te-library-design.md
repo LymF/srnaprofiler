@@ -44,9 +44,10 @@ input family: name, length, kept/dropped, reason, matched sequence) and the logs
    it finishes; use that, else the classified consensi).
    `--families EXISTING.fa` skips this step and starts from that library (a library
    from elsewhere, or a previous run).
-3. **Filter contaminants**, each family tested with `minimap2 -x asm20` against the
-   exclusion sequences. A family is **dropped** when one alignment gives identity >= 0.80
-   and covers >= 50% of the family length. Exclusion sequences:
+3. **Filter contaminants**, each family tested with `minimap2 -x asm20 -c -s 60 -N 5` against
+   the exclusion sequences. A family is **dropped** when the alignments with identity >= 0.80
+   (matches / alignment block length) together cover >= 50% of the family length (union of
+   their query spans). Exclusion sequences:
    - `--genes`: the exons of the non-TE genes of that annotation, extracted from the
      genome (use `annotation.py`: the gene-layer rules already drop `transposable_element*`
      rows and their children, and keep exon-like rows only; contigs are those of the FASTA);

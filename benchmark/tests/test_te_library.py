@@ -264,3 +264,136 @@ def test_setup_lists_te_library_tools_as_optional():
     reqs = setup_module.MODULE_TOOLS["te-library"]
     assert {r["name"] for r in reqs} == {"BuildDatabase", "RepeatModeler", "minimap2", "famdb.py"}
     assert all("optional" in r["note"] for r in reqs)
+
+
+def test_minimap2_argv_has_base_level_flags(tmp_path, monkeypatch):
+    a, env = _gene_run(tmp_path, monkeypatch, match=90, blk=100, qe=80)
+    mm = [c for c in env.calls() if c.startswith("minimap2")][0]
+    assert "-x asm20" in mm and " -c " in mm and "-s 60" in mm and "-N 5" in mm
+
+
+def test_repeatmodeler_output_kept_as_raw(tmp_path, monkeypatch):
+    env = Env(tmp_path, monkeypatch, tools=("BuildDatabase", "RepeatModeler"))
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25), ("b#rRNA", "ACGT" * 25)])
+    a = _args(tmp_path)
+    te_library.run_te_library(a)
+    raw = os.path.join(a.outdir, "sp-families.raw.fa")
+    assert _names(raw) == ["a#LTR/Gypsy", "b#rRNA"]
+    assert _names(os.path.join(a.outdir, "sp-families.fa")) == ["a#LTR/Gypsy"]
+    assert "sp-families.raw.fa" in open(
+        os.path.join(a.outdir, "sp.te-library.report.tsv")).read()
+
+
+def test_finished_repeatmodeler_without_report_is_not_rerun(tmp_path, monkeypatch, capsys):
+    env = Env(tmp_path, monkeypatch, tools=("BuildDatabase", "RepeatModeler"))
+    a = _args(tmp_path)
+    os.makedirs(a.outdir)
+    _fa(__import__("pathlib").Path(a.outdir) / "sp-families.fa", [("a#LTR/Gypsy", "ACGT" * 25)])
+    te_library.run_te_library(a)
+    assert env.calls() == []
+    assert "skipped" in capsys.readouterr().err
+    assert _names(os.path.join(a.outdir, "sp-families.fa")) == ["a#LTR/Gypsy"]
+
+
+def test_missing_inputs_fail_before_repeatmodeler(tmp_path, monkeypatch, capsys):
+    env = Env(tmp_path, monkeypatch)
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
+    for kw in (dict(genes=str(tmp_path / "nope.gff3")),
+               dict(exclude_fasta=[str(tmp_path / "nope.fa")]),
+               dict(families=str(tmp_path / "nope.fa"))):
+        with pytest.raises(SystemExit):
+            te_library.run_te_library(_args(tmp_path, **kw))
+    assert env.calls() == []
+
+
+def test_zero_exons_names_contig_mismatch(tmp_path, monkeypatch, capsys):
+    env = Env(tmp_path, monkeypatch)
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
+    gff = tmp_path / "g.gff3"
+    gff.write_text("##gff-version 3\n1\tx\texon\t11\t60\t.\t+\t.\tID=e1\n")
+    with pytest.raises(SystemExit):
+        te_library.run_te_library(_args(tmp_path, genes=str(gff)))
+    err = capsys.readouterr().err
+    assert "naming" in err and "1 features" in err
+
+
+def test_empty_exclude_fasta_is_error(tmp_path, monkeypatch):
+    Env(tmp_path, monkeypatch)
+    ex = tmp_path / "e.fa"
+    ex.write_text("")
+    with pytest.raises(SystemExit):
+        te_library.run_te_library(_args(tmp_path, exclude_fasta=[str(ex)]))
+
+
+def test_genes_work_on_genome_without_fai_in_readonly_dir(tmp_path, monkeypatch):
+    env = Env(tmp_path, monkeypatch)
+    _fa(env.fams, [("fam1#LTR/Gypsy", "ACGT" * 25)])
+    gff = tmp_path / "g.gff3"
+    gff.write_text("chr1\tx\texon\t11\t60\t.\t+\t.\tID=e1\n")
+    a = _args(tmp_path, genes=str(gff))
+    te_library.run_te_library(a)
+    assert not os.path.exists(a.genome + ".fai")
+
+
+def test_dfam_rna_classes_dropped(tmp_path, monkeypatch, capsys):
+    env = Env(tmp_path, monkeypatch, tools=("BuildDatabase", "RepeatModeler", "famdb.py"))
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
+    _fa(env.dfam, [("U1#snRNA", "GGCC" * 10), ("X#DNA/hAT", "AATT" * 10)])
+    a = _args(tmp_path, dfam_species="x")
+    te_library.run_te_library(a)
+    assert _names(os.path.join(a.outdir, "sp-families.fa")) == ["a#LTR/Gypsy", "dfam|X#DNA/hAT"]
+    assert "1 Dfam families of RNA classes" in capsys.readouterr().err
+
+
+def test_resume_without_run_dir_starts_fresh(tmp_path, monkeypatch, capsys):
+    env = Env(tmp_path, monkeypatch)
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
+    te_library.run_te_library(_args(tmp_path, resume=True))
+    assert "starting fresh" in capsys.readouterr().err
+    assert "-recoverDir" not in [c for c in env.calls() if c.startswith("RepeatModeler")][0]
+
+
+def test_resume_prefers_dir_mentioning_prefix(tmp_path, monkeypatch):
+    env = Env(tmp_path, monkeypatch)
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
+    a = _args(tmp_path, resume=True)
+    for n, txt in (("RM_1.a", "sp run"), ("RM_2.b", "other")):
+        os.makedirs(os.path.join(a.outdir, n))
+        open(os.path.join(a.outdir, n, "rmod.log"), "w").write(txt)
+    te_library.run_te_library(a)
+    rm = [c for c in env.calls() if c.startswith("RepeatModeler")][0]
+    assert "RM_1.a" in rm
+
+
+def test_duplicates_empty_and_zero_families(tmp_path, monkeypatch, capsys):
+    env = Env(tmp_path, monkeypatch, tools=("BuildDatabase", "RepeatModeler"))
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25), ("a#LTR/Gypsy extra", "TTTT" * 25),
+                   ("e#DNA/hAT", "")])
+    a = _args(tmp_path)
+    te_library.run_te_library(a)
+    err = capsys.readouterr().err
+    assert "1 duplicate" in err and "zero-length" in err
+    assert _names(os.path.join(a.outdir, "sp-families.fa")) == ["a#LTR/Gypsy"]
+    assert _report(a)["e#DNA/hAT"][3] == "empty"
+
+
+def test_zero_families_is_error(tmp_path, monkeypatch):
+    env = Env(tmp_path, monkeypatch, tools=("BuildDatabase", "RepeatModeler"))
+    env.fams.write_text("")
+    with pytest.raises(SystemExit):
+        te_library.run_te_library(_args(tmp_path))
+
+
+def test_crlf_fasta(tmp_path):
+    p = tmp_path / "c.fa"
+    p.write_bytes(b">a#LTR/Gypsy desc\r\nACGT\r\nAC\r\n")
+    assert list(te_library.read_fasta(str(p))) == [("a#LTR/Gypsy desc", "ACGTAC")]
+
+
+def test_partial_dfam_file_removed_on_failure(tmp_path, monkeypatch):
+    env = Env(tmp_path, monkeypatch, tools=("BuildDatabase", "RepeatModeler"))
+    _script(env.bin / "famdb.py", 'echo partial\nexit 1\n')
+    _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
+    a = _args(tmp_path, dfam_species="x")
+    te_library.run_te_library(a)
+    assert not os.path.exists(os.path.join(a.outdir, "sp.dfam.fa"))

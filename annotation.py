@@ -221,7 +221,8 @@ def _gene_class(ftype):
 # RepeatMasker also reports repeats that are not transposons. They must not count as TE
 # evidence (a locus on a (TTTTA)n microsatellite is not a TE-derived siRNA).
 _NON_TE_CLASSES = frozenset({"simple_repeat", "low_complexity", "rrna", "trna", "snrna",
-                             "scrna", "srprna", "artefact"})
+                             "scrna", "srprna", "artefact", "rna"})
+_SIMPLE_NAME = re.compile(r"^\(.+\)n$|-rich$")
 
 
 def _is_non_te_repeat(f):
@@ -229,6 +230,8 @@ def _is_non_te_repeat(f):
     for text in (f.name, f.label):
         if text and text.split("/", 1)[0].strip().lower() in _NON_TE_CLASSES:
             return True
+    if f.name and _SIMPLE_NAME.search(f.name.rsplit("/", 1)[-1].strip()):
+        return True
     return False
 
 
