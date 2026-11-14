@@ -164,7 +164,7 @@ class Selection:
 
 
 def _detail_set(shown, max_detail):
-    """Detail pages for the top `max_detail` rows, but every class keeps a share.
+    """Detail pages for the top `max_detail` rows, but every class keeps a share, and annotation conflicts keep a fifth.
 
     A plain top-N by confidence leaves low-confidence classes (siRNA, phasiRNA) with
     no page at all. Half the budget is split evenly across the classes present
@@ -176,6 +176,15 @@ def _detail_set(shown, max_detail):
         by_cls.setdefault(c.cls, []).append(c)
     quota = max_detail // (2 * len(by_cls))
     chosen = {id(c) for rows in by_cls.values() for c in rows[:quota]}
+    # annotation conflicts are what a reviewer opens first: reserve a fifth of the budget for them
+    # (a run without --annotation has none, so its selection is unchanged)
+    room = max_detail // 5
+    for c in shown:
+        if room <= 0:
+            break
+        if c.annotation_support == "conflicts" and id(c) not in chosen:
+            chosen.add(id(c))
+            room -= 1
     for c in shown:
         if len(chosen) >= max_detail:
             break

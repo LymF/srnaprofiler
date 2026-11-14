@@ -181,3 +181,21 @@ def test_read_span_and_density_columns(tmp_path):
     assert new.read_span == 1234 and new.density_pvalue == 0.003
     old = rd.load_clusters(_write(tmp_path / "o.tsv", [_row()]))[0]
     assert old.read_span is None and old.density_pvalue is None
+
+
+def test_select_cap_reserves_room_for_annotation_conflicts():
+    # 100 high-confidence rows all supported, 10 low-confidence rows in conflict
+    ok = [_cl("ok%d" % i, 1000, .9) for i in range(100)]
+    bad = [_cl("bad%d" % i, 1000, .1) for i in range(10)]
+    for c in bad:
+        c.annotation_support = "conflicts"
+    s = rd.select(ok + bad, 0, max_detail=50)
+    got = {c.name for c in s.detail}
+    assert len(s.detail) == 50
+    assert sum(n.startswith("bad") for n in got) == 10  # fifth of 50 = 10 reserved
+
+
+def test_select_cap_unchanged_without_annotation():
+    rows = [_cl(str(i), 1000, 1 - i / 200) for i in range(100)]
+    s = rd.select(rows, 0, max_detail=50)
+    assert [c.name for c in s.detail] == [str(i) for i in range(50)]
