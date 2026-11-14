@@ -411,7 +411,7 @@ RepeatMasker caps sequence ids at 50 characters, so the loci go in as `L1`, `L2`
 removes its scratch files and can be rerun; only an existing `loci.te.gff3` blocks it.
 
 Use `--te-library` instead of `--species` for a custom library. RepeatMasker is an optional
-install (`environment.yml`).
+install (`environment-te.yml`, below).
 
 **Building a TE library (`te-library`).** Three routes to a TE annotation: (1) a curated
 library from Dfam/RepeatMasker (`annotate-loci --species`), enough for model clades; (2) a library built for
@@ -420,8 +420,9 @@ the genome with `te-library`; (3) an annotation you already have (`--annotation 
 (recall 0.2% against TAIR10); RepeatModeler2 on the genome (3h49, 32 threads) gave 631 families and,
 used in `annotate-loci`, 68.8% recall and 83.2% precision (130 s for the loci). RepeatModeler2 libraries
 can also hold multicopy gene families, so `te-library` filters them out. On that library the filter
-dropped 25 families as genes and 1 as snRNA (22 s) and moved recall to 68.5% and precision to 84.0%:
-a safe but small gain, not a large correction:
+(24 s) dropped 102 families as genes and 1 as snRNA, and moved recall from 68.8% to 66.9% and precision
+from 83.2% to 87.4%; the hcsiRNA loci called TE by the library alone that sit on a gene exon fell from
+20.8% to 11.9%:
 
 ```
 srnaprofiler te-library -g genome.fa -o OUTDIR -p PREFIX [--threads N] [--resume]
@@ -438,6 +439,21 @@ or srpRNA are always dropped; optionally append curated Dfam families (`--dfam-s
 It writes `OUTDIR/PREFIX-families.fa` and `OUTDIR/PREFIX.te-library.report.tsv` (kept/dropped, reason,
 matched sequence per family). Without `--genes`/`--exclude-fasta` no sequence filtering happens.
 RepeatModeler, minimap2 and famdb.py are optional installs; `classify` and `report` never call them.
+
+**Installing the TE tools.** They live in their own environment, so the main one stays small:
+
+```
+conda env create -f environment-te.yml        # RepeatMasker, RepeatModeler2, rmblast, LTR tools, minimap2
+conda activate srnaprofiler-te
+```
+
+Run `annotate-loci` and `te-library` inside it (it also carries the Python packages srnaprofiler needs).
+RepeatMasker has no repeat database of its own. For `--species` it needs Dfam (FamDB): download
+`dfam40.0.h5.gz` and `dfam40.curated.consensus.0.h5.gz` (about 90 MB, curated consensi for all
+taxa) from https://www.dfam.org/releases/current/families/FamDB/, gunzip them into
+`<env>/share/RepeatMasker/Libraries/famdb/`, and set `FAMDB_DATA_DIR` in `<env>/share/famdb-*/famdb.conf`
+to that folder. `--te-library` needs no database at all. Check the coverage of your clade first
+(`famdb.py -i <dir> lineage -a "Genus species"`): *A. thaliana* has 9 curated families, *D. melanogaster* 399.
 
 Without `--annotation`, nothing changes: `classify` writes byte-identical outputs to a run before
 the layer existed, which is what keeps the benchmark numbers valid.

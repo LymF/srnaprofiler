@@ -1,0 +1,39 @@
+# Optional environment for `annotate-loci` and `te-library` (TE annotation). Kept apart from
+# environment.yml: RepeatMasker/RepeatModeler pull many packages, and RepeatMasker's famdb.py
+# runs with the `python` first on PATH, so everything it needs (h5py) must be in this one.
+#
+#     conda env create -f environment-te.yml
+#     conda activate srnaprofiler-te
+#
+# It also carries what srnaprofiler itself imports, so the subcommands run from inside it.
+# Dfam is a separate download (see README, "Installing the TE tools").
+name: srnaprofiler-te
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.13
+  - repeatmasker
+  - repeatmodeler
+  - rmblast
+  - trf
+  - hmmer
+  - cd-hit
+  - minimap2
+  - ltr_retriever      # RepeatModeler -LTRStruct
+  - genometools-genometools
+  - mafft
+  - ninja
+  - pysam
+  - pyyaml
+  - numpy
+  - pandas
+  - scipy
+  - biopython
+  - matplotlib
+  - tqdm
+  - pybedtools
+  - seaborn
+  - pip
+  - pip:
+      - logomaker
