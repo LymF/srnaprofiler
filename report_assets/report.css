@@ -58,7 +58,10 @@
   /* --- Text --- */
   --rpt-text:        #1e293b;
   --rpt-text-2:      #475569;
-  --rpt-text-3:      #94a3b8;
+  --rpt-text-3:      #5b6b82;   /* 5.4:1 on white, 5.0:1 on --rpt-bg (was #94a3b8, 2.6:1) */
+  --rpt-warn-bg:     #fef3d7;
+  --rpt-warn-ink:    #7a5208;
+  --rpt-warn-line:   #ecd49a;
 
   /* --- Typography --- */
   --rpt-font:        'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -283,14 +286,8 @@ body {
                  transform  var(--rpt-dur) var(--rpt-ease);
 }
 
-.rpt-stat-chip::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 4px;
-  background: var(--rpt-border);
-  transition: background var(--rpt-dur) var(--rpt-ease);
-}
+/* No coloured side stripe: the value's own colour carries the tone. */
+.rpt-stat-chip::before { content: none; }
 
 .rpt-stat-chip:hover { box-shadow: var(--rpt-shadow-sm); }
 @media (hover: hover) and (pointer: fine) {
@@ -2218,16 +2215,20 @@ body { font-size: 16px; line-height: 26px; }
 /* everything rests, nothing stays hidden */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  /* Keep short colour/opacity feedback; drop movement (animations, lifts, slides). */
+  *, *::before, *::after { animation: none !important;
+    transition: color .12s, background-color .12s, border-color .12s, opacity .12s, box-shadow .12s !important; }
+  .rpt-about__card:focus-visible, .rpt-srna-table tr.row:focus-visible,
+  .rpt-stat-chip:hover { transform: none !important; }
   .rpt-srna-enter, #sec-detail.active { opacity: 1; transform: none; }
 }
 
 /* ---- shared pieces ---- */
-.rpt-srna-say { border-left: 4px solid var(--rpt-accent); background: var(--rpt-accent-subtle);
-  padding: var(--rpt-space-3) var(--rpt-space-4); border-radius: 0 var(--rpt-radius-sm) var(--rpt-radius-sm) 0;
+.rpt-srna-say { border: 1px solid #c9dff3; background: var(--rpt-accent-subtle);
+  padding: var(--rpt-space-3) var(--rpt-space-4); border-radius: var(--rpt-radius-sm);
   margin: var(--rpt-space-3) 0; max-width: 62ch; }
-.rpt-srna-warn { border-left: 4px solid var(--rpt-warning); background: #fef3d7; color: #7a5208;
-  padding: var(--rpt-space-3) var(--rpt-space-4); border-radius: 0 var(--rpt-radius-sm) var(--rpt-radius-sm) 0;
+.rpt-srna-warn { border: 1px solid var(--rpt-warn-line); background: var(--rpt-warn-bg); color: var(--rpt-warn-ink);
+  padding: var(--rpt-space-3) var(--rpt-space-4); border-radius: var(--rpt-radius-sm);
   margin: var(--rpt-space-2) 0; font-size: 14px; max-width: 62ch; }
 .rpt-srna-h { font-size: 16px; font-weight: 500; color: var(--rpt-primary); margin: var(--rpt-space-6) 0 var(--rpt-space-2); }
 .rpt-srna-grid { display: grid; gap: var(--rpt-space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
@@ -2278,7 +2279,8 @@ svg .ax { stroke: var(--rpt-border-dark); stroke-width: 1; }
 .rpt-srna-bar { display: inline-block; width: 80px; height: 8px; background: var(--rpt-border);
   border-radius: 99px; overflow: hidden; vertical-align: middle; }
 .rpt-srna-bar i { display: block; height: 100%; background: var(--rpt-accent); }
-.rpt-srna-dots .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 3px;
+.rpt-srna-dots { display: inline-flex; flex-wrap: nowrap; white-space: nowrap; }
+.rpt-srna-dots .dot { flex: none; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 3px;
   background: var(--rpt-success); }
 .rpt-srna-dots .dot.weak { background: var(--rpt-warning); }
 .rpt-srna-dots .dot.absent { background: var(--rpt-border-dark); }

@@ -425,7 +425,9 @@ def test_reduced_motion_block_exists():
     m = re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\}", _OWN_CSS, re.S)
     assert m
     body = m.group(1)
-    assert "animation: none" in body and "transition: none" in body
+    assert "animation: none" in body                 # no movement
+    assert "transition: none" not in body            # colour/opacity feedback survives
+    assert "transform" not in re.search(r"transition:([^;]*);", body).group(1)
     assert "opacity: 1" in body                      # nothing stays hidden
     for tok in ("--m-in: 150ms", "--m-out: 120ms", "--m-press: 90ms", "--m-panel: 200ms",
                 "--m-slide: 240ms", "cubic-bezier(.2, .8, .2, 1)", "cubic-bezier(.22, 1, .36, 1)"):
