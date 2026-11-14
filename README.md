@@ -9,6 +9,34 @@ Classes come out of `rules.yaml` (animal: siRNA, piRNA) or `rules.plant.yaml` (p
 phasiRNA, hcsiRNA, siRNA, and optional 24-nt phasiRNA). miRNA is not called by signature; it
 is taken from annotation or prediction and carved out of the surrounding locus.
 
+Two optional layers sit on top of the signature call and never change a class:
+
+- **Annotation as evidence** (`classify --annotation`): genes, transposons, structural RNA and
+  PHAS loci overlapping each locus support or contradict the call, nudge its confidence by a small
+  capped amount and flag conflicts for review (see [Annotation](#annotation-optional)).
+- **A self-contained HTML report** (`report`): one offline page with a plain-language reading of every
+  locus, the miRNA hairpin, and, when an annotation is given, a genome-browser-style figure of the
+  locus in its context (see [Report](#report)).
+
+### Status
+
+| part | state |
+|---|---|
+| signature classifier (rules), plant and animal | stable; the benchmark runs on it |
+| `--classifier ml` | optional, needs a trained model |
+| `mirna` (miRDeep2 / miRDeep-P2) | stable |
+| `report` | stable; checked in headless Chrome on real Drosophila and Arabidopsis libraries |
+| `classify --annotation` | stable; without it the outputs are byte-identical to a run from before the layer existed, so benchmark numbers stay valid |
+| genome figure in `report` | stable; zoom, pan, table and SVG export |
+| `report --predict-orfs` | **experimental**: ORFs from the genome sequence, never used by the classifier |
+| `annotate-loci` (RepeatMasker on the loci only) | implemented and unit-tested; see the note in [Annotation](#annotation-optional) before relying on it |
+
+Real-data check of the annotation layer (class calls identical with and without it):
+a *Drosophila melanogaster* library with the Ensembl dm6 genes and the RepeatMasker track
+(10750 loci: 3488 piRNA `supports`, 282 `conflicts`, 698 `neutral`), and an *Arabidopsis thaliana*
+library with Ensembl TAIR10.63 genes and the TAIR10 TE annotation (hcsiRNA: 12601 `supports`, 1468
+`conflicts`, 6878 `neutral`; without a TE layer every hcsiRNA is `neutral`).
+
 ---
 
 ## Install
@@ -56,7 +84,8 @@ predictions from `mirna`, is what keeps them labelled correctly.
 | `qc` | trim reads and standardize the genome |
 | `mapping` | align to the genome, optionally dropping structural RNA |
 | `mirna` | find and validate miRNA loci, so `classify` can carve them out |
-| `classify` | call loci, measure their signatures, assign a class |
+| `classify` | call loci, measure their signatures, assign a class (optionally with `--annotation`) |
+| `annotate-loci` | annotate transposons on the classified loci only (RepeatMasker), for organisms without a TE annotation |
 | `classplots` | look at the result: per-class and per-locus figures |
 | `report` | read the result: one offline HTML page with plain-language explanations |
 
@@ -163,7 +192,7 @@ The file has three parts:
   figures: size x strand x 5' base, phasing, whole-cluster coverage, ping-pong, 5' end track,
   nucleotide logo, top sequences and library context (a miRNA cluster matched to a `--mirna` table also gets the hairpin figure, below). Sense is drawn up and antisense down. Every
   figure except the top-sequences one has a table view and a "Download SVG" button.
-- **Genomic context** (only with `--annotation`): the locus with `--flank` bases each side on its
+- **Genomic context** (only with `--annotation`; on a miRNA page it comes before the hairpin): the locus with `--flank` bases each side on its
   contig, one track each for coverage (by read size class), 5' ends (summed per bin, not per base),
   genes (exons, CDS, UTR, strand arrows), transposons, structural RNA and PHAS loci, plus the
   predicted ORFs with `--predict-orfs` and a miRNA precursor window on miRNA clusters. Zoom with the
@@ -175,7 +204,7 @@ The file has three parts:
 | flag | default | meaning |
 |---|---|---|
 | `--min-reads` | 300 | depth floor in raw reads (the `reads` column, 1/NH-weighted): clusters below it are left out of the report and counted as hidden |
-| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (half the budget is split evenly across the classes present, best first; the rest follows the global order, resolved clusters by confidence before ambiguous ones); the rest stay in the list. Each page is about 7 KB (about 13 KB with `--annotation`), so about 7 MB (13 MB) per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
+| `--max-detail` | 3000 | clusters above the floor get a detail page up to this number (half the budget is split evenly across the classes present, best first; with `--annotation` a fifth is kept for loci whose annotation `conflicts` with the class, since those are what a reviewer opens first; the rest follows the global order, resolved clusters by confidence before ambiguous ones); the rest stay in the list. Each page is about 7 KB (about 13 KB with `--annotation`), so about 7 MB (13 MB) per 1000 pages; above 5000 `report` warns that the file can get large and slow to open in a browser |
 | `--threads` | 1 | worker processes for the figure data. Pays off only for large inputs and on Linux (fork) |
 | `--fragments` | `<prefix>.fragments.tsv` beside `--clusters` | regions below the `classify` locus floor, shown in the library cards |
 | `--mirna` | `<prefix>.mirna.tsv` beside `--clusters` | the `mirna` module's table; draws the miRNA hairpin figure (below) on the page of each miRNA cluster it matches. An explicit file that does not exist is an error; an absent default file just means no figure |

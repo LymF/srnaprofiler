@@ -218,6 +218,20 @@ def _gene_class(ftype):
     return None
 
 
+# RepeatMasker also reports repeats that are not transposons. They must not count as TE
+# evidence (a locus on a (TTTTA)n microsatellite is not a TE-derived siRNA).
+_NON_TE_CLASSES = frozenset({"simple_repeat", "low_complexity", "rrna", "trna", "snrna",
+                             "scrna", "srprna", "artefact"})
+
+
+def _is_non_te_repeat(f):
+    """True when a te-layer feature is a simple/low-complexity repeat or a structural RNA."""
+    for text in (f.name, f.label):
+        if text and text.split("/", 1)[0].strip().lower() in _NON_TE_CLASSES:
+            return True
+    return False
+
+
 def _is_te_type(ftype):
     return "transposable_element" in ftype.lower()
 
@@ -295,12 +309,17 @@ def load_layers(specs, known_contigs):
         index = {}
         n_kept = 0
         ignored = 0
+        non_te = 0
         for contig, feats in parsed.items():
             if kind == "gene":
                 n_all = len(feats)
                 feats = _drop_te_trees(feats)
                 feats = [f for f in feats if _gene_class(f.ftype)]
                 ignored += n_all - len(feats)
+            if kind == "te":
+                n_all = len(feats)
+                feats = [f for f in feats if not _is_non_te_repeat(f)]
+                non_te += n_all - len(feats)
             index[contig] = IntervalIndex(feats)
             n_kept += len(feats)
         skipped = sum(unknown.values())
@@ -317,6 +336,9 @@ def load_layers(specs, known_contigs):
         elif not parsed:
             log(f"annotation layer {kind} ({path}): no features parsed from "
                 f"this file", "WARN")
+        if non_te:
+            log(f"annotation layer {kind} ({path}): left out {non_te} simple/low-complexity "
+                f"repeats and structural-RNA repeats (not transposons)", "INFO")
         if ignored:
             log(f"annotation layer {kind} ({path}): ignored {ignored} features "
                 f"of non gene/exon types (region, chromosome, match, transposable_element, ...)", "DEBUG")
