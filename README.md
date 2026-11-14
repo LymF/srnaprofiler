@@ -418,9 +418,10 @@ library from Dfam/RepeatMasker (`annotate-loci --species`), enough for model cla
 the genome with `te-library`; (3) an annotation you already have (`--annotation te:...`). Measured on
 *A. thaliana*, Dfam 4.0 curated has 9 families and RepeatMasker with it found 0 TEs in 22584 loci
 (recall 0.2% against TAIR10); RepeatModeler2 on the genome (3h49, 32 threads) gave 631 families and,
-used in `annotate-loci`, 68.8% recall and 83.2% precision (130 s for the loci). RepeatModeler2 families
-also include multicopy gene families (20.8% of the loci called TE by that library alone lie >=50% on a
-gene exon, against 0.9% where it agrees with TAIR10), so `te-library` filters them out:
+used in `annotate-loci`, 68.8% recall and 83.2% precision (130 s for the loci). RepeatModeler2 libraries
+can also hold multicopy gene families, so `te-library` filters them out. On that library the filter
+dropped 25 families as genes and 1 as snRNA (22 s) and moved recall to 68.5% and precision to 84.0%:
+a safe but small gain, not a large correction:
 
 ```
 srnaprofiler te-library -g genome.fa -o OUTDIR -p PREFIX [--threads N] [--resume]
