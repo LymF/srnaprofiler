@@ -2177,10 +2177,11 @@
     return (base || T("ui.brand")) + "_" + letter;
   }
 
-  function figures(d, r) {
+  function figures(d, r, gmDone) {
     var sig = d.sig;
     // the genomic context leads the page when the report was built with an annotation
-    var gmFig = d.gm ? figGenome(d, r) : null;
+    // (gmDone: a miRNA page already drew it above the hairpin)
+    var gmFig = d.gm && !gmDone ? figGenome(d, r) : null;
     function lead(msg) { return gmFig ? h("div", "rpt-srna-figs", [gmFig, msg]) : msg; }
     if (!sig) { return lead(emptyMsg(T("ui.fig.na"))); }
     if (sig.err) { return lead(emptyMsg(T("ui.fig.err"))); }
@@ -2589,8 +2590,11 @@
     add(box, [h("p", "rpt-srna-say", T(d.v, {reason: r.u || ""})), strip(d, r), checklist(d, r)]);
     show("detail");
     h2.focus({preventScroll: true});
+    // miRNA pages: genomic context first, then the hairpin, then the other figures
+    var gmTop = d.mi && d.gm ? figGenome(d, r) : null;
+    if (gmTop) { box.appendChild(h("div", "rpt-srna-figs", [gmTop])); }
     if (d.mi) { box.appendChild(mirnaBlock(d.mi, r)); }
-    box.appendChild(figures(d, r));
+    box.appendChild(figures(d, r, !!gmTop));
     live.forEach(function (f) { f.render(); });
     watch();
   }
