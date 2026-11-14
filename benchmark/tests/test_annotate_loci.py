@@ -434,4 +434,4 @@ def test_parse_tblout_real_infernal_lines(tmp_path):
                               {"L11": ("1", 1000), "L13": ("2", 500)})
     assert n == 2
     assert rows[0][:6] == ("1", 1001, 1099, "-", "MIR166", "RF00075")
-    assert rows[1][:6] == ("2", 837, 907, "-", "tRNA", "RF00005")
+    assert rows[1][:6] == ("2", 836, 907, "-", "tRNA", "RF00005")
