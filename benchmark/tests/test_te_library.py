@@ -110,10 +110,11 @@ def test_resume_passes_recoverdir(tmp_path, monkeypatch):
     env = Env(tmp_path, monkeypatch)
     _fa(env.fams, [("a#LTR/Gypsy", "ACGT" * 25)])
     a = _args(tmp_path, resume=True)
-    os.makedirs(os.path.join(a.outdir, "RM_123.1"))
+    os.makedirs(os.path.join(a.outdir, "RM_123.1", "round-1"))
+    os.makedirs(os.path.join(a.outdir, "RM_999.9"))  # RepeatClassifier temp dir: not a run
     te_library.run_te_library(a)
     rm = [c for c in env.calls() if c.startswith("RepeatModeler")][0]
-    assert "-recoverDir" in rm and "RM_123.1" in rm
+    assert "-recoverDir" in rm and "RM_123.1" in rm and "RM_999.9" not in rm
 
 
 def _gene_run(tmp_path, monkeypatch, match, blk, qs=0, qe=100, qlen=100):

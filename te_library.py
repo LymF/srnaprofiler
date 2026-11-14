@@ -153,12 +153,21 @@ def _run(cmd, cwd=None, stdout_path=None):
                        stderr=subprocess.STDOUT if stdout_path else None)
 
 
+def _run_dirs(outdir):
+    """RepeatModeler run directories, newest first.
+
+    A run leaves many RM_* directories (RepeatClassifier makes temporary ones too); only a real
+    run directory has a `rmod.log` or a `round-1` folder."""
+    dirs = [d for d in outdir.glob("RM_*")
+            if (d / "rmod.log").exists() or (d / "round-1").exists()]
+    return sorted(dirs, key=lambda d: d.stat().st_mtime, reverse=True)
+
+
 def _repeatmodeler_library(outdir, prefix):
     fam = outdir / f"{prefix}-families.fa"
     if fam.exists():
         return fam
-    rm = sorted(outdir.glob("RM_*"))
-    for d in reversed(rm):
+    for d in _run_dirs(outdir):
         c = d / "consensi.fa.classified"
         if c.exists():
             return c
@@ -218,10 +227,10 @@ def run_te_library(args):
             _die(f"BuildDatabase failed: {exc} (see {db_log})")
         cmd = ["RepeatModeler", "-database", prefix, "-threads", str(args.threads),
                "-LTRStruct"]
-        rmdirs = sorted(outdir.glob("RM_*"))
+        rmdirs = _run_dirs(outdir)
         if getattr(args, "resume", False) and rmdirs:
-            cmd += ["-recoverDir", str(rmdirs[-1])]
-            log(f"resuming RepeatModeler from {rmdirs[-1]}")
+            cmd += ["-recoverDir", str(rmdirs[0])]
+            log(f"resuming RepeatModeler from {rmdirs[0]}")
         log(f"RepeatModeler running (hours); log: {rm_log}. If interrupted, rerun "
             f"the same command with --resume")
         try:
