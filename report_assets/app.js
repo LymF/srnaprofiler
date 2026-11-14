@@ -2488,7 +2488,17 @@
     if (L.reads) { legend.push({kind: "sw", color: INK, label: T("mi.lg.mismatch")}); }
     var el = figure({id: "hairpin", title: T("mi.title"), tip: T("mi.tip"), n: L.reads ? T("ui.fig.n", {n: num(tot)}) : null,
       legend: legend, height: L.H, width: hpX(mi.L) + HP.right, wide: true, file: fileName(r, "hairpin"),
-      draw: function (svg, W) { miDraw(svg, W, mi, L); }, table: function () { return miTable(mi); }});
+      draw: function (svg, W) { miDraw(svg, W, mi, L); }, table: function () { return miTable(mi); },
+      // a wide precursor scrolls sideways: open it centred on the mature miRNA, where the reads are
+      setup: function (c) {
+        if (!mi.m || typeof window.setTimeout !== "function") { return; }
+        window.setTimeout(function () {
+          var box = c.plot;
+          if (box && box.scrollWidth > box.clientWidth) {
+            box.scrollLeft = Math.max(0, hpX((mi.m[0] + mi.m[1]) / 2) - box.clientWidth / 2);
+          }
+        }, 80);
+      }});
     var strand = T("mi.strand", {st: mi.st === "-" ? "−" : "+", chrom: r.h});
     var notes = [note(strand)];
     if (mi.db) {
