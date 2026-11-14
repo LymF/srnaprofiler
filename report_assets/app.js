@@ -446,7 +446,7 @@
     add(box, [
       h("h3", "rpt-srna-h", T("ui.ov.main")),
       h("div", "rpt-stats-grid", [
-        stat(T("ui.stat.analysed"), num(rows.length), T("ui.stat.analysed.sub"), "accent"),
+        stat(T("ui.stat.analysed"), num(META.n_total - META.n_hidden), T("ui.stat.analysed.sub"), "accent"),
         stat(T("ui.stat.hidden"), num(META.n_hidden),
           T("ui.stat.hidden.sub", {total: num(META.n_total), floor: META.floor}), "warn"),
         stat(T("ui.stat.amb"), num(amb), T("ui.stat.amb.sub")),
