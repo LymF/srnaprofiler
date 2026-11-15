@@ -281,7 +281,8 @@ def parse_layer_spec(spec):
         raise ValueError(
             f"invalid annotation layer {spec!r}: expected <kind>:<path> with "
             f"kind one of {', '.join(LAYER_KINDS)}")
-    return kind, path
+    # the shell leaves a `~` after `kind:` alone
+    return kind, os.path.expanduser(path)
 
 
 def check_layer_specs(specs):

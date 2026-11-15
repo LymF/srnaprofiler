@@ -46,3 +46,9 @@ def test_generic_rna_class_left_out(tmp_path):
     gff = ("##gff-version 3\n"
            "chr1\tRepeatMasker\trepeat_region\t1\t100\t.\t+\t.\tName=x;Class=RNA\n")
     assert _te(tmp_path, gff, "r.gff3").n_features == 0
+
+
+def test_layer_spec_expands_tilde(monkeypatch):
+    from annotation import parse_layer_spec
+    monkeypatch.setenv("HOME", "/home/someone")
+    assert parse_layer_spec("te:~/x/y.bed") == ("te", "/home/someone/x/y.bed")
